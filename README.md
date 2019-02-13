@@ -1,18 +1,14 @@
-# hashstore
+# hashkernel
 
-[![travis-ci.org](https://travis-ci.org/walnutgeek/hashstore.svg?branch=master)](https://travis-ci.org/walnutgeek/hashstore)
-[![codecov.io](https://codecov.io/github/walnutgeek/hashstore/coverage.svg?branch=master)](https://codecov.io/github/walnutgeek/hashstore?branch=master)
-[![pypi_version](https://img.shields.io/pypi/v/hashstore.svg)](https://pypi.python.org/pypi/hashstore)
-[![pypi_support](https://img.shields.io/pypi/pyversions/hashstore.svg)](https://pypi.python.org/pypi/hashstore)
+[![travis-ci.org](https://travis-ci.org/hashstore/hashkernel.svg?branch=master)](https://travis-ci.org/hashstore/hashkernel)
+[![codecov.io](https://codecov.io/github/hashstore/hashkernel/coverage.svg?branch=master)](https://codecov.io/github/hashstore/hashkernel?branch=master)
+[![pypi_version](https://img.shields.io/pypi/v/hashkernel.svg)](https://pypi.python.org/pypi/hashkernel)
+[![pypi_support](https://img.shields.io/pypi/pyversions/hashkernel.svg)](https://pypi.python.org/pypi/hashkernel)
 
+Kernel to build and run python code inside hashstore
 
-Content Addressable Storage written in python
+## Installation
 
-See more: https://en.wikipedia.org/wiki/Content-addressable_storage
-
-### Installation
-
+```shell
+pip install hashkernel
 ```
-pip install hashstore
-```
-
