@@ -1,7 +1,6 @@
 # hashkernel
 
-[![travis-ci.org](https://travis-ci.org/hashstore/hashkernel.svg?branch=master)](https://travis-ci.org/hashstore/hashkernel)
-[![codecov.io](https://codecov.io/github/hashstore/hashkernel/coverage.svg?branch=master)](https://codecov.io/github/hashstore/hashkernel?branch=master)
+[![Build Status](https://dev.azure.com/sekash/Public/_apis/build/status/hashstore.hashkernel?branchName=master)](https://dev.azure.com/sekash/Public/_build/latest?definitionId=3&branchName=master)
 [![pypi_version](https://img.shields.io/pypi/v/hashkernel.svg)](https://pypi.python.org/pypi/hashkernel)
 [![pypi_support](https://img.shields.io/pypi/pyversions/hashkernel.svg)](https://pypi.python.org/pypi/hashkernel)
 
