@@ -1,6 +1,6 @@
 from typing import Any, Tuple, Callable
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from hashkernel import CodeEnum, first_elem, ENCODING_USED, utf8_encode, \
     utf8_decode
@@ -192,17 +192,16 @@ class ProxyPacker(Packer):
         return self.out_callback(v), new_offset
 
 
-class Packers:
-    INT_8 = TypePacker(int, "B")
-    INT_16 = TypePacker(int, "<H")
-    INT_32 = TypePacker(int, "<L")
-    FLOAT = TypePacker(float, "<f")
-    DOUBLE = TypePacker(float, "<d")
-    SIZED_BYTES = SizedPacker()
-    UTC_DATETIME = ProxyPacker(datetime, DOUBLE,
-                          lambda dt: dt.timestamp(),
-                          datetime.fromtimestamp)
-    UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
+INT_8 = TypePacker(int, "B")
+INT_16 = TypePacker(int, "<H")
+INT_32 = TypePacker(int, "<L")
+FLOAT = TypePacker(float, "<f")
+DOUBLE = TypePacker(float, "<d")
+SIZED_BYTES = SizedPacker()
+UTC_DATETIME = ProxyPacker(datetime, DOUBLE,
+                      lambda dt: dt.replace(tzinfo=timezone.utc).timestamp(),
+                      datetime.utcfromtimestamp)
+UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
 
 
 class TuplePacker(Packer):
