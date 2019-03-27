@@ -1,4 +1,4 @@
-# Genrated by: (for f in `ls *py|sed s/...$//`;do echo import hashkernel.$f;done) >> zzzz.py
+# Genrated by: (for f in `ls *py|sed s/...$//`;do echo import hashkernel.$f;done) |grep -v zzzz >> zzzz.py
 import hashkernel.auto_wire
 import hashkernel.bakery
 import hashkernel.base_x
@@ -11,3 +11,5 @@ import hashkernel.logic
 import hashkernel.smattr
 import hashkernel.time
 import hashkernel.typings
+import hashkernel.kernel
+import hashkernel.packer

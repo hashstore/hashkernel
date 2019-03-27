@@ -8,7 +8,7 @@ from datetime import datetime
 
 from hashkernel import (
     Stringable, EnsureIt, utf8_encode, Jsonable, ensure_string,
-    CodeEnum)
+    CodeEnum, GlobalRef)
 from hashkernel.event import Event
 from io import BytesIO
 import os
@@ -25,12 +25,14 @@ from hashkernel.smattr import (JsonWrap, SmAttr)
 from hashkernel.hashing import (
     Hasher, shard_name_int, shard_num, HashBytes)
 
+
 log = logging.getLogger(__name__)
 
 B62 = base_x(62)
 
-
 MAX_NUM_OF_SHARDS = 8192
+
+CAKE_GREF = GlobalRef('hashkenel.bakery:Cake')
 
 
 class CakeRole(CodeEnum):
@@ -48,6 +50,7 @@ class CakeType(CodeEnum):
     PORTAL = (2, _IS_PORTAL)
     VTREE = (3, _IS_VTREE)
     DMOUNT = (4, _IS_PORTAL)
+    GUID =(5,)
 
     def __init__(self, code:int, *modifiers:str) -> None:
         CodeEnum.__init__(self, code)
@@ -80,19 +83,23 @@ def portal_from_name(n:Optional[str])->CakeType:
 
 
 class CakeClass(CodeEnum):
-    NO_CLASS = (0, None, None)
-    EVENT = (1, CakeRole.SYNAPSE, Event)
-    DAG_STATE = (2, CakeRole.NEURON, None)
-    JSON_WRAP = (3, CakeRole.SYNAPSE, JsonWrap )
+    NO_CLASS = (0, None, None, None)
+    EVENT = (1, CakeRole.SYNAPSE, None, Event)
+    DAG_STATE = (2, CakeRole.NEURON, None, None)
+    JSON_WRAP = (3, CakeRole.SYNAPSE, None, JsonWrap)
+    SESSION = (4, CakeRole.SYNAPSE, CakeType.GUID, CAKE_GREF)
+    NODE = (5, CakeRole.SYNAPSE, CakeType.GUID, CAKE_GREF)
 
     def __init__(self,
                  code:int,
                  implied_role:Optional[CakeRole],
-                 json_type:Optional[type]
+                 implied_type:Optional[CakeType],
+                 factory_type:Union[str,type]
                  ) -> None:
         CodeEnum.__init__(self, code)
         self.implied_role = implied_role
-        self.json_type = json_type
+        self.implied_type = implied_type
+        self.factory_type = factory_type
 
 
 inline_max_bytes=32
@@ -108,8 +115,6 @@ def nop_on_chunk(chunk:bytes)->None:
     :return: does nothing
     """
     pass
-
-
 
 
 def process_stream(fd:IO[bytes],
@@ -161,7 +166,7 @@ class CakeHeader(SmAttr):
     role: CakeRole
     cclass: CakeClass = CakeClass.NO_CLASS
 
-    def pack(self):
+    def pack(self)->int:
         return ((self.cclass.code&15) << 4)|\
                ((self.type.code&7) << 1)|\
                (self.role.code&1)
@@ -189,7 +194,7 @@ class Cake(Stringable, EnsureIt):
     <CakeRole.SYNAPSE: 0>
     >>> list(CakeType) #doctest: +NORMALIZE_WHITESPACE
     [<CakeType.INLINE: 0>, <CakeType.SHA256: 1>, <CakeType.PORTAL: 2>,
-     <CakeType.VTREE: 3>, <CakeType.DMOUNT: 4>]
+     <CakeType.VTREE: 3>, <CakeType.DMOUNT: 4>, <CakeType.GUID: 5>]
 
     >>> short_content = b'The quick brown fox jumps over'
     >>> short_k = Cake.from_bytes(short_content)
@@ -311,9 +316,14 @@ class Cake(Stringable, EnsureIt):
             ch_kwargs['role'] = CakeRole.SYNAPSE
         if 'type' not in ch_kwargs:
             ch_kwargs['type'] = CakeType.PORTAL
+        cake = Cake.random_cake(**ch_kwargs)
+        cake.assert_portal()
+        return cake
+
+    @staticmethod
+    def random_cake(** ch_kwargs):
         cake = Cake(None, data=os.urandom(32),
                     header=CakeHeader(**ch_kwargs))
-        cake.assert_portal()
         return cake
 
     def transform_portal(self, **kwargs)->'Cake':

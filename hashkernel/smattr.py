@@ -2,13 +2,14 @@ import abc
 from typing import (
     Any, Dict, List, Optional, get_type_hints, Union, Tuple, Callable)
 from inspect import getfullargspec
-from hashkernel import (
+from . import (
     reraise_with_msg, EnsureIt, Stringable, ClassRef, Conversion,
     json_encode, Jsonable, GlobalRef, ensure_string, Template,
     json_decode, not_zero_len)
-from hashkernel.docs import (
+from .typings import (
+    is_optional, is_tuple, is_list, is_dict, get_args)
+from .docs import (
     DocStringTemplate, GroupOfVariables, VariableDocEntry)
-from .typings import is_optional, is_tuple, is_list, is_dict, get_args
 
 ATTRIBUTES = "Attributes"
 RETURNS = "Returns"

@@ -10,7 +10,7 @@ def py_files(filename):
         '.yaml') or filename.endswith('.rst')
 
 
-run_envs = ['py6', 'py7']
+run_envs = ['py6']
 
 
 mypy_modules = ['hashkernel.zzzz']
@@ -50,14 +50,15 @@ Tests to add:
 @runnable
 def execute_some_tests(*args):
     case = ''
-    case += ' hashstore.kernel.tests.kernel_tests'
-    case += ' hashstore.kernel.tests.smattr_tests'
-    case += ' hashstore.kernel.tests.auto_wire_tests'
-    case += ' hashstore.kernel.tests.event_tests'
-    case += ' hashstore.kernel.tests.base_x_tests'
-    case += ' hashstore.kernel.tests.file_types_tests'
-    case += ' hashstore.kernel.tests.bakery_tests'
-    case += ' hashstore.kernel.tests.logic_tests'
+    case += ' hashkernel.tests.kernel_tests'
+    case += ' hashkernel.tests.smattr_tests'
+    case += ' hashkernel.tests.auto_wire_tests'
+    case += ' hashkernel.tests.event_tests'
+    case += ' hashkernel.tests.base_x_tests'
+    case += ' hashkernel.tests.file_types_tests'
+    case += ' hashkernel.tests.bakery_tests'
+    case += ' hashkernel.tests.logic_tests'
+    case += ' hashkernel.tests.packer_tests'
     return run_tests(case, run_envs, html=True)
 
 

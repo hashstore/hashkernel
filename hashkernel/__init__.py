@@ -38,6 +38,20 @@ def identity(v):
     """
     return v
 
+def first_elem(t):
+    """
+    >>> first_elem([5])
+    5
+    >>> first_elem((6,))
+    6
+    >>> first_elem([])
+    Traceback (most recent call last):
+    ...
+    IndexError: list index out of range
+
+    """
+    return t[0]
+
 
 def from_camel_case_to_underscores(s:str)->str:
     '''
@@ -363,6 +377,15 @@ class GlobalRef(Stringable, EnsureIt, StrKeyMixin):
             return attr[self.item]
 
 
+def ensure_module(o:Union[str,GlobalRef,ModuleType]) -> ModuleType:
+    if isinstance(o, ModuleType):
+        return o
+    ref = GlobalRef.ensure_it(o)
+    if not ref.module_only():
+        raise ValueError(f'ref:{ref} has to be module')
+    return ref.get_module()
+
+    
 CodeEnumT = TypeVar('CodeEnumT', bound='CodeEnum')
 
 
@@ -386,6 +409,9 @@ class CodeEnum(Stringable, enum.Enum):
     def assert_equals(self, type):
         if type != self:
             raise AssertionError(f"has to be {self} and not {type}")
+
+    def __index__(self):
+        return self.code
 
     def __str__(self):
         return self.name
@@ -421,11 +447,13 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
     """
 
     def __init__(self,
-                 cls_or_str: Union[type, str])->None:
+                 cls_or_str: Union[type, GlobalRef, str])->None:
         if isinstance(cls_or_str, str):
             if ':' not in cls_or_str:
                 cls_or_str = 'builtins:'+cls_or_str
             cls_or_str = GlobalRef(cls_or_str).get_instance()
+        elif isinstance(cls_or_str, GlobalRef):
+            cls_or_str = cls_or_str.get_instance()
 
         self.cls = cls_or_str
         self.primitive = self.cls.__module__ == 'builtins'

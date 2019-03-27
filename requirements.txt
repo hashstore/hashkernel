@@ -1,3 +1,4 @@
 croniter
 python-dateutil
 pytz
+pyzmq
