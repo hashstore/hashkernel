@@ -8,7 +8,7 @@ from datetime import datetime
 
 from hashkernel import (
     Stringable, EnsureIt, utf8_encode, Jsonable, ensure_string,
-    CodeEnum, GlobalRef)
+    CodeEnum, GlobalRef, ClassRef)
 from hashkernel.event import Event
 from io import BytesIO
 import os
@@ -32,7 +32,7 @@ B62 = base_x(62)
 
 MAX_NUM_OF_SHARDS = 8192
 
-CAKE_GREF = GlobalRef('hashkenel.bakery:Cake')
+CAKE_GREF = GlobalRef('hashkernel.bakery:Cake')
 
 
 class CakeRole(CodeEnum):
@@ -94,18 +94,25 @@ class CakeClass(CodeEnum):
                  code:int,
                  implied_role:Optional[CakeRole],
                  implied_type:Optional[CakeType],
-                 factory_type:Union[str,type]
+                 factory_cls:Union[None,GlobalRef,type]
                  ) -> None:
         CodeEnum.__init__(self, code)
         self.implied_role = implied_role
         self.implied_type = implied_type
-        self.factory_type = factory_type
+        self.factory_cls = factory_cls
+        self.header_defined = all(
+            e is not None for e in
+            (self.implied_type, self.implied_role, self.factory_cls))
+
+
+    def cref(self):
+        return ClassRef.ensure_it_or_none(self.factory_cls)
 
 
 inline_max_bytes=32
 
 
-def nop_on_chunk(chunk:bytes)->None:
+def nop_on_chunk(chunk: bytes)->None:
     """
     Does noting
 

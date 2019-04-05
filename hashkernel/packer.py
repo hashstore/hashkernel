@@ -220,7 +220,7 @@ class TuplePacker(Packer):
             raise AssertionError(
                 f'size mismatch {tuple_size}: {values}')
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[Tuple,int]:
+    def unpack(self, buffer: bytes, offset: int) -> Tuple[tuple,int]:
         """
         Returns:
               value: unpacked value
