@@ -1,15 +1,20 @@
-import abc
 from typing import (
-    Any, Dict, List, Optional, get_type_hints, Union, Tuple, Callable)
+    Any, Dict, List, Optional, get_type_hints, Union, Tuple, Callable,
+    Iterable, ClassVar)
 from inspect import getfullargspec
+
+from hashkernel.packer import SIZED_BYTES, UTF8_STR, TuplePacker, \
+    ProxyPacker, Packer
 from . import (
     reraise_with_msg, EnsureIt, Stringable, ClassRef, Conversion,
     json_encode, Jsonable, GlobalRef, ensure_string, Template,
-    json_decode, not_zero_len)
+    json_decode, not_zero_len, to_json, to_tuple, to_dict, utf8_decode,
+    DictLike)
 from .typings import (
-    is_optional, is_tuple, is_list, is_dict, get_args)
+    is_optional, is_tuple, is_list, is_dict, get_args, get_attr_hints)
 from .docs import (
     DocStringTemplate, GroupOfVariables, VariableDocEntry)
+
 
 ATTRIBUTES = "Attributes"
 RETURNS = "Returns"
@@ -102,35 +107,15 @@ class ListTyping(Typing):
         return []
 
 
-class ReferenceResolver(metaclass=abc.ABCMeta):
-
-    @abc.abstractmethod
-    def flatten(self, v:Any) -> str:
-        raise NotImplementedError('subclasses must override')
-
-    @abc.abstractmethod
-    def dereference(self, s:str) -> Any:
-        raise NotImplementedError('subclasses must override')
-
-
-class NoResolver(ReferenceResolver):
-
-    def flatten(self, v:Any) -> str:
-        return str(v)
-
-    def dereference(self, s:str) -> Any:
-        return s
-
-
 class AttrEntry(EnsureIt, Stringable):
     """
-    >>> AttrEntry('x:Required[hashkernel.bakery:Cake]')
-    AttrEntry('x:Required[hashkernel.bakery:Cake]')
-    >>> e = AttrEntry('x:Required[hashkernel.bakery:Cake]="0"')
+    >>> AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]')
+    AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]')
+    >>> e = AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]="0"')
     >>> e.default
-    Cake('0')
+    StringableExample('0')
     >>> e
-    AttrEntry('x:Required[hashkernel.bakery:Cake]="0"')
+    AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]="0"')
     >>> AttrEntry(None)
     Traceback (most recent call last):
     ...
@@ -166,18 +151,6 @@ class AttrEntry(EnsureIt, Stringable):
 
     def is_primitive(self)->bool:
         return self.typing.is_primitive()
-
-    def inflate(self, v:Any, resover:ReferenceResolver)->Any:
-        if self.is_primitive() or not(isinstance(v, str)):
-            return v
-        else:
-            return resover.dereference(v)
-
-    def flatten(self, v:Any, resover:ReferenceResolver)->Any:
-        if self.is_primitive() or isinstance(v, str):
-            return v
-        else:
-            return resover.flatten(v)
 
     def required(self):
         try:
@@ -217,13 +190,13 @@ class AttrEntry(EnsureIt, Stringable):
 
 def typing_factory(o):
     """
-    >>> req = typing_factory('Required[hashkernel.bakery:Cake]')
+    >>> req = typing_factory('Required[hashkernel.tests.bits:StringableExample]')
     >>> req
-    RequiredTyping('Required[hashkernel.bakery:Cake]')
+    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
     >>> Typing.ensure_it(str(req))
-    RequiredTyping('Required[hashkernel.bakery:Cake]')
+    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
     >>> typing_factory(req)
-    RequiredTyping('Required[hashkernel.bakery:Cake]')
+    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
     >>> Typing.ensure_it('Dict[datetime:datetime,str]')
     DictTyping('Dict[datetime:datetime,str]')
     """
@@ -257,17 +230,6 @@ def typing_factory(o):
                 f'Unknown annotation: {o}')
 
 
-class DictLike:
-    def __init__(self, o):
-        self.o = o
-
-    def __contains__(self, item):
-        return hasattr(self.o, item)
-
-    def __getitem__(self, item):
-        return getattr(self.o, item)
-
-
 SINGLE_RETURN_VALUE = '_'
 
 
@@ -285,7 +247,7 @@ class Mold(Jsonable):
             elif isinstance(o, dict):
                 self.add_hints(o)
             else:
-                self.add_hints(get_type_hints(o))
+                self.add_hints(get_attr_hints(o))
                 if isinstance(o, type):
                     self.cls = o
                     self.set_defaults(
@@ -295,7 +257,8 @@ class Mold(Jsonable):
                     self.syncup_dst_and_attrs(dst, ATTRIBUTES)
                     self.cls.__doc__ = dst.doc()
 
-    def syncup_dst_and_attrs(self, dst, section_name):
+    def syncup_dst_and_attrs(self, dst:DocStringTemplate,
+                             section_name:str)->None:
         groups = dst.var_groups
         if section_name not in groups:
             groups[section_name] = GroupOfVariables.empty(section_name)
@@ -357,20 +320,7 @@ class Mold(Jsonable):
         self.keys.append(entry.name)
         self.attrs[entry.name] = entry
 
-    def inflate(self,
-                flaten_vars: Dict[str,Any],
-                resolver:ReferenceResolver) -> Dict[str,Any]:
-        return {k: self.attrs[k].inflate(v, resolver)
-                for k, v in flaten_vars.items()}
-
-    def flatten(self,
-                inflated_vars: Dict[str,Any],
-                resolver: ReferenceResolver) -> Dict[str,Any]:
-        return {
-            k: self.attrs[k].flatten(v, resolver)
-            for k, v in inflated_vars.items()}
-
-    def to_json(self):
+    def __to_json__(self):
         return [str(ae) for ae in self.attrs.values()]
 
     def check_overlaps(self, values):
@@ -448,6 +398,7 @@ def extract_molds_from_function(fn:Callable[...,Any]
     Returns:
         in_mold: `Mold` of function input
         out_mold: `Mold` of function output
+        dst: template
 
     >>> def a(i:int)->None:
     ...     pass
@@ -470,7 +421,7 @@ def extract_molds_from_function(fn:Callable[...,Any]
     """
     dst = DocStringTemplate(fn.__doc__, {ARGS, RETURNS})
 
-    annotations = dict(get_type_hints(fn))
+    annotations = dict(get_attr_hints(fn))
     return_type = annotations['return']
     del annotations['return']
     in_mold = Mold(annotations)
@@ -487,7 +438,7 @@ def extract_molds_from_function(fn:Callable[...,Any]
                     keys[i] = k
             out_mold.add_hints(dict(zip(keys, args)))
         else:
-            out_hints = get_type_hints(return_type)
+            out_hints = get_attr_hints(return_type)
             if len(out_hints) > 0:
                 out_mold.add_hints(out_hints)
             else:
@@ -498,9 +449,20 @@ def extract_molds_from_function(fn:Callable[...,Any]
     return in_mold, out_mold, dst
 
 
-class AnnotationsProcessor(type):
+class _AnnotationsProcessor(type):
     def __init__(cls, name, bases, dct):
         cls.__mold__ = Mold(cls)
+        if hasattr(cls, '__attribute_packers__'):
+            cls.__packer__ = ProxyPacker(
+                cls, TuplePacker(*cls.__attribute_packers__),
+                to_tuple, cls)
+        else:
+            cls.__packer__ = ProxyPacker(cls, UTF8_STR, str, cls)
+        if hasattr(cls, '__serialize_as__'):
+            cls.__serialization_mold__:Mold = Mold.ensure_it(cls.__serialize_as__)  # type: ignore
+        else:   
+            cls.__serialization_mold__ = cls.__mold__
+
 
 
 def combine_vars(vars:Optional[Dict[str,Any]],
@@ -511,7 +473,7 @@ def combine_vars(vars:Optional[Dict[str,Any]],
     vars.update(kwargs)
     return vars
 
-class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
+class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     """
     Mixin - supports annotations:
       a:X
@@ -520,8 +482,9 @@ class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
       a:Optional[X]
       x:datetime
       x:date
-    >>> from hashkernel.bakery import Cake
+
     >>> from datetime import date, datetime
+    >>> from hashkernel.tests.bits import StringableExample
     >>> class A(SmAttr):
     ...     x:int
     ...     z:bool
@@ -548,13 +511,13 @@ class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
     {'x': AttrEntry('x:Required[int]'),
     'z': AttrEntry('z:Optional[datetime:date]')}
     >>> class B(SmAttr):
-    ...     x: Cake
+    ...     x: StringableExample
     ...     aa: List[A2]
     ...     dt: Dict[datetime, A]
     ...
 
     >>> B.__mold__.attrs #doctest: +NORMALIZE_WHITESPACE
-    {'x': AttrEntry('x:Required[hashkernel.bakery:Cake]'),
+    {'x': AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]'),
     'aa': AttrEntry('aa:List[hashkernel.smattr:A2]'),
     'dt': AttrEntry('dt:Dict[datetime:datetime,hashkernel.smattr:A]')}
     >>> b = B({"x":"3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt" })
@@ -577,7 +540,7 @@ class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
     Traceback (most recent call last):
     ...
     AttributeError: Required : {'x'}
-    >>> b=B({"x":Cake("3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"),
+    >>> b=B({"x":StringableExample("3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"),
     ...     "aa":[a2m,{"x":3}],
     ...     'dt':{datetime(2018,6,30,16,18,27,267515) :a}})
     ...
@@ -585,7 +548,7 @@ class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
     '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
     "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
     "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
-    >>> str(B(b.to_json())) #doctest: +NORMALIZE_WHITESPACE
+    >>> str(B(to_json(b))) #doctest: +NORMALIZE_WHITESPACE
     '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
     "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
     "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
@@ -603,24 +566,36 @@ class SmAttr(Jsonable, metaclass=AnnotationsProcessor):
     >>> str(P({'x':5,'a':1.03e-5}))
     '{"a": 1.03e-05, "x": 5, "z": false}'
     """
+    __mold__:ClassVar[Mold]
+    __serialization_mold__:ClassVar[Mold]
+    __packer__:ClassVar[Packer]
 
-    def __init__(self, _vals_:Optional[Dict[str, Any]] = None,
+    def __init__(self,
+                 _vals_:Union[None, bytes, str, Iterable[Any],
+                              Dict[str, Any]] = None,
                  **kwargs) ->None:
-        _vals_ = combine_vars(_vals_, kwargs)
-        values = {k: v for k, v in _vals_.items() if v is not None}
-        type(self).__mold__.set_attrs(values, self)
+        mold = self.__mold__
 
-    def to_json(self) -> Dict[str, Any]:
-        mold = self.get_serialization_mold()
-        return mold.mold_it(DictLike(self), Conversion.TO_JSON)
-
-    def get_serialization_mold(self):
-        cls = type(self)
-        if hasattr(cls, '__serialize_as__'):
-            mold = Mold.ensure_it(cls.__serialize_as__)  # type: ignore
+        if isinstance(_vals_, bytes):
+            _vals_ = utf8_decode(_vals_)
+        vals_dict: Dict[str,Any] = {}
+        if _vals_ is None:
+            pass
+        elif isinstance(_vals_, str):
+            vals_dict = json_decode(_vals_)
+        elif isinstance(_vals_, dict):
+            vals_dict = _vals_
+        elif hasattr(_vals_,'__iter__'):
+            vals_dict = mold.mold_it(list(_vals_),Conversion.TO_OBJECT)
         else:
-            mold = cls.__mold__
-        return mold
+            raise AssertionError(f'cannot construct from: {_vals_}')
+        vals_dict.update(kwargs)
+        values = {k: v for k, v in vals_dict.items() if v is not None}
+        mold.set_attrs(values, self)
+
+    def __to_json__(self) -> Dict[str, Any]:
+        return self.__serialization_mold__.mold_it(DictLike(self),
+                                                   Conversion.TO_JSON)
 
 
 class Row:
@@ -766,6 +741,7 @@ class MoldedTable(metaclass=Template):
 
         return _MoldedRow()
 
+
     def find_invalid_keys(self, row_id:Union[int, Row])-> List[str]:
         row_id = get_row_id(row_id)
         invalid_keys = []
@@ -805,7 +781,25 @@ class JsonWrap(SmAttr):
         if isinstance(o, Jsonable):
             return cls({
                     "classRef": GlobalRef(type(o)),
-                    "json": o.to_json()
+                    "json": to_json(o)
             })
         raise AttributeError(f"Not jsonable: {o}")
 
+
+class BytesWrap(SmAttr):
+
+    __attribute_packers__ = (
+        ProxyPacker(GlobalRef, UTF8_STR, str, GlobalRef),
+        SIZED_BYTES
+    )
+
+    classRef:GlobalRef
+    content:bytes
+
+    def unwrap(self):
+        return self.classRef.get_instance()(self.content)
+
+    @classmethod
+    def wrap(cls, o):
+        return cls( classRef = GlobalRef(type(o)),
+                    content = bytes(o))

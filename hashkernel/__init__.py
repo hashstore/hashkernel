@@ -2,7 +2,8 @@ import enum
 from types import ModuleType
 import abc
 import json
-from typing import Any, List, Type, TypeVar, Optional, Union
+from typing import (Any, List, Type, TypeVar, Optional, Union, Dict,
+                    Callable)
 from inspect import isfunction, isclass, ismodule
 import codecs
 from datetime import datetime, date
@@ -21,6 +22,8 @@ def not_zero_len(v):
 
 def quict(**kwargs):
     """
+    Shortcut to created dictionary with `kwargs` fasion
+
     >>> quict(a=3,x="a")
     {'a': 3, 'x': 'a'}
     """
@@ -28,6 +31,34 @@ def quict(**kwargs):
     r.update(**kwargs)
     return r
 
+
+class DictLike:
+    """
+    Allow query object public attributes like dictionary
+
+    >>> class X:
+    ...     pass
+    ...
+    >>> x=X()
+    >>> x.q = 5
+    >>> dl = DictLike(x)
+    >>> list(dl)
+    ['q']
+    >>> dl['q']
+    5
+
+    """
+    def __init__(self, o):
+        self.o = o
+
+    def __contains__(self, item):
+        return hasattr(self.o, item)
+
+    def __getitem__(self, item):
+        return getattr(self.o, item)
+
+    def __iter__(self):
+        return iter(k for k in dir(self.o) if k[:1] != '_' )
 
 def identity(v):
     """
@@ -86,6 +117,14 @@ def reraise_with_msg(msg, exception=None):
 
 
 def ensure_bytes(s: Any)->bytes:
+    """
+    >>> ensure_bytes(b's')
+    b's'
+    >>> ensure_bytes('s')
+    b's'
+    >>> ensure_bytes(5)
+    b'5'
+    """
     if isinstance(s, bytes):
         return s
     if not isinstance(s, str):
@@ -98,6 +137,14 @@ def utf8_encode(s:str)->bytes:
 
 
 def ensure_string(s: Any)->str:
+    """
+    >>> ensure_string('s')
+    's'
+    >>> ensure_string(b's')
+    's'
+    >>> ensure_string(5)
+    '5'
+    """
     if isinstance(s, str):
         return s
     if isinstance(s, bytes):
@@ -114,7 +161,7 @@ utf8_reader = codecs.getreader(ENCODING_USED)
 
 def mix_in(source:type,
            target:type,
-           overwrite:bool = True
+           should_copy:Optional[Callable[[str, bool],bool]] = None
            ) -> List[str]:
     """
     Copy all defined functions from mixin into target. It could be
@@ -124,19 +171,19 @@ def mix_in(source:type,
 
     Returns list of copied methods.
     """
-    def mix():
-        try:
-            abstract_methods = source.__abstractmethods__
-        except AttributeError:
-            abstract_methods = set()
-        target_members = dir(target)
-        for n in dir(source):
-            if overwrite or n not in target_members:
-                fn = getattr(source, n)
-                if isfunction(fn) and n not in abstract_methods:
-                    setattr(target, n, fn)
-                    yield n
-    mixed_in_methods = list(mix())
+    mixed_in_methods = []
+    try:
+        abstract_methods = source.__abstractmethods__ # type:ignore
+    except AttributeError:
+        abstract_methods = set()
+    target_members = dir(target)
+    for n in dir(source):
+        fn = getattr(source, n)
+        if isfunction(fn) and n not in abstract_methods:
+            already_exists = n not in target_members
+            if should_copy is None or should_copy(n, already_exists):
+                setattr(target, n, fn)
+                mixed_in_methods.append(n)
     if isinstance(source, abc.ABCMeta):
         source.register(target)
     return mixed_in_methods
@@ -229,31 +276,21 @@ class StrKeyMixin:
         return not self.__eq__(other)
 
 
-class StrKeyAbcMixin(metaclass=abc.ABCMeta):
-
-    @abc.abstractmethod
-    def __str__(self):
-        raise NotImplementedError('subclasses must override')
-
-
-mix_in(StrKeyMixin, StrKeyAbcMixin)
-
-
 class Jsonable(EnsureIt):
     """
-    Marker to inform json_encoder to use `o.to_json()` to
+    Marker to inform json_encoder to use `to_json(o)` to
     serialize in json
 
     """
 
-    def to_json(self):
+    def __to_json__(self):
         raise AssertionError('need to be implemented')
 
     def __bytes__(self):
         return utf8_encode(str(self))
 
     def __str__(self):
-        return json_encode(self.to_json())
+        return json_encode(to_json(self))
 
     def __hash__(self):
         return hash(str(self))
@@ -265,35 +302,45 @@ class Jsonable(EnsureIt):
         return not(self.__eq__(other))
 
 
-def jsonify(v:Any)->Any:
-    return adjust_for_json(v, v)
-
-
-def adjust_for_json(v: Any, default: Any = None)->Any:
+def to_json(v:Any)->Any:
+    if hasattr(v, '__to_json__'):
+        return v.__to_json__()
     if isinstance(v, (datetime, date)):
         return v.isoformat()
     if isinstance(v, Stringable):
         return str(v)
-    if isinstance(v, Jsonable):
-        return v.to_json()
-    return default
+    if isinstance(v, (int,bool,float,str,dict,list,tuple)):
+        return v
+    raise NotImplementedError()
 
 
-class StringableEncoder(json.JSONEncoder):
+def to_tuple(v:Any)->tuple:
+    if hasattr(v, '__to_tuple__'):
+        return v.__to_tuple__()
+    return tuple(v)
+
+
+def to_dict(v:Any)->Dict[str,Any]:
+    if hasattr(v, '__to_dict__'):
+        return v.__to_dict__()
+    raise NotImplementedError()
+
+
+class _StringableEncoder(json.JSONEncoder):
     def __init__(self):
         json.JSONEncoder.__init__(self, sort_keys=True)
 
-    def default(self, o):
-        adjusted = adjust_for_json(o)
-        if adjusted is None:
-            return json.JSONEncoder.default(self, o)
-        else:
-            return adjusted
+    def default(self, v):
+        if isinstance(v, (datetime, date)):
+            return v.isoformat()
+        if isinstance(v, Stringable):
+            return str(v)
+        if hasattr(v, '__to_json__'):
+            return v.__to_json__()
+        return json.JSONEncoder.default(self, v)
 
 
-json_encoder = StringableEncoder()
-
-json_encode = json_encoder.encode
+json_encode = _StringableEncoder().encode
 
 
 def load_json_file(file_path: str):
@@ -304,7 +351,7 @@ def json_decode(text: str):
     try:
         return json.loads(text)
     except:
-        reraise_with_msg(f'text={text}')
+        reraise_with_msg(f'text={repr(text)}')
 
 
 class GlobalRef(Stringable, EnsureIt, StrKeyMixin):
@@ -328,6 +375,11 @@ class GlobalRef(Stringable, EnsureIt, StrKeyMixin):
     >>> uref.get_module().__name__
     'hashkernel'
     >>> uref = GlobalRef('hashkernel')
+    >>> uref.module_only()
+    True
+    >>> uref.get_module().__name__
+    'hashkernel'
+    >>> uref = GlobalRef(uref.get_module())
     >>> uref.module_only()
     True
     >>> uref.get_module().__name__
@@ -378,6 +430,17 @@ class GlobalRef(Stringable, EnsureIt, StrKeyMixin):
 
 
 def ensure_module(o:Union[str,GlobalRef,ModuleType]) -> ModuleType:
+    """
+    >>> m = ensure_module('hashkernel')
+    >>> m.__name__
+    'hashkernel'
+    >>> ensure_module(m).__name__
+    'hashkernel'
+    >>> ensure_module(GlobalRef(GlobalRef))
+    Traceback (most recent call last):
+    ...
+    ValueError: ref:hashkernel:GlobalRef has to be module
+    """
     if isinstance(o, ModuleType):
         return o
     ref = GlobalRef.ensure_it(o)
@@ -398,7 +461,7 @@ class CodeEnum(Stringable, enum.Enum):
     @classmethod
     def _missing_(cls, value):
         if isinstance(value, int):
-            return cls.find_by_code(cls, value)
+            return cls.find_by_code(value) # pragma: no cover
         else:
             return cls[value]
 
@@ -443,7 +506,9 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
     True
     >>> crint.matches('3')
     False
-    >>>
+    >>> crgr=ClassRef(GlobalRef(GlobalRef))
+    >>> crgr.matches(GlobalRef(GlobalRef))
+    True
     """
 
     def __init__(self,
@@ -482,7 +547,7 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             if direction == Conversion.TO_OBJECT:
                 return self._from_json(v)
             else:
-                return adjust_for_json(v, v)
+                return to_json(v)
         except:
             reraise_with_msg(f'{self.cls} {v}')
 

@@ -5,12 +5,14 @@ from hs_build_tools.nose import eq_, ok_
 log = getLogger(__name__)
 
 import hashkernel.packer as p
+import hashkernel.guid as guid
 
 def test_docs():
     import doctest
-    r = doctest.testmod(p)
-    ok_(r.attempted > 0, 'There is not doctests in module')
-    eq_(r.failed,0)
+    for m in (p, guid):
+        r = doctest.testmod(m)
+        ok_(r.attempted > 0, 'There is not doctests in module')
+        eq_(r.failed,0)
 
 
 def test_1():

@@ -5,10 +5,12 @@ import abc
 
 import threading
 from datetime import datetime
+from nanotime import nanotime, datetime as dt_2_nt
+
 
 from hashkernel import (
     Stringable, EnsureIt, utf8_encode, Jsonable, ensure_string,
-    CodeEnum, GlobalRef, ClassRef)
+    CodeEnum, GlobalRef, ClassRef, utf8_decode, to_json)
 from hashkernel.event import Event
 from io import BytesIO
 import os
@@ -21,6 +23,7 @@ from typing import (
 import logging
 from hashkernel.file_types import (
     guess_name, file_types, HSB, BINARY)
+from hashkernel.guid import new_guid_data
 from hashkernel.smattr import (JsonWrap, SmAttr)
 from hashkernel.hashing import (
     Hasher, shard_name_int, shard_num, HashBytes)
@@ -31,78 +34,93 @@ log = logging.getLogger(__name__)
 B62 = base_x(62)
 
 MAX_NUM_OF_SHARDS = 8192
-
 CAKE_GREF = GlobalRef('hashkernel.bakery:Cake')
+RACK_GREF = GlobalRef('hashkernel.bakery:CakeRack')
 
 
-class CakeRole(CodeEnum):
-    SYNAPSE = (0,)
-    NEURON = (1,)
+class CakeProperties(enum.Enum):
+    IS_INLINED = enum.auto()
+    IS_IMMUTABLE = enum.auto()
+    IS_RESOLVED = enum.auto()
+    IS_FOLDER = enum.auto()
+    IS_GUID = enum.auto()
 
+    def __str__(self)->str:
+        return self.name.lower()
 
-_IS_PORTAL, _IS_VTREE, _IS_RESOLVED = (
-    "is_portal", "is_vtree", "is_resolved" )
+    @staticmethod
+    def set_properties(target: Any, *modifiers: 'CakeProperties')->None:
+        for e in CakeProperties:
+            setattr(target, str(e), e in modifiers)
+
+    @staticmethod
+    def typings()->None:
+        for e in CakeProperties:
+            print(f'{e}:bool')
 
 
 class CakeType(CodeEnum):
-    INLINE = (0, )
-    SHA256 = (1, _IS_RESOLVED)
-    PORTAL = (2, _IS_PORTAL)
-    VTREE = (3, _IS_VTREE)
-    DMOUNT = (4, _IS_PORTAL)
-    GUID =(5,)
+    INLINE = (0, CakeProperties.IS_IMMUTABLE, CakeProperties.IS_INLINED)
+    SHA256 = (1, CakeProperties.IS_IMMUTABLE, CakeProperties.IS_RESOLVED)
+    BARE_GUID = (2, CakeProperties.IS_GUID)
+    JOURNAL = (3, CakeProperties.IS_GUID)
+    VTREE = (4, CakeProperties.IS_GUID)
 
-    def __init__(self, code:int, *modifiers:str) -> None:
+    def __init__(self, code:int, *modifiers:CakeProperties) -> None:
         CodeEnum.__init__(self, code)
-        self.is_vtree = _IS_VTREE in modifiers
-        self.is_portal = self.is_vtree or _IS_PORTAL in modifiers
-        self.is_resolved = _IS_RESOLVED in modifiers
+        self.modifiers = modifiers
 
 
-def portal_from_name(n:Optional[str])->CakeType:
-    """
-    >>> portal_from_name('')
-    <CakeType.PORTAL: 2>
-    >>> portal_from_name('PORTAL')
-    <CakeType.PORTAL: 2>
-    >>> portal_from_name('DMOUNT')
-    <CakeType.DMOUNT: 4>
-    >>> portal_from_name('VTREE')
-    <CakeType.VTREE: 3>
-    >>> portal_from_name('INLINE')
-    Traceback (most recent call last):
-    ...
-    ValueError: not a portal type:INLINE
-    """
-    if n is None or n == '':
-        return CakeType.PORTAL
-    ct = CakeType[n]
-    if ct.is_portal :
-        return ct
-    raise ValueError('not a portal type:'+n)
+class BackupFolder(SmAttr):
+    pass
+
+
+class JournalFolder(SmAttr):
+    pass
+
+
+class VirtualTreeFolder(SmAttr):
+    pass
+
+
+class NodeConfig(SmAttr):
+    pass
+
+
+class UserConfig(SmAttr):
+    pass
+
+
+class SessionConfig(SmAttr):
+    pass
 
 
 class CakeClass(CodeEnum):
-    NO_CLASS = (0, None, None, None)
-    EVENT = (1, CakeRole.SYNAPSE, None, Event)
-    DAG_STATE = (2, CakeRole.NEURON, None, None)
-    JSON_WRAP = (3, CakeRole.SYNAPSE, None, JsonWrap)
-    SESSION = (4, CakeRole.SYNAPSE, CakeType.GUID, CAKE_GREF)
-    NODE = (5, CakeRole.SYNAPSE, CakeType.GUID, CAKE_GREF)
+    NO_CLASS = (0, None, None)
+    FOLDER = (1, None, RACK_GREF, CakeProperties.IS_FOLDER)
+    TIMESTAMP = (2, CakeType.BARE_GUID, CAKE_GREF)
+    SESSION = (3, CakeType.BARE_GUID, SessionConfig)
+    NODE = (4, CakeType.JOURNAL, NodeConfig)
+    USER = (5, CakeType.JOURNAL, UserConfig)
+    JOURNAL_FOLDER = (6, CakeType.JOURNAL, RACK_GREF, CakeProperties.IS_FOLDER)
+    VTREE_FOLDER = (7, CakeType.VTREE, VirtualTreeFolder, CakeProperties.IS_FOLDER)
+    BACKUP_FOLDER = (8, CakeType.JOURNAL, BackupFolder, CakeProperties.IS_FOLDER)
+    EVENT = (9, None, Event)
+    JSON_WRAP = (10, None, JsonWrap)
 
     def __init__(self,
                  code:int,
-                 implied_role:Optional[CakeRole],
-                 implied_type:Optional[CakeType],
-                 factory_cls:Union[None,GlobalRef,type]
+                 implied_type: Optional[CakeType],
+                 factory_cls: Union[None,GlobalRef,type],
+                 *modifiers: CakeProperties
                  ) -> None:
         CodeEnum.__init__(self, code)
-        self.implied_role = implied_role
         self.implied_type = implied_type
         self.factory_cls = factory_cls
+        self.modifiers = modifiers
         self.header_defined = all(
             e is not None for e in
-            (self.implied_type, self.implied_role, self.factory_cls))
+            (self.implied_type, self.factory_cls))
 
 
     def cref(self):
@@ -155,35 +173,35 @@ def process_stream(fd:IO[bytes],
 
 class CakeHeader(SmAttr):
     """
-    >>> CakeHeader(type=CakeType.INLINE, role=CakeRole.SYNAPSE).pack()
+    >>> CakeHeader(type=CakeType.INLINE).pack()
     0
-    >>> CakeHeader(type=CakeType.SHA256, role=CakeRole.NEURON).pack()
-    3
-    >>> CakeHeader(type=CakeType.VTREE, role=CakeRole.NEURON,
-    ...            cclass=CakeClass.DAG_STATE).pack()
-    39
+    >>> CakeHeader(type=CakeType.SHA256).pack()
+    1
+    >>> CakeHeader(type=CakeType.VTREE,
+    ...            cclass=CakeClass.VTREE_FOLDER).pack()
+    60
     >>> str(CakeHeader.unpack(0))
-    '{"cclass": "NO_CLASS", "role": "SYNAPSE", "type": "INLINE"}'
-    >>> str(CakeHeader.unpack(3))
-    '{"cclass": "NO_CLASS", "role": "NEURON", "type": "SHA256"}'
-    >>> str(CakeHeader.unpack(39))
-    '{"cclass": "DAG_STATE", "role": "NEURON", "type": "VTREE"}'
+    '{"cclass": "NO_CLASS", "type": "INLINE"}'
+    >>> str(CakeHeader.unpack(1))
+    '{"cclass": "NO_CLASS", "type": "SHA256"}'
+    >>> str(CakeHeader.unpack(60))
+    '{"cclass": "VTREE_FOLDER", "type": "VTREE"}'
     """
     type: CakeType
-    role: CakeRole
     cclass: CakeClass = CakeClass.NO_CLASS
 
+    def get_modifiers(self):
+        return (*self.type.modifiers, *self.cclass.modifiers)
+
     def pack(self)->int:
-        return ((self.cclass.code&15) << 4)|\
-               ((self.type.code&7) << 1)|\
-               (self.role.code&1)
+        return ((self.cclass.code&31) << 3)|(self.type.code&7)
 
     @staticmethod
     def unpack(header:int)->'CakeHeader':
         return CakeHeader(
-            type=CakeType.find_by_code((header >> 1) & 7),
-            role=CakeRole.find_by_code(header & 1),
-            cclass=CakeClass.find_by_code((header >> 4) & 15))
+            type=CakeType.find_by_code(header & 7),
+            cclass=CakeClass.find_by_code((header >> 3) & 31))
+
 
 class Cake(Stringable, EnsureIt):
     """
@@ -195,19 +213,16 @@ class Cake(Stringable, EnsureIt):
     halves: `CakeType` and `CakeRole`. Base62 encoding is
     used to encode bytes.
 
-    >>> CakeRole('SYNAPSE') == CakeRole.SYNAPSE
-    True
-    >>> CakeRole('SYNAPSE')
-    <CakeRole.SYNAPSE: 0>
     >>> list(CakeType) #doctest: +NORMALIZE_WHITESPACE
-    [<CakeType.INLINE: 0>, <CakeType.SHA256: 1>, <CakeType.PORTAL: 2>,
-     <CakeType.VTREE: 3>, <CakeType.DMOUNT: 4>, <CakeType.GUID: 5>]
+    [<CakeType.INLINE: 0>, <CakeType.SHA256: 1>,
+    <CakeType.BARE_GUID: 2>, <CakeType.JOURNAL: 3>,
+    <CakeType.VTREE: 4>]
 
     >>> short_content = b'The quick brown fox jumps over'
     >>> short_k = Cake.from_bytes(short_content)
     >>> short_k.header.type
     <CakeType.INLINE: 0>
-    >>> short_k.has_data()
+    >>> short_k.is_inlined
     True
     >>> short_k.data() is not None
     True
@@ -222,12 +237,12 @@ class Cake(Stringable, EnsureIt):
     >>> longer_k = Cake.from_bytes(longer_content)
     >>> longer_k.header.type
     <CakeType.SHA256: 1>
-    >>> longer_k.has_data()
+    >>> longer_k.is_inlined
     False
     >>> longer_k.data() is None
     True
     >>> str(longer_k)
-    '2xgkyws1ZbSlXUvZRCSIrjne73Pv1kmYArYvhOrTtqkX'
+    '1yyAFLvoP5tMWKaYiQBbRMB5LIznJAz4ohVMbX2XkSvV'
     >>> len(longer_k.hash_bytes())
     32
     >>> len(longer_k.digest())
@@ -238,12 +253,25 @@ class Cake(Stringable, EnsureIt):
     Global Unique ID can be generated, it is 32 byte
     random sequence packed in same way.
 
-    >>> guid = Cake.new_portal()
+    >>> guid = Cake.new_guid()
     >>> guid.header.type
-    <CakeType.PORTAL: 2>
+    <CakeType.BARE_GUID: 2>
     >>> len(str(guid))
     44
+    >>> CakeProperties.typings()
+    is_inlined:bool
+    is_immutable:bool
+    is_resolved:bool
+    is_folder:bool
+    is_guid:bool
+
     """
+    is_inlined: bool
+    is_immutable: bool
+    is_resolved: bool
+    is_folder: bool
+    is_guid: bool
+
     def __init__(self,
                  s:Optional[str],
                  data:Optional[bytes]=None,
@@ -259,10 +287,10 @@ class Cake(Stringable, EnsureIt):
             decoded = B62.decode(ensure_string(s))
             self._data = decoded[1:]
             self.header = CakeHeader.unpack(decoded[0])
-
-        if not(self.has_data()):
-            if len(self._data) != 32:
-                raise AssertionError(f'invalid CAKey: {s}' )
+        CakeProperties.set_properties(
+            self, *self.header.get_modifiers())
+        if not self.is_inlined and len(self._data) != 32:
+            raise AssertionError(f'invalid CAKey: {s} {data} {header} {self.is_inlined}' )
 
     def shard_num(self, base:int)->int:
         """
@@ -290,8 +318,6 @@ class Cake(Stringable, EnsureIt):
                                     buffer: Optional[bytes],
                                     **ch_kwargs
                                     )->'Cake':
-        if 'role' not in ch_kwargs:
-            ch_kwargs['role'] = CakeRole.SYNAPSE
         if buffer is not None and len(buffer) <= inline_max_bytes:
             return Cake(None,
                         data=buffer,
@@ -310,32 +336,33 @@ class Cake(Stringable, EnsureIt):
                                                 **ch_kwargs)
 
     @staticmethod
-    def from_bytes(s, **ch_kwargs)->'Cake':
+    def from_bytes(s:bytes, **ch_kwargs)->'Cake':
         return Cake.from_stream(BytesIO(s), **ch_kwargs)
 
     @staticmethod
-    def from_file(file, **ch_kwargs)->'Cake':
+    def from_file(file:str, **ch_kwargs)->'Cake':
         return Cake.from_stream(open(file, 'rb'), **ch_kwargs)
 
+
     @staticmethod
-    def new_portal(**ch_kwargs)->'Cake':
-        if 'role' not in ch_kwargs:
-            ch_kwargs['role'] = CakeRole.SYNAPSE
-        if 'type' not in ch_kwargs:
-            ch_kwargs['type'] = CakeType.PORTAL
+    def new_guid(**ch_kwargs)->'Cake':
+        ch_kwargs['type'] = ch_kwargs.get('type', CakeType.BARE_GUID)
         cake = Cake.random_cake(**ch_kwargs)
-        cake.assert_portal()
+        cake.assert_guid()
         return cake
 
     @staticmethod
-    def random_cake(** ch_kwargs):
-        cake = Cake(None, data=os.urandom(32),
-                    header=CakeHeader(**ch_kwargs))
+    def random_cake(**ch_kwargs):
+        cake = Cake(
+            None,
+            data=new_guid_data(),
+            header=CakeHeader(**ch_kwargs))
         return cake
 
-    def transform_portal(self, **kwargs)->'Cake':
-        self.assert_portal()
-        new_header = CakeHeader(self.header.to_json(), **kwargs)
+
+    def augment_header(self, **kwargs)->'Cake':
+        self.assert_guid()
+        new_header = CakeHeader(to_json(self.header), **kwargs)
         if (new_header == self.header):
             return self
         return Cake(None, data=self._data, header=new_header)
@@ -343,33 +370,29 @@ class Cake(Stringable, EnsureIt):
     def has_data(self)->bool:
         return self.header.type == CakeType.INLINE
 
-    def is_resolved(self)->bool:
-        return self.header.type.is_resolved
 
     def data(self)->Optional[bytes]:
-        return self._data if self.has_data() else None
+        return self._data if self.is_inlined else None
 
     def digest(self)->bytes:
         if not(hasattr(self, '_digest')):
-            if self.has_data():
+            if self.is_inlined:
                 self._digest = Hasher(self._data).digest()
             else:
                 self._digest = self._data
         return self._digest
 
-    def is_immutable(self)->bool:
-        return self.has_data() or self.header.type.is_resolved
 
-    def assert_portal(self)->None:
-        if not self.header.type.is_portal:
-            raise AssertionError('has to be a portal: %r' % self)
+    def assert_guid(self)->None:
+        if not self.is_guid:
+            raise AssertionError('has to be a guid: %r' % self)
 
     def hash_bytes(self)->bytes:
         """
         :raise AssertionError when Cake is not hash based
         :return: hash in bytes
         """
-        if not self.header.type.is_resolved:
+        if not self.is_resolved:
             raise AssertionError(f"Not-hash {self.header.type} {self}")
         return self._data
 
@@ -414,17 +437,13 @@ class PatchAction(Jsonable, enum.Enum):
     def __str__(self):
         return self.name
 
-    def to_json(self):
+    def __to_json__(self):
         return str(self)
 
 
 class RackRow(SmAttr):
     name: str
     cake: Optional[Cake]
-
-    def role(self)->CakeRole:
-        return CakeRole.NEURON if self.cake is None \
-            else self.cake.header.role
 
 
 class CakeRack(Jsonable):
@@ -443,12 +462,12 @@ class CakeRack(Jsonable):
     >>> cakes.keys()
     ['longer', 'short']
     >>> str(cakes.cake())
-    '3fqJUOtUYjGCs3cWuPum5CwXtyyeJPRRp3gJ3A9wg3uS'
+    '936MxYfhCDwQicjolpjRSbQdPMljOChI8DhC1acknanB'
     >>> cakes.size()
     117
     >>> cakes.content()
-    '[["longer", "short"], ["2xgkyws1ZbSlXUvZRCSIrjne73Pv1kmYArYvhOrTtqkX", "01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi"]]'
-    >>> cakes.get_name_by_cake("2xgkyws1ZbSlXUvZRCSIrjne73Pv1kmYArYvhOrTtqkX")
+    '[["longer", "short"], ["1yyAFLvoP5tMWKaYiQBbRMB5LIznJAz4ohVMbX2XkSvV", "01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi"]]'
+    >>> cakes.get_name_by_cake("1yyAFLvoP5tMWKaYiQBbRMB5LIznJAz4ohVMbX2XkSvV")
     'longer'
     """
     def __init__(self,o:Any=None)->None:
@@ -476,7 +495,7 @@ class CakeRack(Jsonable):
             self._cake = Cake.from_digest_and_inline_data(
                 Hasher(in_bytes).digest(),
                 in_bytes,
-                role=CakeRole.NEURON)
+                cclass=CakeClass.FOLDER)
         return self._cake
 
     def content(self)->str:
@@ -502,7 +521,9 @@ class CakeRack(Jsonable):
 
     def parse(self, o:Any)->'CakeRack':
         self._clear_cached()
-        if isinstance(o, str):
+        if isinstance(o, bytes):
+            names, cakes = json.loads(utf8_decode(o))
+        elif isinstance(o, str):
             names, cakes = json.loads(o)
         elif type(o) in [list, tuple] and len(o) == 2:
             names, cakes = o
@@ -528,23 +549,23 @@ class CakeRack(Jsonable):
         >>> r2['o2']=o2v2
         >>> r2['o3']=o3
         >>> list(r2.merge(r1))
-        [(<PatchAction.update: 1>, 'o2', Cake('2KLrqwGfNUC75Zk46B8SIbyYQFcm4FoW8UgOd9xnkKD9'))]
+        [(<PatchAction.update: 1>, 'o2', Cake('1M3HxLJCDOdy4OZ2xORm8EMQvjWeMVB1WKe57i8rccO7'))]
         >>> list(r1.merge(r2))
-        [(<PatchAction.update: 1>, 'o2', Cake('2xgkyws1ZbSlXUvZRCSIrjne73Pv1kmYArYvhOrTtqkX'))]
+        [(<PatchAction.update: 1>, 'o2', Cake('1yyAFLvoP5tMWKaYiQBbRMB5LIznJAz4ohVMbX2XkSvV'))]
         >>> r1['o1'] = None
         >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', Cake('01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi')),
-        (<PatchAction.update: 1>, 'o2', Cake('2KLrqwGfNUC75Zk46B8SIbyYQFcm4FoW8UgOd9xnkKD9'))]
+        (<PatchAction.update: 1>, 'o2', Cake('1M3HxLJCDOdy4OZ2xORm8EMQvjWeMVB1WKe57i8rccO7'))]
         >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o2', Cake('2xgkyws1ZbSlXUvZRCSIrjne73Pv1kmYArYvhOrTtqkX'))]
+        (<PatchAction.update: 1>, 'o2', Cake('1yyAFLvoP5tMWKaYiQBbRMB5LIznJAz4ohVMbX2XkSvV'))]
         >>> del r1["o2"]
         >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', Cake('01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi')),
-        (<PatchAction.update: 1>, 'o2', Cake('2KLrqwGfNUC75Zk46B8SIbyYQFcm4FoW8UgOd9xnkKD9'))]
+        (<PatchAction.update: 1>, 'o2', Cake('1M3HxLJCDOdy4OZ2xORm8EMQvjWeMVB1WKe57i8rccO7'))]
         >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', None),
@@ -572,7 +593,7 @@ class CakeRack(Jsonable):
 
     def is_neuron(self, k)->Optional[bool]:
         v = self.store[k]
-        return v is None or v.header.role == CakeRole.NEURON
+        return v is None or v.is_folder
 
     def __iter__(self)->Iterable[str]:
         return iter(self.keys())
@@ -607,7 +628,7 @@ class CakeRack(Jsonable):
             names = self.keys()
         return [self.store[k] for k in names]
 
-    def to_json(self)->Tuple[List[str],List[Optional[Cake]]]:
+    def __to_json__(self)->Tuple[List[str],List[Optional[Cake]]]:
         keys = self.keys()
         return (keys, self.get_cakes(keys))
 
@@ -623,38 +644,36 @@ class HasCakeFromBytesMixin:
 
 class CakePath(Stringable, EnsureIt):
     """
-    >>> root = CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF')
+    >>> root = CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT')
     >>> root
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/')
     >>> root.root
-    Cake('dCYNBHoPFLCwpVdQU5LhiF0i6U60KF')
-    >>> root.root.header.role
-    <CakeRole.NEURON: 1>
+    Cake('1lWdaX1oVY6kxteoxTuW6oCxbklnpHT')
     >>> root.root.header.type
     <CakeType.INLINE: 0>
     >>> root.root.data()
     b'[["b.text"], ["06wO"]]'
-    >>> absolute = CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/b.txt')
+    >>> absolute = CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/b.txt')
     >>> absolute
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/b.txt')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/b.txt')
     >>> relative = CakePath('y/z')
     >>> relative
     CakePath('y/z')
     >>> relative.make_absolute(absolute)
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/b.txt/y/z')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/b.txt/y/z')
 
     `make_absolute()` have no effect to path that already
     absolute
 
-    >>> p0 = CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/r/f')
+    >>> p0 = CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/r/f')
     >>> p0.make_absolute(absolute)
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/r/f')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/r/f')
     >>> p1 = p0.parent()
     >>> p2 = p1.parent()
     >>> p1
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/r')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/r')
     >>> p2
-    CakePath('/dCYNBHoPFLCwpVdQU5LhiF0i6U60KF/')
+    CakePath('/1lWdaX1oVY6kxteoxTuW6oCxbklnpHT/')
     >>> p2.parent()
     >>> p0.path_join()
     'r/f'
@@ -883,10 +902,9 @@ class Content(PathInfo):
                    mime=file_types[file_type].mime)
 
     @classmethod
-    def from_data_and_role(cls, role:CakeRole,
-                           data: Optional[bytes]=None,
+    def from_data_and_file_type(cls, file_type:str,
+                           data:Optional[bytes]=None,
                            file:Optional[str]=None ):
-        file_type = HSB if role == CakeRole.NEURON else BINARY
         if data is not None:
             return cls(data=data, size=len(data),
                        file_type=file_type,

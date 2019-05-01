@@ -5,7 +5,7 @@ import hashkernel.bakery as bakery
 from io import BytesIO
 import os
 
-from hashkernel import utf8_reader
+from hashkernel import utf8_reader, to_json
 from hs_build_tools.nose import doctest_it,eq_,ok_
 import tempfile
 
@@ -33,9 +33,9 @@ def test_CAKe():
         eq_(u1.digest(), u1n.digest())
         eq_(u1, u1n)
         if d is None:
-            ok_(not(u1.has_data()))
+            ok_(not(u1.is_inlined))
         else:
-            ok_(u1.has_data())
+            ok_(u1.is_inlined)
             eq_(c,u1.data())
 
     do_test(b'', '0', True)
@@ -44,14 +44,14 @@ def test_CAKe():
     do_test(b'a' * 3, '0qMed', True)
     do_test(b'a' * 32, '0n5He1k77fjNxZNzBxGpha2giODrkmwQfOg6WorIJ4m5',
             True)
-    do_test(b'a' * 33, '2sZ85uTW6KyDdVWxpDMRsnsHvDQD9kPdLy1FvVWyWK9Q')
-    do_test(b'a' * 46, '2lEWHXV2XeYyZnKNyQyGPt4poJhV7VeYCfeszHnLyFtx')
+    do_test(b'a' * 33, '1uhocJXiWEa4cLBvQRvkSQGzaiAvRB1jznYWq4xCOckO')
+    do_test(b'a' * 46, '1mXcPcYpN8zZYdpM04hafWih3o1NQbr4q5bJtPYPq7Ev')
 
     b = bakery
-    d = b.Cake.new_portal(role=b.CakeRole.NEURON,
-                          type=b.CakeType.DMOUNT)
-    x = b.Cake.new_portal(role=b.CakeRole.NEURON,
-                          type=b.CakeType.DMOUNT)
+    d = b.Cake.new_guid(cclass=b.CakeClass.BACKUP_FOLDER,
+                        type=b.CakeType.JOURNAL)
+    x = b.Cake.new_guid(cclass=b.CakeClass.BACKUP_FOLDER,
+                        type=b.CakeType.JOURNAL)
     z = b.Cake(str(d))
     ok_(z == d)
     eq_(z != d, False)
@@ -70,7 +70,7 @@ def test_Bundle():
     with tempfile.NamedTemporaryFile('w', delete=False) as w:
         w.write(b1.content())
     b2 = bakery.CakeRack().parse(b1.content())
-    u_f = bakery.Cake.from_file(w.name, role=bakery.CakeRole.NEURON)
+    u_f = bakery.Cake.from_file(w.name, cclass=bakery.CakeClass.FOLDER)
     os.unlink(w.name)
     u2 = b2.cake()
     eq_(u_f, u2)
@@ -95,8 +95,8 @@ def test_Bundle():
     eq_([k for k in b2], [])
     eq_(b1.get_name_by_cake(inline_udk), 'a')
     eq_(b1.get_name_by_cake(str(bakery.Cake(inline_udk))), 'a')
-    eq_(bakery.CakeRack(b1.to_json()), b1)
-    eq_(bakery.CakeRack.ensure_it(b1.to_json()), b1)
+    eq_(bakery.CakeRack(to_json(b1)), b1)
+    eq_(bakery.CakeRack.ensure_it(to_json(b1)), b1)
     eq_(len(b1),1)
     eq_(str(b1),udk_bundle_str)
     eq_(hash(b1),hash(udk_bundle_str))

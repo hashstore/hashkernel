@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any, Generator
 
 from hashkernel import CodeEnum, GlobalRef
-from .smattr import (SmAttr, combine_vars, Mold, ReferenceResolver,
+from .smattr import (SmAttr, combine_vars, Mold,
                      extract_molds_from_function)
 import traceback
 
@@ -67,11 +67,11 @@ class Event(SmAttr):
     ...        type=EdgeType.INPUT,
     ...        vars={"s":"CamelCase"},
     ...        dt=datetime(2018,9,28)))
-    >>> e.to_json()
+    >>> to_json(e)
     {'state': 'NEW', 'exec_ref': 'hashkernel:from_camel_case_to_underscores', 'input_edge': {'type': 'INPUT', 'vars': {'s': 'CamelCase'}, 'dt': '2018-09-28T00:00:00'}, 'output_edge': None, 'error_edge': None}
     >>> str(e)
     '{"error_edge": null, "exec_ref": "hashkernel:from_camel_case_to_underscores", "input_edge": {"dt": "2018-09-28T00:00:00", "type": "INPUT", "vars": {"s": "CamelCase"}}, "output_edge": null, "state": "NEW"}'
-    >>> q = Event(e.to_json())
+    >>> q = Event(to_json(e))
     >>> q.state
     <EventState.NEW: 1>
     >>> str(q)
@@ -161,12 +161,10 @@ class Executible(SmAttr):
 
     def invoke(self,
                flatten_input_vars:Dict[str, Any],
-               resolver: ReferenceResolver
                )->Generator[Event, None, None]:
         ctx = ExecContext(
             executible=self,
-            input_edge=EventEdge.input(flatten_input_vars),
-            resolver=resolver)
+            input_edge=EventEdge.input(flatten_input_vars))
         yield ctx.input_event()
         try:
             self.run(ctx)
@@ -179,7 +177,6 @@ class Executible(SmAttr):
 class ExecContext(SmAttr):
     error: bool = False
     executible: Executible
-    resolver: ReferenceResolver
     input_edge: EventEdge
     raw_input: Any
     raw_output: Any

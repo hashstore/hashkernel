@@ -36,10 +36,10 @@ def test_wiring():
             f:str
     ok_(isinstance(AbcDef, e.ExecutibleFactory))
 
-    eq_(AbcDef.in_mold.to_json(),
+    eq_(AbcDef.to_json(in_mold),
         ['a:Required[int]', 'b:Required[str]', 'c:Required[bool]'])
 
-    eq_(AbcDef.out_mold.to_json(),
+    eq_(AbcDef.to_json(out_mold),
         ['d:Required[int]', 'e:Required[float]', 'f:Required[str]'])
 
     class AbcDef2(metaclass=e.ExecutibleFactory):
@@ -131,8 +131,8 @@ def test_events():
     ok_(BCFDLJLDFK in e2[1].error_edge.vars['traceback'])
 
     do_run_events(ffn3, ffn2, resolver)
-    do_run_events(e.Function.ensure_it(ffn1.to_json()),
-                  e.Function.ensure_it(ffn2.to_json()), resolver)
+    do_run_events(e.Function.ensure_it(to_json(ffn1)),
+                  e.Function.ensure_it(to_json(ffn2)), resolver)
 
 
 def do_run_events(ffn1, ffn2, resolver):

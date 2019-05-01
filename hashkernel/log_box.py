@@ -1,6 +1,6 @@
 from typing import List
 
-from hashkernel import CodeEnum
+from hashkernel import CodeEnum, to_json
 from hashkernel.smattr import SmAttr
 
 
@@ -31,7 +31,7 @@ class LogBox(SmAttr):
     >>> lb.error('error message')
     >>> lb.has_errors()
     True
-    >>> lb.to_json() #doctest: +NORMALIZE_WHITESPACE
+    >>> to_json(lb) #doctest: +NORMALIZE_WHITESPACE
     {'entries': [{'level': 'INFO', 'msg': 'info message'},
         {'level': 'WARN', 'msg': 'warn message'},
         {'level': 'ERROR', 'msg': 'error message'}]}

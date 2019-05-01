@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 from logging import getLogger
 from hs_build_tools.nose import eq_, ok_, assert_text
-from hashkernel import GlobalRef, exception_message
+from hashkernel import GlobalRef, exception_message, to_json
 from hashkernel.smattr import (
     SmAttr, JsonWrap, MoldedTable, typing_factory,
     extract_molds_from_function)
@@ -109,7 +109,7 @@ def test_wrap():
         eq_(str(w),
             '{"classRef": "hashkernel.tests.smattr_tests:Abc", '
             '"json": {"name": "n", "val": 555}}')
-        eq_(str(JsonWrap(w.to_json()).unwrap()), s)
+        eq_(str(JsonWrap(to_json(w)).unwrap()), s)
     do_check(JsonWrap({"classRef": GlobalRef(Abc),
                        "json":{'name':'n', 'val': 555}}))
     do_check(JsonWrap.wrap(abc))

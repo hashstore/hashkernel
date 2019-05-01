@@ -100,3 +100,34 @@ def is_from_typing_module(cls):
     False
     """
     return cls.__module__ == typing.__name__
+
+def is_classvar(t):
+    """
+
+    >>> is_classvar(typing.ClassVar[int])
+    True
+    >>> is_classvar(int)
+    False
+
+    """
+    try:
+        return typing.ClassVar[t.__type__] == t
+    except:
+        return False
+
+def get_attr_hints(o):
+    """
+    Extracts hints without class variables
+
+    >>> class X:
+    ...     x:typing.ClassVar[int]
+    ...     y:float
+    ...
+    >>> get_attr_hints(X)
+    {'y': <class 'float'>}
+    """
+    return {
+        k : h
+        for k, h in typing.get_type_hints(o).items()
+        if not is_classvar(h)
+    }

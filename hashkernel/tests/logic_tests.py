@@ -44,6 +44,6 @@ def test_json():
         '"name": "hashkernel.tests.logic_test_module"}' \
 
     eq_(json, match)
-    hl2 = logic.HashLogic(hl.to_json())
+    hl2 = logic.HashLogic(to_json(hl))
     eq_(str(hl2), match)
 

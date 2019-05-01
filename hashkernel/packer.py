@@ -1,11 +1,23 @@
 from typing import Any, Tuple, Callable
 
 from datetime import datetime, timezone
-
-from hashkernel import CodeEnum, first_elem, ENCODING_USED, utf8_encode, \
-    utf8_decode
+from nanotime import nanotime
+from hashkernel import (utf8_encode, utf8_decode)
 import abc
 import struct
+
+
+class NeedMoreBytes(Exception):
+    def __init__(self, how_much:int=None):
+        self.how_much = how_much
+
+    @staticmethod
+    def check_underflow(buff_len, fragment_end)->int:
+        if buff_len < fragment_end:
+            raise NeedMoreBytes(fragment_end - buff_len)
+        return fragment_end
+
+
 
 SIGNIFICANT_BITS = 7
 SEVEN_BITS = 0xFF >> (8 - SIGNIFICANT_BITS)
@@ -83,13 +95,20 @@ def unpack_size(buff:bytes, offset:int)->Tuple[int,int]:
     ...
     ValueError: No end bit
 
+    >>> unpack_size(bytes([0x00,0x09]),0)
+    Traceback (most recent call last):
+    ...
+    hashkernel.packer.NeedMoreBytes: 1
+
     Returns:
         size: Unpacked size
         new_offset: new offset in buffer
 
     """
     sz = 0
+    buff_len = len(buff)
     for i in range(3):
+        NeedMoreBytes.check_underflow(buff_len, offset + i + 1)
         v = buff[offset+i]
         end = v & END_BIT
         sz += (v & SEVEN_BITS) << (i * SIGNIFICANT_BITS)
@@ -99,7 +118,6 @@ def unpack_size(buff:bytes, offset:int)->Tuple[int,int]:
 
 
 class Packer(metaclass=abc.ABCMeta):
-
     cls:type
 
     @abc.abstractmethod
@@ -108,6 +126,10 @@ class Packer(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def unpack(self, buffer:bytes, offset: int) -> Tuple[Any,int]:
+        raise NotImplementedError('subclasses must override')
+
+    @abc.abstractmethod
+    def skip(self, buffer:bytes, offset: int) -> int:
         raise NotImplementedError('subclasses must override')
 
 
@@ -124,8 +146,19 @@ class SizedPacker(Packer):
               new_offset: new offset in buffer
         """
         size, data_offset = unpack_size(buffer, offset)
-        new_offset = data_offset+size
+        new_offset = NeedMoreBytes.check_underflow(
+            len(buffer), data_offset + size)
         return buffer[data_offset:new_offset], new_offset
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        size, data_offset = unpack_size(buffer, offset)
+        return NeedMoreBytes.check_underflow(
+            len(buffer), data_offset + size)
+
 
 class FixedSizePacker(Packer):
     cls = bytes
@@ -146,14 +179,24 @@ class FixedSizePacker(Packer):
               new_offset: new offset in buffer
         """
         new_offset = offset+self.size
+        NeedMoreBytes.check_underflow(len(buffer), new_offset)
         return buffer[offset:new_offset], new_offset
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        return NeedMoreBytes.check_underflow(
+            len(buffer), offset + self.size)
+
 
 class TypePacker(Packer):
 
     def __init__(self, cls:type, fmt:str)->None:
         self.cls = cls
         self.fmt = fmt
-        self.sz = struct.calcsize(self.fmt)
+        self.size = struct.calcsize(self.fmt)
 
     def pack(self, v:Any)->bytes:
         return struct.pack(self.fmt, v)
@@ -164,9 +207,18 @@ class TypePacker(Packer):
               value: unpacked value
               new_offset: new offset in buffer
         """
-        new_offset = self.sz+offset
+        new_offset = self.size + offset
+        NeedMoreBytes.check_underflow(len(buffer), new_offset)
         unpacked_values = struct.unpack(self.fmt, buffer[offset:new_offset])
         return unpacked_values[0], new_offset
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        return NeedMoreBytes.check_underflow(
+            len(buffer), offset + self.size)
 
 
 class ProxyPacker(Packer):
@@ -191,17 +243,12 @@ class ProxyPacker(Packer):
         v, new_offset = self.packer.unpack(buffer, offset)
         return self.out_callback(v), new_offset
 
-
-INT_8 = TypePacker(int, "B")
-INT_16 = TypePacker(int, "<H")
-INT_32 = TypePacker(int, "<L")
-FLOAT = TypePacker(float, "<f")
-DOUBLE = TypePacker(float, "<d")
-SIZED_BYTES = SizedPacker()
-UTC_DATETIME = ProxyPacker(datetime, DOUBLE,
-                      lambda dt: dt.replace(tzinfo=timezone.utc).timestamp(),
-                      datetime.utcfromtimestamp)
-UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        return self.packer.skip(buffer, offset)
 
 
 class TuplePacker(Packer):
@@ -227,8 +274,39 @@ class TuplePacker(Packer):
               new_offset: new offset in buffer
         """
         values = []
-        for i in range(len(self.packers)):
-            v, offset = self.packers[i].unpack(buffer, offset)
+        for p in self.packers:
+            v, offset = p.unpack(buffer, offset)
             values.append(v)
         return tuple(values), offset
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        for p in self.packers:
+            offset = p.skip(buffer, offset)
+        return offset
+
+
+INT_8 = TypePacker(int, "B")
+INT_16 = TypePacker(int, "<H")
+INT_32 = TypePacker(int, "<L")
+INT_64 = TypePacker(int, "<Q")
+BE_INT_64 = TypePacker(int, ">Q")
+FLOAT = TypePacker(float, "<f")
+DOUBLE = TypePacker(float, "<d")
+SIZED_BYTES = SizedPacker()
+
+NANOTIME = ProxyPacker(nanotime, BE_INT_64,
+                       lambda nt: nt.nanoseconds(),
+                       nanotime )
+
+UTC_DATETIME = ProxyPacker(datetime, DOUBLE,
+                      lambda dt: dt.replace(tzinfo=timezone.utc).timestamp(),
+                      datetime.utcfromtimestamp)
+
+UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
+
+
 
