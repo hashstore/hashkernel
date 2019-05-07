@@ -30,7 +30,6 @@ def run_tests(case, envs, html=False):
     mypy = 0 == os_system_in_env(envs[0],
         f'python -m mypy {modules} --ignore-missing-imports'
     )
-    mypy = True
     cleanup_cmds = [
         'python -m coverage combine',
         'python -m coverage report -m',

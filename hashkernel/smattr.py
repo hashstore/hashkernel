@@ -21,6 +21,10 @@ RETURNS = "Returns"
 ARGS = "Args"
 
 
+class ValueRequired(Exception):
+    pass
+
+
 class Typing(Stringable, EnsureIt):
 
     @classmethod
@@ -31,20 +35,8 @@ class Typing(Stringable, EnsureIt):
         self.val_cref = ClassRef.ensure_it(val_cref)
         self.collection=collection
 
-    def is_required(self):
-        return False
-
-    def is_primitive(self)->bool:
-        return not self.collection and self.val_cref.primitive
-
     def convert(self, v: Any, direction:Conversion)->Any:
         return self.val_cref.convert(v, direction)
-
-    def default(self):
-        if self.is_required():
-            raise AttributeError(f'no default for {str(self)}')
-        else:
-            return None
 
     @classmethod
     def name(cls):
@@ -68,8 +60,8 @@ class RequiredTyping(Typing):
     def validate(self, v):
         return self.val_cref.matches(v)
 
-    def is_required(self):
-        return self.val_cref.cls != Any
+    def default(self):
+        raise ValueRequired(f'no default for {str(self)}')
 
 
 class DictTyping(Typing):
@@ -109,13 +101,13 @@ class ListTyping(Typing):
 
 class AttrEntry(EnsureIt, Stringable):
     """
-    >>> AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]')
-    AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]')
-    >>> e = AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]="0"')
+    >>> AttrEntry('x:Required[hashkernel.tests:StringableExample]')
+    AttrEntry('x:Required[hashkernel.tests:StringableExample]')
+    >>> e = AttrEntry('x:Required[hashkernel.tests:StringableExample]="0"')
     >>> e.default
     StringableExample('0')
     >>> e
-    AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]="0"')
+    AttrEntry('x:Required[hashkernel.tests:StringableExample]="0"')
     >>> AttrEntry(None)
     Traceback (most recent call last):
     ...
@@ -149,14 +141,11 @@ class AttrEntry(EnsureIt, Stringable):
             self.default = self.typing.convert(
                 json_decode(default_s), Conversion.TO_OBJECT)
 
-    def is_primitive(self)->bool:
-        return self.typing.is_primitive()
-
     def required(self):
         try:
             self.convert(None, Conversion.TO_OBJECT)
             return False
-        except AttributeError:
+        except ValueRequired:
             return True
 
     def convert(self, v: Any, direction: Conversion)->Any:
@@ -190,13 +179,13 @@ class AttrEntry(EnsureIt, Stringable):
 
 def typing_factory(o):
     """
-    >>> req = typing_factory('Required[hashkernel.tests.bits:StringableExample]')
+    >>> req = typing_factory('Required[hashkernel.tests:StringableExample]')
     >>> req
-    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
+    RequiredTyping('Required[hashkernel.tests:StringableExample]')
     >>> Typing.ensure_it(str(req))
-    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
+    RequiredTyping('Required[hashkernel.tests:StringableExample]')
     >>> typing_factory(req)
-    RequiredTyping('Required[hashkernel.tests.bits:StringableExample]')
+    RequiredTyping('Required[hashkernel.tests:StringableExample]')
     >>> Typing.ensure_it('Dict[datetime:datetime,str]')
     DictTyping('Dict[datetime:datetime,str]')
     """
@@ -239,7 +228,6 @@ class Mold(Jsonable):
         self.keys: List[str] = []
         self.cls: Optional[type] = None
         self.attrs: Dict[str, AttrEntry] = {}
-        docstring = None
         if o is not None:
             if isinstance(o, list):
                 for ae in map(AttrEntry.ensure_it, o):
@@ -326,7 +314,7 @@ class Mold(Jsonable):
     def check_overlaps(self, values):
         missing = set(
             ae.name for ae in self.attrs.values()
-            if ae.typing.is_required() and ae.default is None
+            if ae.required()
         ) - values.keys()
         if len(missing) > 0:
             raise AttributeError(f'Required : {missing}')
@@ -484,7 +472,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
       x:date
 
     >>> from datetime import date, datetime
-    >>> from hashkernel.tests.bits import StringableExample
+    >>> from hashkernel.tests import StringableExample
     >>> class A(SmAttr):
     ...     x:int
     ...     z:bool
@@ -517,7 +505,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     ...
 
     >>> B.__mold__.attrs #doctest: +NORMALIZE_WHITESPACE
-    {'x': AttrEntry('x:Required[hashkernel.tests.bits:StringableExample]'),
+    {'x': AttrEntry('x:Required[hashkernel.tests:StringableExample]'),
     'aa': AttrEntry('aa:List[hashkernel.smattr:A2]'),
     'dt': AttrEntry('dt:Dict[datetime:datetime,hashkernel.smattr:A]')}
     >>> b = B({"x":"3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt" })
@@ -594,8 +582,16 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         mold.set_attrs(values, self)
 
     def __to_json__(self) -> Dict[str, Any]:
-        return self.__serialization_mold__.mold_it(DictLike(self),
-                                                   Conversion.TO_JSON)
+        return self.__serialization_mold__.mold_it(
+            DictLike(self), Conversion.TO_JSON)
+
+    def __to_dict__(self) -> Dict[str, Any]:
+        return self.__to_json__()
+
+    def __to_tuple__(self) -> tuple:
+        return tuple(
+            self.__serialization_mold__.mold_to_list(
+            DictLike(self), Conversion.TO_OBJECT))
 
 
 class Row:
@@ -635,7 +631,7 @@ class MoldedTable(metaclass=Template):
     >>> t.add_row([None,None,None,None,None])
     Traceback (most recent call last):
     ...
-    AttributeError: no default for Required[int]
+    hashkernel.smattr.ValueRequired: no default for Required[int]
     error in i:Required[int]
     >>> str(t)
     '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n'

@@ -309,4 +309,9 @@ UTC_DATETIME = ProxyPacker(datetime, DOUBLE,
 UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
 
 
-
+def ensure_packer(o:Any) -> Packer:
+    if isinstance(o, Packer):
+        return o
+    elif hasattr(o, '__packer__') and isinstance(o.__packer__, Packer):
+        return o.__packer__
+    raise AssertionError(f'Cannot extract packer out: {repr(o)}')

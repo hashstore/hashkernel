@@ -7,7 +7,7 @@ from hs_build_tools.nose import assert_text
 from logging import getLogger
 from hs_build_tools.nose import eq_,ok_
 
-from hashkernel.tests.bits import StringableExample
+from hashkernel.tests import StringableExample
 
 log = getLogger(__name__)
 
