@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import hashkernel.bakery as bakery
+import hashkernel.bakery.cake as cake
 from io import BytesIO
 import os
 
@@ -15,21 +16,22 @@ log = getLogger(__name__)
 
 def test_docs():
     doctest_it(bakery)
+    doctest_it(cake)
 
 def test_PatchAction():
-    eq_(bakery.PatchAction.update, bakery.PatchAction['update'])
-    eq_(bakery.PatchAction.delete, bakery.PatchAction['delete'])
-    eq_(bakery.PatchAction.delete, bakery.PatchAction.ensure_it('delete'))
-    eq_(bakery.PatchAction.update, bakery.PatchAction.ensure_it_or_none('update'))
-    ok_(bakery.PatchAction.ensure_it_or_none(None) is None)
-    eq_(str(bakery.PatchAction.update), 'update')
+    eq_(cake.PatchAction.update, cake.PatchAction['update'])
+    eq_(cake.PatchAction.delete, cake.PatchAction['delete'])
+    eq_(cake.PatchAction.delete, cake.PatchAction.ensure_it('delete'))
+    eq_(cake.PatchAction.update, cake.PatchAction.ensure_it_or_none('update'))
+    ok_(cake.PatchAction.ensure_it_or_none(None) is None)
+    eq_(str(cake.PatchAction.update), 'update')
 
 
 def test_CAKe():
     def do_test(c, s, d=None):
-        u1 = bakery.Cake.from_bytes(c)
+        u1 = cake.Cake.from_bytes(c)
         eq_(s, str(u1))
-        u1n = bakery.Cake(str(u1))
+        u1n = cake.Cake(str(u1))
         eq_(u1.digest(), u1n.digest())
         eq_(u1, u1n)
         if d is None:
@@ -44,33 +46,33 @@ def test_CAKe():
     do_test(b'a' * 3, '0qMed', True)
     do_test(b'a' * 32, '0n5He1k77fjNxZNzBxGpha2giODrkmwQfOg6WorIJ4m5',
             True)
-    do_test(b'a' * 33, '1uhocJXiWEa4cLBvQRvkSQGzaiAvRB1jznYWq4xCOckO')
-    do_test(b'a' * 46, '1mXcPcYpN8zZYdpM04hafWih3o1NQbr4q5bJtPYPq7Ev')
+    do_test(b'a' * 33, '1vzEjZ0FMxLvbBgui5dOjjUqOXkozRdpndWdkd8GFEvM')
+
+    do_test(b'a' * 46, '1ofsWs1MD2bqX34KrhZDGpw8I2LGyrDadV90nYzThzPt')
 
     b = bakery
-    d = b.Cake.new_guid(cclass=b.CakeClass.BACKUP_FOLDER,
-                        type=b.CakeType.JOURNAL)
-    x = b.Cake.new_guid(cclass=b.CakeClass.BACKUP_FOLDER,
-                        type=b.CakeType.JOURNAL)
-    z = b.Cake(str(d))
+    c = cake
+    d = c.Cake.new_guid(c.CakeHeader.MOUNT_FOLDER)
+    x = c.Cake.new_guid(c.CakeHeader.MOUNT_FOLDER)
+    z = c.Cake(str(d))
     ok_(z == d)
     eq_(z != d, False)
     ok_(z != x)
     ok_(d != x)
-    ok_(z.header.type == d.header.type)
+    ok_(z.header == d.header)
     ok_(str(z) == str(d))
 
 
 def test_Bundle():
     inline_udk = '01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi'
-    b1 = bakery.CakeRack()
+    b1 = cake.CakeRack()
     eq_(b1.content(),'[[], []]')
     u1 = b1.cake()
     u0 = u1
     with tempfile.NamedTemporaryFile('w', delete=False) as w:
         w.write(b1.content())
-    b2 = bakery.CakeRack().parse(b1.content())
-    u_f = bakery.Cake.from_file(w.name, cclass=bakery.CakeClass.FOLDER)
+    b2 = cake.CakeRack().parse(b1.content())
+    u_f = cake.Cake.from_file(w.name, header=cake.CakeHeader.FOLDER)
     os.unlink(w.name)
     u2 = b2.cake()
     eq_(u_f, u2)
@@ -89,14 +91,14 @@ def test_Bundle():
     del b2['a']
     u2= b2.cake()
     eq_(u0,u2)
-    eq_(b1['a'], bakery.Cake(inline_udk))
-    eq_(b1.get_cakes(), [bakery.Cake(inline_udk)])
+    eq_(b1['a'], cake.Cake(inline_udk))
+    eq_(b1.get_cakes(), [cake.Cake(inline_udk)])
     eq_([k for k in b1], ['a'])
     eq_([k for k in b2], [])
     eq_(b1.get_name_by_cake(inline_udk), 'a')
-    eq_(b1.get_name_by_cake(str(bakery.Cake(inline_udk))), 'a')
-    eq_(bakery.CakeRack(to_json(b1)), b1)
-    eq_(bakery.CakeRack.ensure_it(to_json(b1)), b1)
+    eq_(b1.get_name_by_cake(str(cake.Cake(inline_udk))), 'a')
+    eq_(cake.CakeRack(to_json(b1)), b1)
+    eq_(cake.CakeRack.ensure_it(to_json(b1)), b1)
     eq_(len(b1),1)
     eq_(str(b1),udk_bundle_str)
     eq_(hash(b1),hash(udk_bundle_str))

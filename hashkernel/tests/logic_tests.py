@@ -3,6 +3,8 @@ import hashkernel.tests.logic_test_module as plugin
 from logging import getLogger
 from hs_build_tools.nose import eq_, ok_
 
+from hashkernel import to_json
+
 log = getLogger(__name__)
 
 
@@ -24,22 +26,22 @@ def test_json():
     match = \
         '{"methods": [' \
             '{"in_mold": [' \
-                '"n:Required[hashkernel.bakery:Cake]", ' \
+                '"n:Required[hashkernel.bakery.cake:Cake]", ' \
                 '"i:Required[int]"], ' \
             '"out_mold": [' \
-                '"_:Required[hashkernel.bakery:Cake]"], ' \
+                '"_:Required[hashkernel.bakery.cake:Cake]"], ' \
             '"ref": "hashkernel.tests.logic_test_module:fn"}, ' \
             '{"in_mold": [], ' \
             '"out_mold": [' \
                 '"name:Required[str]", ' \
                 '"id:Required[int]", ' \
-                '"x:Required[hashkernel.bakery:Cake]"], ' \
+                '"x:Required[hashkernel.bakery.cake:Cake]"], ' \
             '"ref": "hashkernel.tests.logic_test_module:fn2"}, ' \
             '{"in_mold": [' \
-                '"n:Required[hashkernel.bakery:Cake]", ' \
+                '"n:Required[hashkernel.bakery.cake:Cake]", ' \
                 '"i:Required[int]=5"], ' \
             '"out_mold": [' \
-                '"_:Required[hashkernel.bakery:Cake]"], ' \
+                '"_:Required[hashkernel.bakery.cake:Cake]"], ' \
             '"ref": "hashkernel.tests.logic_test_module:fn3"}], ' \
         '"name": "hashkernel.tests.logic_test_module"}' \
 

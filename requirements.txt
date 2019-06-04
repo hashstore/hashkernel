@@ -2,4 +2,4 @@ croniter
 nanotime
 python-dateutil
 pytz
-pyzmq
+tornado

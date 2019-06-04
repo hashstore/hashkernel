@@ -3,7 +3,7 @@ from types import ModuleType
 import abc
 import json
 from typing import (Any, List, Type, TypeVar, Optional, Union, Dict,
-                    Callable)
+                    Callable, Iterable)
 from inspect import isfunction, isclass, ismodule
 import codecs
 from datetime import datetime, date
@@ -14,6 +14,23 @@ import sys
 _GLOBAL_REF = '__global_ref__'
 
 ENCODING_USED = 'utf-8'
+
+
+class Primitive:
+    pass
+
+
+def is_primitive(cls:Any)->bool:
+    """
+    >>> is_primitive(Any)
+    False
+    >>> is_primitive(int)
+    True
+    >>> is_primitive(tuple)
+    False
+    """
+    return isinstance(cls, type) and issubclass(
+        cls,(int, float, bool, bytes, str, date, datetime, Primitive))
 
 
 def not_zero_len(v):
@@ -192,14 +209,14 @@ def mix_in(source:type,
 class EnsureIt:
 
     @classmethod
-    def factory(cls):
+    def __factory__(cls):
         return cls
 
     @classmethod
     def ensure_it(cls, o):
         if isinstance(o, cls):
             return o
-        return cls.factory()(o)
+        return cls.__factory__()(o)
 
     @classmethod
     def ensure_it_or_none(cls, o):
@@ -517,19 +534,17 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             if ':' not in cls_or_str:
                 cls_or_str = 'builtins:'+cls_or_str
             cls_or_str = GlobalRef(cls_or_str).get_instance()
-        elif isinstance(cls_or_str, GlobalRef):
+        if isinstance(cls_or_str, GlobalRef):
             cls_or_str = cls_or_str.get_instance()
 
         self.cls = cls_or_str
-        self.primitive = self.cls.__module__ == 'builtins'
+        self.primitive = is_primitive(self.cls)
         if self.cls == Any:
             self._from_json = identity
         elif self.cls is date:
-            self.primitive = True
             self._from_json = lazy_factory(
                 self.cls, lambda v: dt_parse(v).date())
         elif self.cls is datetime:
-            self.primitive = True
             self._from_json = lazy_factory(
                 self.cls, lambda v: dt_parse(v))
         elif hasattr(self.cls, '__args__'):
@@ -575,4 +590,39 @@ class Template(type):
             __global_ref__ = global_ref
         cls.__cache__[k]= Klass
         return Klass
+
+
+def delegate_factory( cls:type,
+                      delegate_attrs:Iterable[str]
+                      ) -> Callable[[Any],Any]:
+    """
+    >>> class Z:
+    ...     def __int__(self):
+    ...         return 7
+    ...
+    >>> x = Z()
+    >>> x.a = 5
+    >>> y = Z()
+    >>> y.b = 3
+    >>> q = Z()
+    >>> q.b = 'str'
+    >>> z = Z()
+    >>> factory = delegate_factory(int, ["a","b"])
+    >>> factory(x)
+    5
+    >>> factory(y)
+    3
+    >>> factory(q)
+    7
+    >>> factory(z)
+    7
+    """
+    def cls_factory(o:Any)->Any:
+        for posible_delegate in delegate_attrs:
+            if hasattr(o, posible_delegate):
+                candidate_obj = getattr(o, posible_delegate)
+                if isinstance(candidate_obj, cls):
+                    return candidate_obj
+        return cls(o)
+    return cls_factory
 

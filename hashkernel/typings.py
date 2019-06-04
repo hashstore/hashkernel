@@ -110,10 +110,7 @@ def is_classvar(t):
     False
 
     """
-    try:
-        return typing.ClassVar[t.__type__] == t
-    except:
-        return False
+    return is_from_typing_module(t) and str(t).startswith("typing.ClassVar[")
 
 def get_attr_hints(o):
     """
@@ -127,7 +124,7 @@ def get_attr_hints(o):
     {'y': <class 'float'>}
     """
     return {
-        k : h
+        k: h
         for k, h in typing.get_type_hints(o).items()
         if not is_classvar(h)
     }

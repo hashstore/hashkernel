@@ -3,9 +3,8 @@ from typing import Optional, List, Dict, Tuple
 from logging import getLogger
 from hs_build_tools.nose import eq_, ok_, assert_text
 from hashkernel import GlobalRef, exception_message, to_json
-from hashkernel.smattr import (
-    SmAttr, JsonWrap, MoldedTable, typing_factory,
-    extract_molds_from_function)
+from hashkernel.smattr import (SmAttr, JsonWrap, typing_factory,
+                               extract_molds_from_function)
 
 log = getLogger(__name__)
 
@@ -77,24 +76,6 @@ def test_docstring():
 
        attribute contributed
     """)
-
-def test_gref_with_molded_table():
-    ATable = MoldedTable[A]
-    t = ATable()
-    eq_(str(t), '#{"columns": ["i", "s", "d", "z", "y"]}\n')
-    tn = 'hashkernel.smattr:MoldedTable'
-    eq_(str(GlobalRef(MoldedTable)), tn)
-    aref = str(GlobalRef(MoldedTable[A]))
-    eq_(aref, f'{tn}[hashkernel.tests.smattr_tests:A]')
-    ok_(ATable is MoldedTable[A])
-    a_table = GlobalRef(aref).get_instance()
-    ok_(ATable is a_table)
-
-def test_typing_with_template():
-    s = f'List[{GlobalRef(MoldedTable[A])}]'
-    tt = typing_factory(s)
-    eq_(s, str(typing_factory(str(tt))))
-    ok_(tt.val_cref.cls is MoldedTable[A])
 
 class Abc(SmAttr):
     name:str

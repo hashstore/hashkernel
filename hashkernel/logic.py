@@ -1,7 +1,7 @@
 import inspect
 from typing import Union, Callable, List, Optional
 from hashkernel.auto_wire import AutoWire, wire_names, AutoWireRoot
-from hashkernel.event import Function
+from hashkernel.executible import Function
 from hashkernel.log_box import LogBox
 from hashkernel.smattr import (SmAttr, AttrEntry)
 from hashkernel.time import CronExp, TimeZone

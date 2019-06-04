@@ -9,7 +9,7 @@ from hashkernel.smattr import SmAttr
 from hashkernel.logic import HashLogic
 
 from hashkernel import ensure_module, CodeEnum
-from hashkernel.bakery import Cake
+from hashkernel.bakery.cake import Cake
 
 
 class MsgType(CodeEnum):

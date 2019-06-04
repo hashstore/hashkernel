@@ -10,7 +10,7 @@ def py_files(filename):
         '.yaml') or filename.endswith('.rst')
 
 
-run_envs = ['py6']
+run_envs = ['hk36', 'hk37']
 
 
 mypy_modules = ['hashkernel.zzzz']
@@ -53,11 +53,11 @@ def execute_some_tests(*args):
     case += ' hashkernel.tests.kernel_tests'
     case += ' hashkernel.tests.smattr_tests'
     case += ' hashkernel.tests.auto_wire_tests'
-    # case += ' hashkernel.tests.event_tests'
+    case += ' hashkernel.tests.otable_tests'
     case += ' hashkernel.tests.base_x_tests'
     case += ' hashkernel.tests.file_types_tests'
     case += ' hashkernel.tests.bakery_tests'
-    # case += ' hashkernel.tests.logic_tests'
+    case += ' hashkernel.tests.logic_tests'
     case += ' hashkernel.tests.packer_tests'
     return run_tests(case, run_envs, html=True)
 

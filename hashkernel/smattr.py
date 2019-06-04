@@ -7,9 +7,9 @@ from hashkernel.packer import SIZED_BYTES, UTF8_STR, TuplePacker, \
     ProxyPacker, Packer
 from . import (
     reraise_with_msg, EnsureIt, Stringable, ClassRef, Conversion,
-    json_encode, Jsonable, GlobalRef, ensure_string, Template,
-    json_decode, not_zero_len, to_json, to_tuple, to_dict, utf8_decode,
-    DictLike)
+    json_encode, Jsonable, GlobalRef,
+    json_decode, to_json, to_tuple, utf8_decode,
+    DictLike, delegate_factory, is_primitive)
 from .typings import (
     is_optional, is_tuple, is_list, is_dict, get_args, get_attr_hints)
 from .docs import (
@@ -28,7 +28,7 @@ class ValueRequired(Exception):
 class Typing(Stringable, EnsureIt):
 
     @classmethod
-    def factory(cls):
+    def __factory__(cls):
         return typing_factory
 
     def __init__(self, val_cref, collection=False):
@@ -223,7 +223,23 @@ SINGLE_RETURN_VALUE = '_'
 
 
 class Mold(Jsonable):
-
+    """
+    >>> class X:
+    ...    a: int
+    ...    b: str = "zzz"
+    ...    d: Optional[float]
+    ...
+    >>> Mold(X).__to_json__()
+    ['a:Required[int]', 'b:Required[str]="zzz"', 'd:Optional[float]']
+    >>> def fn(a:int, b:str)->int:
+    ...     return 5
+    ...
+    >>> attr_envs = Mold(fn).__to_json__()
+    >>> attr_envs
+    ['a:Required[int]', 'b:Required[str]', 'return:Required[int]']
+    >>> str(Mold(attr_envs))
+    '["a:Required[int]", "b:Required[str]", "return:Required[int]"]'
+    """
     def __init__(self, o=None):
         self.keys: List[str] = []
         self.cls: Optional[type] = None
@@ -266,15 +282,8 @@ class Mold(Jsonable):
                 content.append(f"Default is: {ae.default!r}.")
 
     @classmethod
-    def factory(cls):
-        def make(o):
-            for name in ('__mold__', 'mold'):
-                if hasattr(o, name):
-                    possible_mold = getattr(o, name)
-                    if isinstance(possible_mold, cls):
-                        return possible_mold
-            return cls(o)
-        return make
+    def __factory__(cls):
+        return delegate_factory(cls, ('__mold__', 'mold'))
 
     def add_hints(self, hints):
         for var_name, var_cls in hints.items():
@@ -328,7 +337,7 @@ class Mold(Jsonable):
 
     def mold_it(
             self,
-            in_data: Union[List[Any],Dict[str,Any],DictLike],
+            in_data: Union[List[Any], Dict[str,Any], DictLike],
             direction: Conversion
     ) -> Dict[str,Any]:
         return dict(zip(self.keys,
@@ -352,7 +361,10 @@ class Mold(Jsonable):
         for k, v in self.build_val_dict(values).items():
             setattr(target, k, v)
 
-    def pull_attrs(self, from_obj:Any)->Dict[str,Any]:
+    def pull_attrs(self, from_obj:Any)->Dict[str, Any]:
+        """
+        extract known attributes into dictionary
+        """
         return { k: getattr(from_obj, k)
                  for k in self.keys if hasattr(from_obj, k) }
 
@@ -361,7 +373,6 @@ class Mold(Jsonable):
         if self.cls is not None:
             return self.cls(v_dct)
         return v_dct
-
 
     def output_json(self, v):
         if self.is_single_return():
@@ -427,7 +438,7 @@ def extract_molds_from_function(fn:Callable[...,Any]
             out_mold.add_hints(dict(zip(keys, args)))
         else:
             out_hints = get_attr_hints(return_type)
-            if len(out_hints) > 0:
+            if not (is_primitive(return_type)) and len(out_hints) > 0:
                 out_mold.add_hints(out_hints)
             else:
                 ae = AttrEntry(SINGLE_RETURN_VALUE, return_type)
@@ -581,188 +592,18 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         values = {k: v for k, v in vals_dict.items() if v is not None}
         mold.set_attrs(values, self)
 
+
     def __to_json__(self) -> Dict[str, Any]:
         return self.__serialization_mold__.mold_it(
             DictLike(self), Conversion.TO_JSON)
 
     def __to_dict__(self) -> Dict[str, Any]:
-        return self.__to_json__()
+        return self.__serialization_mold__.pull_attrs(self)
 
     def __to_tuple__(self) -> tuple:
         return tuple(
             self.__serialization_mold__.mold_to_list(
             DictLike(self), Conversion.TO_OBJECT))
-
-
-class Row:
-    def _row_id(self)->int:
-        raise AssertionError('need to be implemented')
-
-
-def get_row_id(row_id:Union[int, Row])->int:
-    if isinstance(row_id, int):
-        return row_id
-    return row_id._row_id()
-
-
-class MoldedTable(metaclass=Template):
-    """
-    >>> from datetime import date, datetime
-    >>> class A(SmAttr):
-    ...     i:int
-    ...     s:str = 'xyz'
-    ...     d:Optional[datetime]
-    ...     z:List[datetime]
-    ...     y:Dict[str,str]
-    ...
-    >>> t = MoldedTable[A]()
-    >>> str(t)
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n'
-    >>> t.add_row(A(i=5,s='abc'))
-    0
-    >>> str(t)
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n'
-    >>> t.find_invalid_keys(t.add_row([7,None,'2018-08-10',None,None]))
-    []
-    >>> t.add_row([])
-    Traceback (most recent call last):
-    ...
-    AttributeError: arrays has to match in size: ['i', 's', 'd', 'z', 'y'] []
-    >>> t.add_row([None,None,None,None,None])
-    Traceback (most recent call last):
-    ...
-    hashkernel.smattr.ValueRequired: no default for Required[int]
-    error in i:Required[int]
-    >>> str(t)
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n'
-    >>> t = MoldedTable(str(t),A)
-    >>> str(t)
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n'
-    >>> MoldedTable[A]('a')
-    Traceback (most recent call last):
-    ...
-    AttributeError: header should start with "#": a
-    >>> t.find_invalid_rows()
-    []
-    >>> r=t.new_row()
-    >>> t.find_invalid_rows()
-    [2]
-    >>> t.find_invalid_keys(r)
-    ['i', 's', 'z', 'y']
-    >>> t.find_invalid_keys(2)
-    ['i', 's', 'z', 'y']
-    >>> r.i
-    >>> r.i=77
-    >>> r.i
-    77
-    >>> r[3]=[datetime(2018,8,1),]
-    >>> t.find_invalid_keys(r)
-    ['s', 'y']
-    >>> r['y']={}
-    >>> r['y']
-    {}
-    >>> r[4]
-    {}
-    >>> t.find_invalid_rows()
-    [2]
-    >>> str(t)
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n[77, null, null, ["2018-08-01T00:00:00"], {}]\\n'
-    >>> len(t)
-    3
-    >>> str(MoldedTable[A](str(t)))
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n[77, "xyz", null, ["2018-08-01T00:00:00"], {}]\\n'
-    >>> r['s']='zyx'
-    >>> str(MoldedTable[A](str(t)))
-    '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n[77, "zyx", null, ["2018-08-01T00:00:00"], {}]\\n'
-    """
-
-    def __init__(self, s:Union[str,bytes,None]=None, mold:Any = None)->None:
-        if mold is not None:
-            self.mold = Mold.ensure_it(mold)
-        else:
-            self.mold = Mold.ensure_it(type(self).__item_cref__.cls) #type: ignore
-        self.data:List[List[Any]] = []
-        if s is not None:
-            s = ensure_string(s)
-            lines=filter(not_zero_len, (
-                s.strip() for s in s.split('\n')))
-            header_line = next(lines)
-            if header_line[0] != '#':
-                raise AttributeError(f'header should start with "#":'
-                                     f' {header_line}')
-            header = json_decode(header_line[1:])
-            cols = tuple(header["columns"])
-            #TODO support: [ int, bool, str, float, date, datetime, object ]
-            mold_cols = tuple(self.mold.keys)
-            if mold_cols != cols:
-                raise AttributeError(f' mismatch: {cols} {mold_cols}')
-            for l in lines:
-                self.add_row(json_decode(l))
-
-    def add_row(self, row=None):
-        if not(isinstance(row, (list,dict))):
-            row = DictLike(row)
-        row = self.mold.mold_to_list(row, Conversion.TO_OBJECT)
-        row_id = len(self.data)
-        self.data.append(row)
-        return row_id
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, row_id:int) -> Row:
-        mold=self.mold
-        row = self.data[row_id]
-        class _MoldedRow(Row):
-            def _row_id(self):
-                return row_id
-
-            def __getattr__(self, key):
-                return row[mold.attrs[key].index]
-
-            def __setattr__(self, key, value):
-                row[mold.attrs[key].index] = value
-
-            def __getitem__(self, item):
-                if isinstance(item, str):
-                    return self.__getattr__(item)
-                else:
-                    return row[item]
-
-            def __setitem__(self, key, value):
-                if isinstance(key, str):
-                    self.__setattr__(key, value)
-                else:
-                    row[key] = value
-
-        return _MoldedRow()
-
-
-    def find_invalid_keys(self, row_id:Union[int, Row])-> List[str]:
-        row_id = get_row_id(row_id)
-        invalid_keys = []
-        for ae in self.mold.attrs.values():
-            if not (ae.validate(self.data[row_id][ae.index])):
-                invalid_keys.append(ae.name)
-        return invalid_keys
-
-    def find_invalid_rows(self) -> List[int]:
-        return [row_id for row_id in range(len(self.data))
-                if len(self.find_invalid_keys(row_id)) > 0]
-
-    def new_row(self) -> Row:
-        row_id = len(self.data)
-        self.data.append([None for _ in self.mold.keys])
-        return self[row_id]
-
-    def __str__(self):
-        def gen():
-            yield '#' + json_encode({'columns': self.mold.keys})
-            for row in self.data:
-                yield json_encode(
-                    self.mold.mold_to_list(row, Conversion.TO_JSON))
-            yield ''
-        return '\n'.join(gen())
 
 
 class JsonWrap(SmAttr):
@@ -799,3 +640,14 @@ class BytesWrap(SmAttr):
     def wrap(cls, o):
         return cls( classRef = GlobalRef(type(o)),
                     content = bytes(o))
+
+    def __bytes__(self):
+        return self.__packer__.pack(self)
+
+    def ___factory__(cls):
+        def factory(input):
+            if isinstance(input, bytes):
+                return cls.__packer__.pack(input)
+            return cls(input)
+        return factory
+

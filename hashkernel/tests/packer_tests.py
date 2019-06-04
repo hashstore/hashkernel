@@ -1,11 +1,11 @@
 from datetime import datetime
 from logging import getLogger
 from hs_build_tools.nose import eq_, ok_
+import hashkernel.packer as p
+import hashkernel.guid as guid
 
 log = getLogger(__name__)
 
-import hashkernel.packer as p
-import hashkernel.guid as guid
 
 def test_docs():
     import doctest
