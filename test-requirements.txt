@@ -1,7 +1,0 @@
-node
-hs-build-tools
-sniffer
-coverage
-mypy
-wheel
-twine

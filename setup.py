@@ -1,18 +1,47 @@
 from setuptools import setup, find_packages
-from setuptools.command.sdist import sdist
-from subprocess import check_call
-import os
-from hs_build_tools.setup import get_version_and_add_release_cmd
+import platform
 
 cmdclass_dict = {}
 
 # MANIFEST.in ensures that requirements are included in `sdist`
-install_requires = open('requirements.txt').read().split()
+install_requires = [
+    "nanotime",
+    "croniter",
+    "python-dateutil",
+    "pytz",
+    "aiohttp"
+]
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+dev_requires = [
+    "nose",
+    "hs-build-tools",
+    "sniffer",
+    "coverage",
+    "mypy",
+    "wheel",
+    "twine"
+]
 
-version = get_version_and_add_release_cmd('version.txt', cmdclass_dict)
+makes_sniffer_scan_faster = {
+    "Linux": "pyinotify",
+    "Windows": "pywin32",
+    "Darwin": "MacFSEvents"
+}
+
+if platform.system() in makes_sniffer_scan_faster:
+    dev_requires.append(makes_sniffer_scan_faster[platform.system()])
+
+def read_file(f):
+    with open(f, "r") as fh:
+        return fh.read()
+
+long_description = read_file("README.md")
+
+try:
+    from hs_build_tools.setup import get_version_and_add_release_cmd
+    version = get_version_and_add_release_cmd('version.txt', cmdclass_dict)
+except ModuleNotFoundError:
+    version = read_file('version.txt').strip()
 
 setup(name='hashkernel',
       version=str(version),
@@ -38,4 +67,5 @@ setup(name='hashkernel',
         #   'console_scripts': [ 'hs=hashstore.hs:main' ],
       },
       install_requires=install_requires,
+      extras_require={"dev": dev_requires},
       zip_safe=False)

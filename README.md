@@ -11,3 +11,26 @@ Kernel to build and run python code inside hashstore
 ```shell
 pip install hashkernel
 ```
+
+## Setup dev environment with conda
+
+```shell
+#
+# Cleanup old environments
+. deactivate
+conda env remove -n hk36
+conda env remove -n hk37
+#
+# Create envs
+conda create -y -n hk36 python=3.6
+conda create -y -n hk37 python=3.7
+. activate hk37
+pip install -e .[dev]
+. deactivate
+. activate hk36
+pip install -e .[dev]
+#
+#run smoke test watcher
+sniffer
+```
+

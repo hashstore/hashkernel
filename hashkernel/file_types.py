@@ -1,5 +1,5 @@
 import mimetypes
-from typing import List
+from typing import List, Dict
 from os.path import join, dirname
 
 from hashkernel import load_json_file
@@ -11,7 +11,7 @@ class FileType(SmAttr):
     ext:List[str]
 
 
-def read_file_types(json_file):
+def read_file_types(json_file)->Dict[str,FileType]:
     load_json = load_json_file(json_file)
     return {n: FileType(v) for n,v in load_json.items()}
 
