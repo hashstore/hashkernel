@@ -1,6 +1,6 @@
 from datetime import datetime
 from logging import getLogger
-from hs_build_tools.nose import eq_, ok_
+from hs_build_tools.pytest import eq_, ok_
 import hashkernel.packer as p
 import hashkernel.guid as guid
 

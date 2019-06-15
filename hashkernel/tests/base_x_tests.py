@@ -1,5 +1,5 @@
 import hashkernel.base_x as bx
-from hs_build_tools.nose import doctest_it,eq_,ok_
+from hs_build_tools.pytest import eq_,ok_
 from random import seed, randint
 
 
@@ -37,7 +37,3 @@ def test_randomized():
             eq_(codec.decode(s), b)
             s = codec.encode_check(b)
             eq_(codec.decode_check(s), b)
-
-
-def test_docs():
-    doctest_it(bx)

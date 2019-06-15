@@ -13,13 +13,13 @@ install_requires = [
 ]
 
 dev_requires = [
-    "nose",
     "hs-build-tools",
     "sniffer",
     "coverage",
     "mypy",
     "wheel",
-    "twine"
+    "twine",
+    "pytest"
 ]
 
 makes_sniffer_scan_faster = {
@@ -30,6 +30,7 @@ makes_sniffer_scan_faster = {
 
 if platform.system() in makes_sniffer_scan_faster:
     dev_requires.append(makes_sniffer_scan_faster[platform.system()])
+
 
 def read_file(f):
     with open(f, "r") as fh:
@@ -52,6 +53,7 @@ setup(name='hashkernel',
           'License :: OSI Approved :: Apache Software License',
           'Programming Language :: Python :: 3',
           'Programming Language :: Python :: 3.6',
+          'Programming Language :: Python :: 3.7',
       ],
       description='hashstore python kernel',
       long_description=long_description,

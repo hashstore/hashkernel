@@ -1,7 +1,6 @@
 
 import sys
 import json
-import zmq
 from datetime import datetime
 
 from hashkernel.smattr import SmAttr

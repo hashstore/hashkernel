@@ -1,7 +1,7 @@
 import hashkernel.logic as logic
 import hashkernel.tests.logic_test_module as plugin
 from logging import getLogger
-from hs_build_tools.nose import eq_, ok_
+from hs_build_tools.pytest import eq_, ok_
 
 from hashkernel import to_json
 

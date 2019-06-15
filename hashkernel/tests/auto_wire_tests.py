@@ -1,5 +1,5 @@
 from logging import getLogger
-from hs_build_tools.nose import eq_,ok_
+from hs_build_tools.pytest import eq_,ok_
 from hashkernel import exception_message
 from hashkernel.auto_wire import (
     AutoWire, AutoWireRoot, wire_names)

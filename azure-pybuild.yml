@@ -10,5 +10,5 @@ steps:
       name: requirements
     - script: python setup.py sdist
       name: sdist
-    - script: python scent.py current
+    - script: python scent.py test current
       name: test

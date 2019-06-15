@@ -1,9 +1,4 @@
-from hs_build_tools.nose import doctest_it, eq_
-
-
-def test_mymime():
-    import hashkernel.file_types as test_module
-    doctest_it(test_module)
+from hs_build_tools.pytest import eq_
 
 
 def test_dict():

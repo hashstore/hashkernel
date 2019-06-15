@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 from logging import getLogger
-from hs_build_tools.nose import eq_, ok_, assert_text
+from hs_build_tools.pytest import eq_, ok_, assert_text
 from hashkernel import GlobalRef, exception_message, to_json
 from hashkernel.smattr import (SmAttr, JsonWrap, typing_factory,
                                extract_molds_from_function)

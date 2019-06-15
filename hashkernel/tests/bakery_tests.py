@@ -7,16 +7,12 @@ from io import BytesIO
 import os
 
 from hashkernel import utf8_reader, to_json
-from hs_build_tools.nose import doctest_it,eq_,ok_
+from hs_build_tools.pytest import eq_, ok_
 import tempfile
 
 from logging import getLogger
 log = getLogger(__name__)
 
-
-def test_docs():
-    doctest_it(bakery)
-    doctest_it(cake)
 
 def test_PatchAction():
     eq_(cake.PatchAction.update, cake.PatchAction['update'])
