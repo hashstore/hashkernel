@@ -125,10 +125,11 @@ def reraise_with_msg(msg, exception=None):
     if exception is None:
         exception = sys.exc_info()[1]
     etype = type(exception)
+    new_msg = exception_message(exception) + '\n' + msg
     try:
-        new_exception = etype(exception_message(exception) + '\n'+ msg)
+        new_exception = etype(new_msg)
     except:
-        new_exception = ValueError(exception_message(exception) + '\n'+ msg)
+        new_exception = ValueError(new_msg)
     traceback = sys.exc_info()[2]
     raise new_exception.with_traceback(traceback)
 
