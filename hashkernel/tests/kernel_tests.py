@@ -3,7 +3,7 @@ import datetime
 import sys
 from logging import getLogger
 
-from hs_build_tools.pytest import assert_text,  ok_
+from hs_build_tools.pytest import assert_text, ok_
 
 import hashkernel as kernel
 import hashkernel.docs as docs
@@ -106,8 +106,10 @@ def test_json_encode_decode():
     except:
         ok_("is not JSON serializable" in kernel.exception_message())
 
-    assert kernel.json_encode(datetime.datetime(2019, 4, 26, 19, 46, 50, 217946)) == \
-        '"2019-04-26T19:46:50.217946"'
+    assert (
+        kernel.json_encode(datetime.datetime(2019, 4, 26, 19, 46, 50, 217946))
+        == '"2019-04-26T19:46:50.217946"'
+    )
     assert kernel.json_encode(datetime.date(2019, 4, 26)) == '"2019-04-26"'
     assert kernel.json_encode(JsonableExample("z", 5)) == '{"i": 5, "s": "z"}'
     assert kernel.json_decode('{"i": 5, "s": "z"}') == {"i": 5, "s": "z"}
@@ -140,7 +142,12 @@ def test_mix_in():
         def __str__(self):
             return self.k
 
-    assert kernel.mix_in(kernel.StrKeyMixin, B2) == ["_StrKeyMixin__cached_str", "__eq__", "__hash__", "__ne__"]
+    assert kernel.mix_in(kernel.StrKeyMixin, B2) == [
+        "_StrKeyMixin__cached_str",
+        "__eq__",
+        "__hash__",
+        "__ne__",
+    ]
 
     class B3(kernel.StrKeyMixin):
         def __init__(self, k):
@@ -168,14 +175,20 @@ def test_mix_in():
             raise NotImplementedError()
 
     assert kernel.mix_in(B1, B6) == [
-            "_StrKeyMixin__cached_str",
-            "__eq__",
-            "__hash__",
-            "__init__",
-            "__ne__",
-            "__str__",
-        ]
-    assert kernel.mix_in(B1, B7, lambda s, _: s != "__eq__") == ["_StrKeyMixin__cached_str", "__hash__", "__init__", "__ne__", "__str__"]
+        "_StrKeyMixin__cached_str",
+        "__eq__",
+        "__hash__",
+        "__init__",
+        "__ne__",
+        "__str__",
+    ]
+    assert kernel.mix_in(B1, B7, lambda s, _: s != "__eq__") == [
+        "_StrKeyMixin__cached_str",
+        "__hash__",
+        "__init__",
+        "__ne__",
+        "__str__",
+    ]
     kernel.mix_in(B4, B5)
     kernel.mix_in(kernel.StrKeyMixin, B5)
 
@@ -251,19 +264,22 @@ def test_doc_str_template():
     dst = docs.DocStringTemplate(hello.__doc__, {"Args", "Returns"})
     assert dst.var_groups["Args"].keys() == {"s"}
     assert dst.var_groups["Returns"].keys() == {"_"}
-    assert list(dst.var_groups["Returns"].format(4)) == ["    Returns:", "        _: very important number"]
+    assert list(dst.var_groups["Returns"].format(4)) == [
+        "    Returns:",
+        "        _: very important number",
+    ]
     assert_text(dst.doc(), hello.__doc__)
 
     dst = docs.DocStringTemplate(A.__doc__, {"Attributes"})
     attributes_ = dst.var_groups["Attributes"]
     assert attributes_.keys(), {"i", "s", "d"}
     assert list(attributes_.format(4)) == [
-            "    Attributes:",
-            "        possible atributes of class",
-            "        i: integer",
-            "        s: string with default",
-            "        d: optional datetime",
-        ]
+        "    Attributes:",
+        "        possible atributes of class",
+        "        i: integer",
+        "        s: string with default",
+        "        d: optional datetime",
+    ]
     assert str(attributes_["s"].content) == "string with default"
     assert_text(dst.doc(), A.__doc__)
 
@@ -273,7 +289,10 @@ def test_doc_str_template():
         docs.DocStringTemplate(A_ValueError.__doc__, {"Attributes"})
         ok_(False)
     except ValueError as e:
-        assert str(e) == "Missleading indent=7? var_indent=8 " "line='attribute contributed' "
+        assert (
+            str(e) == "Missleading indent=7? var_indent=8 "
+            "line='attribute contributed' "
+        )
 
     dstNone = docs.DocStringTemplate(None, {})
     assert dstNone.doc() == ""

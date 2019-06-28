@@ -22,7 +22,7 @@ def test_docs():
 
     r = doctest.testmod(m)
     ok_(r.attempted > 0, f"There is not doctests in module")
-    assert r.failed ==  0
+    assert r.failed == 0
 
 
 class A(SmAttr):

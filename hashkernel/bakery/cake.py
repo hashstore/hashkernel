@@ -39,7 +39,12 @@ from hashkernel.bakery import CakeMode, CakeProperties, CakeTypes, TypesProcesso
 from hashkernel.base_x import base_x
 from hashkernel.file_types import file_types, guess_name
 from hashkernel.guid import new_guid_data
-from hashkernel.hashing import HashBytes, Hasher, shard_name_int, shard_based_on_two_bites
+from hashkernel.hashing import (
+    HashBytes,
+    Hasher,
+    shard_based_on_two_bites,
+    shard_name_int,
+)
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
 
 log = logging.getLogger(__name__)
@@ -405,7 +410,7 @@ class Cake(Stringable, EnsureIt, Primitive):
         return self._data
 
     def __str__(self) -> str:
-        return  B62.encode(self._data)+str(self.header)
+        return B62.encode(self._data) + str(self.header)
 
     def __repr__(self) -> str:
         return f"Cake({str(self)!r})"

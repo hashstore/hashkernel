@@ -1,6 +1,6 @@
 from random import randint, seed
 
-from hs_build_tools.pytest import  ok_
+from hs_build_tools.pytest import ok_
 
 import hashkernel.base_x as bx
 

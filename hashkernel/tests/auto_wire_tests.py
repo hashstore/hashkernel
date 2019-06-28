@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from hs_build_tools.pytest import  ok_
+from hs_build_tools.pytest import ok_
 
 from hashkernel import exception_message
 from hashkernel.auto_wire import AutoWire, AutoWireRoot, wire_names

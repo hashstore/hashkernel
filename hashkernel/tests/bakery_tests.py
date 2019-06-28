@@ -6,9 +6,7 @@ import tempfile
 from io import BytesIO
 from logging import getLogger
 
-from hs_build_tools.pytest import  ok_
-
-
+from hs_build_tools.pytest import ok_
 
 import hashkernel.bakery as bakery
 import hashkernel.bakery.cake as cake

@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from hs_build_tools.pytest import  ok_
+from hs_build_tools.pytest import ok_
 
 import hashkernel.logic as logic
 import hashkernel.tests.logic_test_module as plugin

@@ -1,5 +1,3 @@
-
-
 def test_dict():
     from hashkernel.file_types import file_types
 

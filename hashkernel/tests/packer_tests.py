@@ -26,16 +26,25 @@ def test_1():
     pack = z.pack(
         (begining_of_time, 13497439e-30, "Hello World!!!", 42.0, 1000, 1000, 244)
     )
-    assert pack.hex() == \
-        "0000000000000000" \
-        "29f7654a4151303b" \
-        "8e48656c6c6f20576f726c64212121" \
-        "00002842" \
-        "e8030000" \
-        "e803" \
+    assert (
+        pack.hex() == "0000000000000000"
+        "29f7654a4151303b"
+        "8e48656c6c6f20576f726c64212121"
+        "00002842"
+        "e8030000"
+        "e803"
         "f4"
+    )
     unpack, sz = z.unpack(pack, 0)
-    assert unpack == (begining_of_time, 1.3497439e-23, "Hello World!!!", 42.0, 1000, 1000, 244)
+    assert unpack == (
+        begining_of_time,
+        1.3497439e-23,
+        "Hello World!!!",
+        42.0,
+        1000,
+        1000,
+        244,
+    )
     assert len(pack) == sz
 
     z = p.TuplePacker(p.FixedSizePacker(3), p.UTC_DATETIME, p.INT_8)

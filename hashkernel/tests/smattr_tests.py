@@ -105,7 +105,10 @@ def test_wrap():
 
     def do_check(w):
         assert str(w.unwrap()) == s
-        assert str(w) == '{"classRef": "hashkernel.tests.smattr_tests:Abc", "json": {"name": "n", "val": 555}}'
+        assert (
+            str(w)
+            == '{"classRef": "hashkernel.tests.smattr_tests:Abc", "json": {"name": "n", "val": 555}}'
+        )
         assert str(JsonWrap(to_json(w)).unwrap()) == s
 
     do_check(JsonWrap({"classRef": GlobalRef(Abc), "json": {"name": "n", "val": 555}}))
