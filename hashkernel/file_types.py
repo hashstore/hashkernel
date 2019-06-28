@@ -1,41 +1,35 @@
 import mimetypes
-from typing import List, Dict
-from os.path import join, dirname
+from os.path import dirname, join
+from typing import Dict, List
 
 from hashkernel import load_json_file
 from hashkernel.smattr import SmAttr
 
 
 class FileType(SmAttr):
-    mime:str
-    ext:List[str]
+    mime: str
+    ext: List[str]
 
 
-def read_file_types(json_file)->Dict[str,FileType]:
+def read_file_types(json_file) -> Dict[str, FileType]:
     load_json = load_json_file(json_file)
-    return {n: FileType(v) for n,v in load_json.items()}
+    return {n: FileType(v) for n, v in load_json.items()}
 
 
-file_types = read_file_types(join(dirname(__file__), 'file_types.json'))
+file_types = read_file_types(join(dirname(__file__), "file_types.json"))
 
-my_mime_dict = dict(
-    (ext,ft.mime)
-    for ft in file_types.values()
-        for ext in ft.ext)
+my_mime_dict = dict((ext, ft.mime) for ft in file_types.values() for ext in ft.ext)
 
-my_name_dict = dict(
-    (ext,k)
-    for k, ft in file_types.items()
-        for ext in ft.ext )
+my_name_dict = dict((ext, k) for k, ft in file_types.items() for ext in ft.ext)
 
-WDF = 'WDF'
-HSB = 'HSB'
-BINARY = 'BINARY'
-BINARY_MIME = 'application/octet-stream'
+WDF = "WDF"
+HSB = "HSB"
+BINARY = "BINARY"
+BINARY_MIME = "application/octet-stream"
 
 
 def guess_name(filename):
-    '''
+    """
 
     >>> guess_name('abc.txt')
     'TXT'
@@ -54,18 +48,18 @@ def guess_name(filename):
 
     :param filename: file path
     :return: name from `file_types`
-    '''
+    """
     try:
         extension = extract_extension(filename)
         if extension:
             return my_name_dict[extension]
     except:
         pass
-    return 'BINARY'
+    return "BINARY"
 
 
 def guess_type(filename):
-    '''
+    """
     guess MIME type
 
     >>> guess_type('abc.txt')
@@ -84,7 +78,7 @@ def guess_type(filename):
 
     :param filename: file path
     :return: mime type
-    '''
+    """
     try:
         extension = extract_extension(filename)
         if extension:
@@ -95,7 +89,7 @@ def guess_type(filename):
 
 
 def extract_extension(filename):
-    '''
+    """
 
     >>> extract_extension('.txt')
     >>> extract_extension(None)
@@ -106,12 +100,11 @@ def extract_extension(filename):
 
     :param filename: file path
     :return: extension
-    '''
+    """
     try:
-        dot_p = filename.rindex('.')
+        dot_p = filename.rindex(".")
         if dot_p > 0:
-            return filename[dot_p+1:]
+            return filename[dot_p + 1 :]
     except:
         pass
     return None
-

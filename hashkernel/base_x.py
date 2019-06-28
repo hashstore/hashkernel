@@ -1,4 +1,4 @@
-'''
+"""
 Base_X encoding is just like base58, but allow to use flexible alphabet.
 
 https://en.wikipedia.org/wiki/Base58
@@ -12,7 +12,7 @@ https://github.com/cryptocoinjs/base-x (MIT license)
 I believe MIT license is compatible with Apache (if I am wrong,
 file bug, don't sue me), so consider this file dual licensed
 under Apache and MIT.
-'''
+"""
 
 # --- original comments form base58
 # Implementations of Base58 and Base58Check endcodings that are compatible
@@ -24,51 +24,52 @@ under Apache and MIT.
 # This module adds shiny packaging and support for python3.
 # ---
 
-from typing import Dict
 from hashlib import sha256
+from typing import Dict
 
 alphabets = {
-2:	'01' ,
-8:	'01234567',
-11:	'0123456789a',
-16:	'0123456789abcdef',
-32:	'0123456789ABCDEFGHJKMNPQRSTVWXYZ',
-36:	'0123456789abcdefghijklmnopqrstuvwxyz',
-58:	'123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz',
-62:	'0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
-64:	'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/',
-66:	'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~',
+    2: "01",
+    8: "01234567",
+    11: "0123456789a",
+    16: "0123456789abcdef",
+    32: "0123456789ABCDEFGHJKMNPQRSTVWXYZ",
+    36: "0123456789abcdefghijklmnopqrstuvwxyz",
+    58: "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz",
+    62: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    64: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+    66: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~",
 }
 
 
 class BaseX:
-    def __init__(self, alphabet:str)->None:
+    def __init__(self, alphabet: str) -> None:
         self.alphabet = alphabet
         self.size = len(alphabet)
-        self.index = { alphabet[i]:i for i in range(self.size)}
+        self.index = {alphabet[i]: i for i in range(self.size)}
 
-    def encode_int(self, i:int)->str:
-        '''Encode an integer'''
+    def encode_int(self, i: int) -> str:
+        """Encode an integer"""
         if i < 0:
-            raise AssertionError('uint expected: %r' % i)
+            raise AssertionError("uint expected: %r" % i)
         return self.alphabet[0] if i == 0 else self._encode_int(i)
 
-    def _encode_int(self, i:int)->str:
-        '''unsafe encode_int'''
+    def _encode_int(self, i: int) -> str:
+        """unsafe encode_int"""
         string = ""
         while i:
             i, idx = divmod(i, self.size)
             string = self.alphabet[idx] + string
         return string
 
-    def encode(self, v:bytes)->str:
-        '''Encode a string'''
+    def encode(self, v: bytes) -> str:
+        """Encode a string"""
         if not isinstance(v, bytes):
-            raise TypeError("a bytes-like object is required, not '%s'" %
-                            type(v).__name__)
+            raise TypeError(
+                "a bytes-like object is required, not '%s'" % type(v).__name__
+            )
 
         origlen = len(v)
-        v = v.lstrip(b'\0')
+        v = v.lstrip(b"\0")
         count_of_nulls = origlen - len(v)
 
         p, acc = 1, 0
@@ -78,23 +79,23 @@ class BaseX:
 
         result = self._encode_int(acc)
 
-        return (self.alphabet[0] * count_of_nulls + result)
+        return self.alphabet[0] * count_of_nulls + result
 
-    def decode_int(self, v:str)->int:
-        '''Decode a string into integer'''
+    def decode_int(self, v: str) -> int:
+        """Decode a string into integer"""
 
         decimal = 0
         for char in v:
             decimal = decimal * self.size + self.index[char]
         return decimal
 
-    def decode(self, v:str) -> bytes:
-        '''Decode string'''
+    def decode(self, v: str) -> bytes:
+        """Decode string"""
 
         if not isinstance(v, str):
-            v = v.decode('ascii')
+            v = v.decode("ascii")
 
-        #strip null bytes
+        # strip null bytes
         origlen = len(v)
         v = v.lstrip(self.alphabet[0])
         count_of_nulls = origlen - len(v)
@@ -106,16 +107,16 @@ class BaseX:
             acc, mod = divmod(acc, 256)
             result.append(mod)
 
-        return (b'\0' * count_of_nulls + bytes(reversed(result)))
+        return b"\0" * count_of_nulls + bytes(reversed(result))
 
-    def encode_check(self, v:bytes)->str:
-        '''Encode a string with a 4 character checksum'''
+    def encode_check(self, v: bytes) -> str:
+        """Encode a string with a 4 character checksum"""
 
         digest = sha256(sha256(v).digest()).digest()
         return self.encode(v + digest[:4])
 
-    def decode_check(self, v:str)->bytes:
-        '''Decode and verify the checksum '''
+    def decode_check(self, v: str) -> bytes:
+        """Decode and verify the checksum """
 
         result = self.decode(v)
         result, check = result[:-4], result[-4:]
@@ -127,11 +128,11 @@ class BaseX:
         return result
 
 
-cached_instances : Dict[int,BaseX] = {}
+cached_instances: Dict[int, BaseX] = {}
 
 
-def base_x(alphabet_id:int)->BaseX:
-    '''
+def base_x(alphabet_id: int) -> BaseX:
+    """
     lazy initialization for BaseX instance
 
     >>> base_x(58).encode(b'the quick brown fox jumps over the lazy dog')
@@ -152,7 +153,7 @@ def base_x(alphabet_id:int)->BaseX:
     :param alphabet_id: reference to predefined alphabet from
                         `alphabets` dictionary
     :return: BaseX
-    '''
+    """
     if alphabet_id not in cached_instances:
         cached_instances[alphabet_id] = BaseX(alphabets[alphabet_id])
     return cached_instances[alphabet_id]

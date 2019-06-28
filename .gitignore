@@ -1,5 +1,6 @@
 .mypy_cache
 .shamo
+.runenv
 .eggs
 .cake_*
 test-out/
@@ -14,8 +15,6 @@ __pycache__
 .coverage
 coverage.xml
 .coverage.*
-hashstore/bakery/app
-hashstore/app
 node_modules/
 package-lock.json
 Notebooks/.ipynb_checkpoints/

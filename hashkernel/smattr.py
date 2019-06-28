@@ -1,20 +1,38 @@
-from typing import (
-    Any, Dict, List, Optional, get_type_hints, Union, Tuple, Callable,
-    Iterable, ClassVar)
 from inspect import getfullargspec
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    get_type_hints,
+)
 
-from hashkernel.packer import SIZED_BYTES, UTF8_STR, TuplePacker, \
-    ProxyPacker, Packer
+from hashkernel.packer import SIZED_BYTES, UTF8_STR, Packer, ProxyPacker, TuplePacker
+
 from . import (
-    reraise_with_msg, EnsureIt, Stringable, ClassRef, Conversion,
-    json_encode, Jsonable, GlobalRef,
-    json_decode, to_json, to_tuple, utf8_decode,
-    DictLike, delegate_factory, is_primitive)
-from .typings import (
-    is_optional, is_tuple, is_list, is_dict, get_args, get_attr_hints)
-from .docs import (
-    DocStringTemplate, GroupOfVariables, VariableDocEntry)
-
+    ClassRef,
+    Conversion,
+    DictLike,
+    EnsureIt,
+    GlobalRef,
+    Jsonable,
+    Stringable,
+    delegate_factory,
+    is_primitive,
+    json_decode,
+    json_encode,
+    reraise_with_msg,
+    to_json,
+    to_tuple,
+    utf8_decode,
+)
+from .docs import DocStringTemplate, GroupOfVariables, VariableDocEntry
+from .typings import get_args, get_attr_hints, is_dict, is_list, is_optional, is_tuple
 
 ATTRIBUTES = "Attributes"
 RETURNS = "Returns"
@@ -26,16 +44,15 @@ class ValueRequired(Exception):
 
 
 class Typing(Stringable, EnsureIt):
-
     @classmethod
     def __factory__(cls):
         return typing_factory
 
     def __init__(self, val_cref, collection=False):
         self.val_cref = ClassRef.ensure_it(val_cref)
-        self.collection=collection
+        self.collection = collection
 
-    def convert(self, v: Any, direction:Conversion)->Any:
+    def convert(self, v: Any, direction: Conversion) -> Any:
         return self.val_cref.convert(v, direction)
 
     @classmethod
@@ -43,11 +60,10 @@ class Typing(Stringable, EnsureIt):
         return cls.__name__[:-6]
 
     def __str__(self):
-        return f'{self.name()}[{self.val_cref}]'
+        return f"{self.name()}[{self.val_cref}]"
 
 
 class OptionalTyping(Typing):
-
     def validate(self, v):
         return v is None or self.val_cref.matches(v)
 
@@ -56,30 +72,29 @@ class OptionalTyping(Typing):
 
 
 class RequiredTyping(Typing):
-
     def validate(self, v):
         return self.val_cref.matches(v)
 
     def default(self):
-        raise ValueRequired(f'no default for {str(self)}')
+        raise ValueRequired(f"no default for {str(self)}")
 
 
 class DictTyping(Typing):
-
     def __init__(self, val_cref, key_cref):
         Typing.__init__(self, val_cref, collection=True)
         self.key_cref = ClassRef.ensure_it(key_cref)
 
-    def convert(self, in_v:Any, direction:Conversion)->Dict[Any, Any]:
-        return {self.key_cref.convert(k, direction):
-                self.val_cref.convert(v, direction)
-                for k, v in in_v.items()}
+    def convert(self, in_v: Any, direction: Conversion) -> Dict[Any, Any]:
+        return {
+            self.key_cref.convert(k, direction): self.val_cref.convert(v, direction)
+            for k, v in in_v.items()
+        }
 
     def validate(self, v):
         return isinstance(v, dict)
 
     def __str__(self):
-        return f'{self.name()}[{self.key_cref},{self.val_cref}]'
+        return f"{self.name()}[{self.key_cref},{self.val_cref}]"
 
     def default(self):
         return {}
@@ -89,7 +104,7 @@ class ListTyping(Typing):
     def __init__(self, val_cref):
         Typing.__init__(self, val_cref, collection=True)
 
-    def convert(self, in_v: Any, direction:Conversion)->List[Any]:
+    def convert(self, in_v: Any, direction: Conversion) -> List[Any]:
         return [self.val_cref.convert(v, direction) for v in in_v]
 
     def validate(self, v):
@@ -125,21 +140,23 @@ class AttrEntry(EnsureIt, Stringable):
     ...
     AttributeError: 'int' object has no attribute 'split'
     """
+
     def __init__(self, name, typing=None, default=None):
         self.default = default
         self._doc = None
         self.index = None
         default_s = None
         if typing is None:
-            split = name.split('=', 1)
+            split = name.split("=", 1)
             if len(split) == 2:
                 name, default_s = split
-            name, typing = name.split(':', 1)
+            name, typing = name.split(":", 1)
         self.name = name
         self.typing = typing_factory(typing)
         if default_s is not None:
             self.default = self.typing.convert(
-                json_decode(default_s), Conversion.TO_OBJECT)
+                json_decode(default_s), Conversion.TO_OBJECT
+            )
 
     def required(self):
         try:
@@ -148,7 +165,7 @@ class AttrEntry(EnsureIt, Stringable):
         except ValueRequired:
             return True
 
-    def convert(self, v: Any, direction: Conversion)->Any:
+    def convert(self, v: Any, direction: Conversion) -> Any:
         try:
             if Conversion.TO_OBJECT == direction:
                 if v is None:
@@ -164,17 +181,17 @@ class AttrEntry(EnsureIt, Stringable):
                 else:
                     return self.typing.convert(v, Conversion.TO_JSON)
         except:
-            reraise_with_msg(f'error in {self}')
+            reraise_with_msg(f"error in {self}")
 
-    def validate(self, v:Any)->bool:
+    def validate(self, v: Any) -> bool:
         return self.typing.validate(v)
 
     def __str__(self):
-        def_s = ''
+        def_s = ""
         if self.default is not None:
             v = json_encode(self.typing.convert(self.default, Conversion.TO_JSON))
-            def_s = f'={v}'
-        return f'{self.name}:{self.typing}{def_s}'
+            def_s = f"={v}"
+        return f"{self.name}:{self.typing}{def_s}"
 
 
 def typing_factory(o):
@@ -193,33 +210,32 @@ def typing_factory(o):
     if isinstance(o, Typing):
         return o
     if isinstance(o, str):
-        if o[-1] == ']':
-            typing_name, args_s = o[:-1].split('[', 1)
-            args = args_s.split(',')
-            typing_cls = globals()[typing_name + 'Typing']
+        if o[-1] == "]":
+            typing_name, args_s = o[:-1].split("[", 1)
+            args = args_s.split(",")
+            typing_cls = globals()[typing_name + "Typing"]
             if issubclass(typing_cls, DictTyping):
                 return typing_cls(args[1], args[0])
             elif len(args) != 1:
-                raise AssertionError(f'len({args}) should be 1. input:{o}')
+                raise AssertionError(f"len({args}) should be 1. input:{o}")
             else:
                 return typing_cls(args[0])
-        raise AttributeError(f'Unrecognized typing: {o}')
+        raise AttributeError(f"Unrecognized typing: {o}")
     else:
         args = get_args(o, [])
         if len(args) == 0:
             return RequiredTyping(o)
-        elif is_optional(o,args):
+        elif is_optional(o, args):
             return OptionalTyping(args[0])
-        elif is_list(o,args):
+        elif is_list(o, args):
             return ListTyping(args[0])
-        elif is_dict(o,args):
+        elif is_dict(o, args):
             return DictTyping(args[1], args[0])
         else:
-            raise AssertionError(
-                f'Unknown annotation: {o}')
+            raise AssertionError(f"Unknown annotation: {o}")
 
 
-SINGLE_RETURN_VALUE = '_'
+SINGLE_RETURN_VALUE = "_"
 
 
 class Mold(Jsonable):
@@ -240,6 +256,7 @@ class Mold(Jsonable):
     >>> str(Mold(attr_envs))
     '["a:Required[int]", "b:Required[str]", "return:Required[int]"]'
     """
+
     def __init__(self, o=None):
         self.keys: List[str] = []
         self.cls: Optional[type] = None
@@ -254,15 +271,13 @@ class Mold(Jsonable):
                 self.add_hints(get_attr_hints(o))
                 if isinstance(o, type):
                     self.cls = o
-                    self.set_defaults(
-                        self.get_defaults_from_cls(self.cls))
+                    self.set_defaults(self.get_defaults_from_cls(self.cls))
                     docstring = o.__doc__
                     dst = DocStringTemplate(docstring, {ATTRIBUTES})
                     self.syncup_dst_and_attrs(dst, ATTRIBUTES)
                     self.cls.__doc__ = dst.doc()
 
-    def syncup_dst_and_attrs(self, dst:DocStringTemplate,
-                             section_name:str)->None:
+    def syncup_dst_and_attrs(self, dst: DocStringTemplate, section_name: str) -> None:
         groups = dst.var_groups
         if section_name not in groups:
             groups[section_name] = GroupOfVariables.empty(section_name)
@@ -283,7 +298,7 @@ class Mold(Jsonable):
 
     @classmethod
     def __factory__(cls):
-        return delegate_factory(cls, ('__mold__', 'mold'))
+        return delegate_factory(cls, ("__mold__", "mold"))
 
     def add_hints(self, hints):
         for var_name, var_cls in hints.items():
@@ -299,20 +314,20 @@ class Mold(Jsonable):
     def get_defaults_from_cls(self, cls):
         return {
             attr_name: getattr(cls, attr_name)
-            for attr_name in self.attrs if hasattr(cls, attr_name)}
+            for attr_name in self.attrs
+            if hasattr(cls, attr_name)
+        }
 
     def get_defaults_from_fn(self, fn):
         names, _, _, defaults = getfullargspec(fn)[:4]
         if defaults is None:
             defaults = []
         def_offset = len(names) - len(defaults)
-        return {k: v
-                for k,v in zip(names[def_offset:],defaults)
-                if k in self.attrs}
+        return {k: v for k, v in zip(names[def_offset:], defaults) if k in self.attrs}
 
-    def add_entry(self, entry:AttrEntry):
+    def add_entry(self, entry: AttrEntry):
         if entry.index is not None:
-            raise AssertionError(f'Same entry reused: {entry}')
+            raise AssertionError(f"Same entry reused: {entry}")
         entry.index = len(self.attrs)
         self.keys.append(entry.name)
         self.attrs[entry.name] = entry
@@ -321,38 +336,34 @@ class Mold(Jsonable):
         return [str(ae) for ae in self.attrs.values()]
 
     def check_overlaps(self, values):
-        missing = set(
-            ae.name for ae in self.attrs.values()
-            if ae.required()
-        ) - values.keys()
+        missing = (
+            set(ae.name for ae in self.attrs.values() if ae.required()) - values.keys()
+        )
         if len(missing) > 0:
-            raise AttributeError(f'Required : {missing}')
+            raise AttributeError(f"Required : {missing}")
         not_known = set(values.keys()) - set(self.attrs.keys())
         if len(not_known) > 0:
-            raise AttributeError(f'Not known: {not_known}')
+            raise AttributeError(f"Not known: {not_known}")
 
     def build_val_dict(self, json_values):
         self.check_overlaps(json_values)
         return self.mold_it(json_values, Conversion.TO_OBJECT)
 
     def mold_it(
-            self,
-            in_data: Union[List[Any], Dict[str,Any], DictLike],
-            direction: Conversion
-    ) -> Dict[str,Any]:
-        return dict(zip(self.keys,
-                        self.mold_to_list(in_data, direction)))
+        self, in_data: Union[List[Any], Dict[str, Any], DictLike], direction: Conversion
+    ) -> Dict[str, Any]:
+        return dict(zip(self.keys, self.mold_to_list(in_data, direction)))
 
-    def mold_to_list(self,
-                     in_data: Union[List[Any],Dict[str,Any],DictLike],
-                     direction: Conversion) -> List[Any]:
+    def mold_to_list(
+        self, in_data: Union[List[Any], Dict[str, Any], DictLike], direction: Conversion
+    ) -> List[Any]:
         if not (isinstance(in_data, list)):
-            in_data = [in_data[k] if k in in_data else None
-                       for k in (self.keys)]
+            in_data = [in_data[k] if k in in_data else None for k in (self.keys)]
         if len(self.keys) != len(in_data):
-            raise AttributeError(f'arrays has to match in size:'
-                                 f' {self.keys} {in_data}')
-        return[
+            raise AttributeError(
+                f"arrays has to match in size:" f" {self.keys} {in_data}"
+            )
+        return [
             self.attrs[self.keys[i]].convert(in_data[i], direction)
             for i in range(len(self.keys))
         ]
@@ -361,12 +372,11 @@ class Mold(Jsonable):
         for k, v in self.build_val_dict(values).items():
             setattr(target, k, v)
 
-    def pull_attrs(self, from_obj:Any)->Dict[str, Any]:
+    def pull_attrs(self, from_obj: Any) -> Dict[str, Any]:
         """
         extract known attributes into dictionary
         """
-        return { k: getattr(from_obj, k)
-                 for k in self.keys if hasattr(from_obj, k) }
+        return {k: getattr(from_obj, k) for k in self.keys if hasattr(from_obj, k)}
 
     def wrap_input(self, v):
         v_dct = self.mold_it(v, Conversion.TO_OBJECT)
@@ -381,15 +391,16 @@ class Mold(Jsonable):
             result = DictLike(v)
         return self.mold_it(result, Conversion.TO_JSON)
 
-    def is_single_return(self)->bool:
+    def is_single_return(self) -> bool:
         return self.keys == [SINGLE_RETURN_VALUE]
 
-    def is_empty(self)->bool:
+    def is_empty(self) -> bool:
         return len(self.keys) == 0
 
 
-def extract_molds_from_function(fn:Callable[...,Any]
-                                )->Tuple[Mold,Mold,DocStringTemplate]:
+def extract_molds_from_function(
+    fn: Callable[..., Any]
+) -> Tuple[Mold, Mold, DocStringTemplate]:
     """
     Args:
         fn: function inspected
@@ -421,8 +432,8 @@ def extract_molds_from_function(fn:Callable[...,Any]
     dst = DocStringTemplate(fn.__doc__, {ARGS, RETURNS})
 
     annotations = dict(get_attr_hints(fn))
-    return_type = annotations['return']
-    del annotations['return']
+    return_type = annotations["return"]
+    del annotations["return"]
     in_mold = Mold(annotations)
     in_mold.set_defaults(in_mold.get_defaults_from_fn(fn))
     out_mold = Mold()
@@ -433,7 +444,7 @@ def extract_molds_from_function(fn:Callable[...,Any]
             args = get_args(return_type)
             keys = [f"v{i}" for i in range(len(args))]
             if RETURNS in dst.var_groups:
-                for i,k in enumerate(dst.var_groups[RETURNS].keys()):
+                for i, k in enumerate(dst.var_groups[RETURNS].keys()):
                     keys[i] = k
             out_mold.add_hints(dict(zip(keys, args)))
         else:
@@ -451,26 +462,28 @@ def extract_molds_from_function(fn:Callable[...,Any]
 class _AnnotationsProcessor(type):
     def __init__(cls, name, bases, dct):
         cls.__mold__ = Mold(cls)
-        if hasattr(cls, '__attribute_packers__'):
+        if hasattr(cls, "__attribute_packers__"):
             cls.__packer__ = ProxyPacker(
-                cls, TuplePacker(*cls.__attribute_packers__),
-                to_tuple, cls)
+                cls, TuplePacker(*cls.__attribute_packers__), to_tuple, cls
+            )
         else:
             cls.__packer__ = ProxyPacker(cls, UTF8_STR, str, cls)
-        if hasattr(cls, '__serialize_as__'):
-            cls.__serialization_mold__:Mold = Mold.ensure_it(cls.__serialize_as__)  # type: ignore
-        else:   
+        if hasattr(cls, "__serialize_as__"):
+            cls.__serialization_mold__: Mold = Mold.ensure_it(
+                cls.__serialize_as__
+            )  # type: ignore
+        else:
             cls.__serialization_mold__ = cls.__mold__
 
 
-
-def combine_vars(vars:Optional[Dict[str,Any]],
-                 kwargs:Dict[str,Any]
-                 )->Dict[str,Any]:
+def combine_vars(
+    vars: Optional[Dict[str, Any]], kwargs: Dict[str, Any]
+) -> Dict[str, Any]:
     if vars is None:
         vars = {}
     vars.update(kwargs)
     return vars
+
 
 class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     """
@@ -565,37 +578,37 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     >>> str(P({'x':5,'a':1.03e-5}))
     '{"a": 1.03e-05, "x": 5, "z": false}'
     """
-    __mold__:ClassVar[Mold]
-    __serialization_mold__:ClassVar[Mold]
-    __packer__:ClassVar[Packer]
 
-    def __init__(self,
-                 _vals_:Union[None, bytes, str, Iterable[Any],
-                              Dict[str, Any]] = None,
-                 **kwargs) ->None:
+    __mold__: ClassVar[Mold]
+    __serialization_mold__: ClassVar[Mold]
+    __packer__: ClassVar[Packer]
+
+    def __init__(
+        self,
+        _vals_: Union[None, bytes, str, Iterable[Any], Dict[str, Any]] = None,
+        **kwargs,
+    ) -> None:
         mold = self.__mold__
 
         if isinstance(_vals_, bytes):
             _vals_ = utf8_decode(_vals_)
-        vals_dict: Dict[str,Any] = {}
+        vals_dict: Dict[str, Any] = {}
         if _vals_ is None:
             pass
         elif isinstance(_vals_, str):
             vals_dict = json_decode(_vals_)
         elif isinstance(_vals_, dict):
             vals_dict = _vals_
-        elif hasattr(_vals_,'__iter__'):
-            vals_dict = mold.mold_it(list(_vals_),Conversion.TO_OBJECT)
+        elif hasattr(_vals_, "__iter__"):
+            vals_dict = mold.mold_it(list(_vals_), Conversion.TO_OBJECT)
         else:
-            raise AssertionError(f'cannot construct from: {_vals_}')
+            raise AssertionError(f"cannot construct from: {_vals_}")
         vals_dict.update(kwargs)
         values = {k: v for k, v in vals_dict.items() if v is not None}
         mold.set_attrs(values, self)
 
-
     def __to_json__(self) -> Dict[str, Any]:
-        return self.__serialization_mold__.mold_it(
-            DictLike(self), Conversion.TO_JSON)
+        return self.__serialization_mold__.mold_it(DictLike(self), Conversion.TO_JSON)
 
     def __to_dict__(self) -> Dict[str, Any]:
         return self.__serialization_mold__.pull_attrs(self)
@@ -603,12 +616,14 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     def __to_tuple__(self) -> tuple:
         return tuple(
             self.__serialization_mold__.mold_to_list(
-            DictLike(self), Conversion.TO_OBJECT))
+                DictLike(self), Conversion.TO_OBJECT
+            )
+        )
 
 
 class JsonWrap(SmAttr):
-    classRef:GlobalRef
-    json:Optional[Any]
+    classRef: GlobalRef
+    json: Optional[Any]
 
     def unwrap(self):
         return self.classRef.get_instance()(self.json)
@@ -616,10 +631,7 @@ class JsonWrap(SmAttr):
     @classmethod
     def wrap(cls, o):
         if isinstance(o, Jsonable):
-            return cls({
-                    "classRef": GlobalRef(type(o)),
-                    "json": to_json(o)
-            })
+            return cls({"classRef": GlobalRef(type(o)), "json": to_json(o)})
         raise AttributeError(f"Not jsonable: {o}")
 
 
@@ -627,19 +639,18 @@ class BytesWrap(SmAttr):
 
     __attribute_packers__ = (
         ProxyPacker(GlobalRef, UTF8_STR, str, GlobalRef),
-        SIZED_BYTES
+        SIZED_BYTES,
     )
 
-    classRef:GlobalRef
-    content:bytes
+    classRef: GlobalRef
+    content: bytes
 
     def unwrap(self):
         return self.classRef.get_instance()(self.content)
 
     @classmethod
     def wrap(cls, o):
-        return cls( classRef = GlobalRef(type(o)),
-                    content = bytes(o))
+        return cls(classRef=GlobalRef(type(o)), content=bytes(o))
 
     def __bytes__(self):
         return self.__packer__.pack(self)
@@ -649,5 +660,5 @@ class BytesWrap(SmAttr):
             if isinstance(input, bytes):
                 return cls.__packer__.pack(input)
             return cls(input)
-        return factory
 
+        return factory

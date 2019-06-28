@@ -1,9 +1,10 @@
 import inspect
-from typing import Union, Callable, List, Optional
-from hashkernel.auto_wire import AutoWire, wire_names, AutoWireRoot
+from typing import Callable, List, Optional, Union
+
+from hashkernel.auto_wire import AutoWire, AutoWireRoot, wire_names
 from hashkernel.executible import Function
 from hashkernel.log_box import LogBox
-from hashkernel.smattr import (SmAttr, AttrEntry)
+from hashkernel.smattr import AttrEntry, SmAttr
 from hashkernel.time import CronExp, TimeZone
 
 
@@ -11,15 +12,16 @@ class MoldVar(AutoWire):
     """
     MoldVar
     """
+
     def _initialize(self):
-        self.link:Union['MoldVar',None] = None
+        self.link: Union["MoldVar", None] = None
         self.backlinks = []
 
-    def set_input(self, link:'MoldVar'):
+    def set_input(self, link: "MoldVar"):
         self.link = link
         self.link.add_backlink(self)
 
-    def add_backlink(self, back_link:'MoldVar'):
+    def add_backlink(self, back_link: "MoldVar"):
         self.backlinks.append(back_link)
 
 
@@ -30,18 +32,16 @@ class TaskVar(MoldVar):
 
 
 class EdgeMold(AutoWire):
-    def __init__(self, _parent_=None, _name_=None, **in_vars)->None:
-        AutoWire.__init__(self,
-                          _parent_=_parent_,
-                          _name_=_name_)
+    def __init__(self, _parent_=None, _name_=None, **in_vars) -> None:
+        AutoWire.__init__(self, _parent_=_parent_, _name_=_name_)
         self.in_vars = in_vars
 
     def _wiring_factory(self, path, name):
-        if len(path) == 1 :
+        if len(path) == 1:
             return MoldVar
-        raise AttributeError(f'path:{wire_names(path)} name:{name}')
+        raise AttributeError(f"path:{wire_names(path)} name:{name}")
 
-    def _validate(self, lb:LogBox):
+    def _validate(self, lb: LogBox):
         for k, link in self.in_vars.items():
             task_var = getattr(self.input, k)
             task_var.set_input(link)
@@ -56,53 +56,50 @@ class Retry(SmAttr):
     def decrement_retry(self):
         if self.times_left > 0:
             self.times_left = self.times_left - 1
-            self.retry_interval = self.retry_interval * \
-                                  self.interval_multiplier + \
-                                  self.interval_increment
+            self.retry_interval = (
+                self.retry_interval * self.interval_multiplier + self.interval_increment
+            )
             return True
         return False
 
 
 class Task(AutoWire):
-
-    def __init__(self,
-                 _fn_: Union[Function,Callable],
-                 **in_vars) -> None:
+    def __init__(self, _fn_: Union[Function, Callable], **in_vars) -> None:
         AutoWire.__init__(self)
         self.fn = Function.ensure_it(_fn_)
         self.in_vars = in_vars
-        self.retry:Optional[Retry] = None
+        self.retry: Optional[Retry] = None
 
     def _wiring_factory(self, path, name):
-        if len(path) == 1 :
-            if name in ('input', 'output'):
+        if len(path) == 1:
+            if name in ("input", "output"):
                 return EdgeMold
         path_names = wire_names(path)
-        if len(path) == 2 and path_names[-1] in ('input', 'output'):
+        if len(path) == 2 and path_names[-1] in ("input", "output"):
             return TaskVar
-        raise AttributeError(f'path:{wire_names(path)} name:{name}')
+        raise AttributeError(f"path:{wire_names(path)} name:{name}")
 
-    def set_retry(self, retry:Retry) -> 'Task':
+    def set_retry(self, retry: Retry) -> "Task":
         self.retry = retry
         return self
 
-    def _validate(self, lb:LogBox):
-        ctx='.'.join(wire_names(self._path()))
+    def _validate(self, lb: LogBox):
+        ctx = ".".join(wire_names(self._path()))
         mold = self.fn.in_mold
         unknown_vars = set(self.in_vars.keys()) - set(mold.keys)
         if len(unknown_vars) > 0:
-            lb.error(f'{ctx}: {self.fn} cannot accept: {unknown_vars}')
-        for k,ae in mold.attrs.items():
+            lb.error(f"{ctx}: {self.fn} cannot accept: {unknown_vars}")
+        for k, ae in mold.attrs.items():
             if ae.required():
                 if k not in self.in_vars:
-                    lb.error(f'{ctx}: {k} is required for {self.fn}')
+                    lb.error(f"{ctx}: {k} is required for {self.fn}")
 
         for k, ae in self.fn.in_mold.attrs.items():
             task_var = getattr(self.input, k)
-            task_var.attr_entry =  ae
+            task_var.attr_entry = ae
         for k, ae in self.fn.out_mold.attrs.items():
             task_var = getattr(self.output, k)
-            task_var.attr_entry =  ae
+            task_var.attr_entry = ae
         """
         make sure that in_vars points to valid variables. 
         in_vars can piont to: 
@@ -116,10 +113,10 @@ class Task(AutoWire):
 
 class DagMeta(AutoWireRoot):
     def __init__(cls, name, bases, dct):
-        AutoWireRoot.__init__(cls,name,bool,dct)
-        lb=LogBox()
+        AutoWireRoot.__init__(cls, name, bool, dct)
+        lb = LogBox()
         for k, v in cls._children.items():
-            if hasattr(v, '_validate'):
+            if hasattr(v, "_validate"):
                 v._validate(lb)
         if lb.has_errors():
             raise AttributeError(str(lb))
@@ -127,7 +124,7 @@ class DagMeta(AutoWireRoot):
 
 class Trigger(SmAttr):
     cron: CronExp
-    tz: TimeZone = TimeZone('UTC')
+    tz: TimeZone = TimeZone("UTC")
 
 
 # class Dag(SmAttr):
@@ -144,17 +141,16 @@ class HashLogic(SmAttr):
 
     @classmethod
     def from_module(cls, module):
-        logic = cls({"name":module.__name__})
+        logic = cls({"name": module.__name__})
         for n in dir(module):
-            if n[:1] != '_' :
+            if n[:1] != "_":
                 fn = getattr(module, n)
                 if inspect.isfunction(fn):
                     logic.methods.append(Function.parse(fn))
         return logic
 
 
-
-'''
+"""
   CauseEffectVector
     (CEV)=
     run:R?,
@@ -184,7 +180,7 @@ class HashLogic(SmAttr):
     results
   Attempt
     (A) = R
-'''
+"""
 
 # class CodeBase:
 #     '''
@@ -212,4 +208,3 @@ class HashLogic(SmAttr):
 #     (L)=<HL+T>,transform():M,params*
 #     '''
 #     pass
-

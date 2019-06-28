@@ -12,7 +12,7 @@ class LogLevel(CodeEnum):
 
 class LogEntry(SmAttr):
     level: LogLevel
-    msg:str
+    msg: str
 
 
 class LogBox(SmAttr):
@@ -36,9 +36,10 @@ class LogBox(SmAttr):
         {'level': 'WARN', 'msg': 'warn message'},
         {'level': 'ERROR', 'msg': 'error message'}]}
     """
+
     entries: List[LogEntry]
 
-    def add(self, level:LogLevel, msg:str):
+    def add(self, level: LogLevel, msg: str):
         self.entries.append(LogEntry(level=level, msg=msg))
 
     def info(self, msg: str):
@@ -55,4 +56,3 @@ class LogBox(SmAttr):
 
     def has_level(self, level):
         return any(e.level == level for e in self.entries)
-

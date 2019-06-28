@@ -1,22 +1,19 @@
 import abc
-from hashlib import sha256, sha1
-from typing import Optional
-from hashkernel import (
-    Stringable, EnsureIt, ensure_string, ensure_bytes)
-import os
-
-from hashkernel.base_x import base_x
 import base64
+import os
+from hashlib import sha1, sha256
+from typing import Optional
 
+from hashkernel import EnsureIt, Stringable, ensure_bytes, ensure_string
+from hashkernel.base_x import base_x
 
 B36 = base_x(36)
 
 
 class HashBytes(metaclass=abc.ABCMeta):
-
     @abc.abstractmethod
-    def hash_bytes(self)->bytes:
-        raise NotImplementedError('subclasses must override')
+    def hash_bytes(self) -> bytes:
+        raise NotImplementedError("subclasses must override")
 
 
 class Hasher(HashBytes):
@@ -26,7 +23,8 @@ class Hasher(HashBytes):
     >>> Hasher(b"Hello").hash_bytes()
     b'\\x18_\\x8d\\xb3"q\\xfe%\\xf5a\\xa6\\xfc\\x93\\x8b.&C\\x06\\xec0N\\xdaQ\\x80\\x07\\xd1vH&8\\x19i'
     """
-    def __init__(self, data: Optional[bytes] = None)->None:
+
+    def __init__(self, data: Optional[bytes] = None) -> None:
         self.sha = sha256()
         if data is not None:
             self.update(data)
@@ -37,7 +35,7 @@ class Hasher(HashBytes):
     def digest(self) -> bytes:
         return self.sha.digest()
 
-    def hash_bytes(self)->bytes:
+    def hash_bytes(self) -> bytes:
         return self.digest()
 
 
@@ -63,7 +61,7 @@ def decode_shard(name: str):
     return B36.decode_int(name)
 
 
-def is_it_shard(shard_name: str, max_num:int )->bool:
+def is_it_shard(shard_name: str, max_num: int) -> bool:
     """
     Test if name can represent shard
 
@@ -87,7 +85,7 @@ def is_it_shard(shard_name: str, max_num:int )->bool:
     False
     """
     shard_num = -1
-    if shard_name == '' or len(shard_name) > 3:
+    if shard_name == "" or len(shard_name) > 3:
         return False
     try:
         shard_num = decode_shard(shard_name.lower())
@@ -105,7 +103,7 @@ def shard_num(hash_bytes: bytes, base: int):
     return (b1 * 256 + b2) % base
 
 
-_SSHA_MARK= '{SSHA}'
+_SSHA_MARK = "{SSHA}"
 
 
 class SaltedSha(Stringable, EnsureIt):
@@ -128,10 +126,10 @@ class SaltedSha(Stringable, EnsureIt):
     SaltedSha('{SSHA}5wRHUQxypw7C4AVd4yZRW/8pXy2Gwvh/')
 
     """
-    def __init__( self,
-                  s:Optional[str],
-                  _digest: bytes=None,
-                  _salt: bytes=None)->None:
+
+    def __init__(
+        self, s: Optional[str], _digest: bytes = None, _salt: bytes = None
+    ) -> None:
         if s is None:
             self.digest = _digest
             self.salt = _salt
@@ -142,7 +140,7 @@ class SaltedSha(Stringable, EnsureIt):
                 self.digest = challenge_bytes[:20]
                 self.salt = challenge_bytes[20:]
             else:
-                raise AssertionError('cannot init: %r' % s)
+                raise AssertionError("cannot init: %r" % s)
 
     @staticmethod
     def from_secret(secret):
@@ -168,9 +166,9 @@ class InetAddress(Stringable, EnsureIt):
     >>> InetAddress('127.0.0.1')
     InetAddress('127.0.0.1')
     """
+
     def __init__(self, k):
         self.k = k
 
     def __str__(self):
         return self.k
-

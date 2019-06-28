@@ -1,5 +1,6 @@
-from setuptools import setup, find_packages
 import platform
+
+from setuptools import find_packages, setup
 
 cmdclass_dict = {}
 
@@ -9,7 +10,8 @@ install_requires = [
     "croniter",
     "python-dateutil",
     "pytz",
-    "aiohttp"
+    "aiofiles",
+    "aiohttp",
 ]
 
 dev_requires = [
@@ -19,13 +21,15 @@ dev_requires = [
     "mypy",
     "wheel",
     "twine",
-    "pytest"
+    "pytest",
+    "black",
+    "isort",
 ]
 
 makes_sniffer_scan_faster = {
     "Linux": "pyinotify",
     "Windows": "pywin32",
-    "Darwin": "MacFSEvents"
+    "Darwin": "MacFSEvents",
 }
 
 if platform.system() in makes_sniffer_scan_faster:
@@ -36,38 +40,42 @@ def read_file(f):
     with open(f, "r") as fh:
         return fh.read()
 
+
 long_description = read_file("README.md")
 
 try:
-    from hs_build_tools.setup import get_version_and_add_release_cmd
-    version = get_version_and_add_release_cmd('version.txt', cmdclass_dict)
-except ModuleNotFoundError:
-    version = read_file('version.txt').strip()
+    from hs_build_tools.release import get_version_and_add_release_cmd
 
-setup(name='hashkernel',
-      version=str(version),
-      classifiers=[
-          'Development Status :: 3 - Alpha',
-          'Intended Audience :: Developers',
-          'Topic :: System :: Archiving :: Backup',
-          'License :: OSI Approved :: Apache Software License',
-          'Programming Language :: Python :: 3',
-          'Programming Language :: Python :: 3.6',
-          'Programming Language :: Python :: 3.7',
-      ],
-      description='hashstore python kernel',
-      long_description=long_description,
-      long_description_content_type="text/markdown",
-      url='https://github.com/hashstore/hashkernel',
-      author='Walnut Geek',
-      author_email='wg@walnutgeek.com',
-      license='Apache 2.0',
-      packages=find_packages(exclude=("tests",)),
-      package_data={'': ['file_types.json']},
-      cmdclass=cmdclass_dict,
-      entry_points={
+    version = get_version_and_add_release_cmd("version.txt", cmdclass_dict)
+except ModuleNotFoundError:
+    version = read_file("version.txt").strip()
+
+setup(
+    name="hashkernel",
+    version=str(version),
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Intended Audience :: Developers",
+        "Topic :: System :: Archiving :: Backup",
+        "License :: OSI Approved :: Apache Software License",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+    ],
+    description="hashstore python kernel",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/hashstore/hashkernel",
+    author="Walnut Geek",
+    author_email="wg@walnutgeek.com",
+    license="Apache 2.0",
+    packages=find_packages(exclude=("tests",)),
+    package_data={"": ["file_types.json"]},
+    cmdclass=cmdclass_dict,
+    entry_points={
         #   'console_scripts': [ 'hs=hashstore.hs:main' ],
-      },
-      install_requires=install_requires,
-      extras_require={"dev": dev_requires},
-      zip_safe=False)
+    },
+    install_requires=install_requires,
+    extras_require={"dev": dev_requires},
+    zip_safe=False,
+)

@@ -1,12 +1,12 @@
 from keyword import iskeyword
-from typing import Optional, Set, Dict, List, Union
+from typing import Dict, List, Optional, Set, Union
 
 from hashkernel import Stringable
 
 CUTOFF_WIDTH = 65
 
 
-def valid_variable_name(name:str) -> bool:
+def valid_variable_name(name: str) -> bool:
     """
     >>> valid_variable_name('X')
     True
@@ -21,7 +21,7 @@ def valid_variable_name(name:str) -> bool:
     >>> valid_variable_name('lorem ipsum')
     False
     """
-    return name.isidentifier() and not(iskeyword(name))
+    return name.isidentifier() and not (iskeyword(name))
 
 
 class Content(Stringable):
@@ -49,6 +49,7 @@ class Content(Stringable):
     >>> str(c)
     'abc xyz: loer ipsum kot lakrose manta.'
     """
+
     def __init__(self, s=None):
         self.words = []
         self.append(s)
@@ -65,8 +66,8 @@ class Content(Stringable):
 
     def end_of_sentence(self):
         if len(self.words) > 0:
-            if self.words[-1][-1:] != '.':
-                self.words[-1] = self.words[-1]+'.'
+            if self.words[-1][-1:] != ".":
+                self.words[-1] = self.words[-1] + "."
 
     def append(self, s):
         if s is not None:
@@ -75,10 +76,10 @@ class Content(Stringable):
                 self.words.extend(s.split())
 
     def __str__(self):
-        return ' '.join(self.words)
+        return " ".join(self.words)
 
-    def format(self, indent, cutoff_width, first_prefix = None):
-        prefix = ' ' * indent
+    def format(self, indent, cutoff_width, first_prefix=None):
+        prefix = " " * indent
         next_line = None
         if first_prefix is not None:
             if len(first_prefix) > cutoff_width:
@@ -89,7 +90,7 @@ class Content(Stringable):
             if next_line is None:
                 next_line = prefix
             else:
-                next_line += ' '
+                next_line += " "
             next_line += w
             if len(next_line) > cutoff_width:
                 yield next_line
@@ -99,7 +100,6 @@ class Content(Stringable):
 
 
 class AbstractDocEntry:
-
     def __init__(self, name, indent, content):
         self.name = name
         self.indent = indent
@@ -115,11 +115,13 @@ class AbstractDocEntry:
     @classmethod
     def detect_entry(cls, indent, striped, allowed_keys=None):
         def check_if_key_allowed(key):
-            return ((allowed_keys is None or key in allowed_keys)
-                    and valid_variable_name(key))
-        split = [s.strip() for s in striped.split(':', 1)]
+            return (
+                allowed_keys is None or key in allowed_keys
+            ) and valid_variable_name(key)
+
+        split = [s.strip() for s in striped.split(":", 1)]
         key = split[0]
-        if len(split)==2 and check_if_key_allowed(key):
+        if len(split) == 2 and check_if_key_allowed(key):
             return cls(key, indent, split[1])
 
     def init_parse(self):
@@ -143,14 +145,14 @@ class AbstractDocEntry:
 
 
 class VariableDocEntry(AbstractDocEntry):
-
     def _init_parse(self):
         for prefix, striped in self.unparsed_lines:
             self.content.append(striped)
 
     def format(self, indent):
         yield from self.content.format(
-            indent + 4, CUTOFF_WIDTH, ' ' * indent + self.name + ':')
+            indent + 4, CUTOFF_WIDTH, " " * indent + self.name + ":"
+        )
 
 
 class Placeholder:
@@ -164,7 +166,6 @@ class Placeholder:
 
 
 class GroupOfVariables(AbstractDocEntry):
-
     def placeholder(self):
         return Placeholder(self.indent, self.name)
 
@@ -175,7 +176,7 @@ class GroupOfVariables(AbstractDocEntry):
         for indent, striped in self.unparsed_lines:
             new_var = None
             if var_indent in (None, indent):
-                new_var = VariableDocEntry.detect_entry(indent,striped)
+                new_var = VariableDocEntry.detect_entry(indent, striped)
             if new_var is None:
                 if curr_var is None:
                     self.content.append(striped)
@@ -184,7 +185,8 @@ class GroupOfVariables(AbstractDocEntry):
                         raise ValueError(
                             f"Missleading indent={indent}? "
                             f"var_indent={var_indent} "
-                            f"line={striped!r} ")
+                            f"line={striped!r} "
+                        )
             else:
                 AbstractDocEntry.ensure_parse(curr_var)
                 self.variables[new_var.name] = curr_var = new_var
@@ -195,44 +197,43 @@ class GroupOfVariables(AbstractDocEntry):
         return self.variables.keys()
 
     def format(self, indent):
-        yield ' ' * indent + self.name + ':'
+        yield " " * indent + self.name + ":"
         indent += 4
         if len(self.content) > 0:
             yield from self.content.format(indent, CUTOFF_WIDTH)
-        for _,v in self.variables.items():
+        for _, v in self.variables.items():
             yield from v.format(indent)
-
 
     def __getitem__(self, k):
         return self.variables[k]
 
 
 class DocStringTemplate:
-    def __init__(self, doc: Optional[str], keys_expected: Set[str]
-                 )->None:
+    def __init__(self, doc: Optional[str], keys_expected: Set[str]) -> None:
         self.keys_expected = keys_expected
-        self.var_groups: Dict[str,GroupOfVariables] = {}
-        self.template: List[Union[Placeholder,str]] = []
+        self.var_groups: Dict[str, GroupOfVariables] = {}
+        self.template: List[Union[Placeholder, str]] = []
         if doc is None:
             for k in keys_expected:
-                self.template.append(Placeholder(0,k))
+                self.template.append(Placeholder(0, k))
                 self.template.append("")
         else:
             curr_group = None
-            for l in doc.split('\n'):
+            for l in doc.split("\n"):
                 striped = l.strip()
                 indent = l.index(striped)
                 if curr_group is not None:
-                    if curr_group.collect_content(indent,striped):
+                    if curr_group.collect_content(indent, striped):
                         continue
                 curr_group = GroupOfVariables.detect_entry(
-                    indent, striped, keys_expected)
+                    indent, striped, keys_expected
+                )
                 if curr_group is not None:
                     self.var_groups[curr_group.name] = curr_group
                     self.template.append(curr_group.placeholder())
                 else:
                     self.template.append(l)
-            self.template.append('')
+            self.template.append("")
 
     def format(self):
         for l in self.template:
@@ -245,5 +246,3 @@ class DocStringTemplate:
 
     def doc(self):
         return "\n".join(self.format())
-
-

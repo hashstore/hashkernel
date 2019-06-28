@@ -1,14 +1,11 @@
-
-import sys
 import json
+import sys
 from datetime import datetime
 
-from hashkernel.smattr import SmAttr
-
-from hashkernel.logic import HashLogic
-
-from hashkernel import ensure_module, CodeEnum
+from hashkernel import CodeEnum, ensure_module
 from hashkernel.bakery.cake import Cake
+from hashkernel.logic import HashLogic
+from hashkernel.smattr import SmAttr
 
 
 class MsgType(CodeEnum):
@@ -25,16 +22,16 @@ class Header(SmAttr):
     time: datetime
 
 
-
 class EndPoint:
-    def __init__(self, end_point=None, host='127.0.0.1'):
+    def __init__(self, end_point=None, host="127.0.0.1"):
         self.session_id = Cake.new_portal()
         self.ctx = zmq.Context()
         self.socket = self.ctx.socket(zmq.PAIR)
         if end_point is None:
             port_selected = self.socket.bind_to_random_port(
-                f'tcp://{host}', min_port=5678, max_port=32124, max_tries=100)
-            self.end_point = f'tcp://{host}:{port_selected}'
+                f"tcp://{host}", min_port=5678, max_port=32124, max_tries=100
+            )
+            self.end_point = f"tcp://{host}:{port_selected}"
         else:
             self.socket.bind(end_point)
             self.end_point = end_point
@@ -48,7 +45,6 @@ class Kernel:
         self.socket = self.ctx.socket(zmq.PAIR)
         self.socket.connect(end_point)
 
-
     # def loop(self):
     #     self.socket.recv()
     #     self.logic
@@ -56,6 +52,4 @@ class Kernel:
 
 def start_reactor(logic):
     config = json.loads(sys.stdin.read())
-    Kernel(logic, config['session_id'], config['end_point']).loop()
-
-
+    Kernel(logic, config["session_id"], config["end_point"]).loop()

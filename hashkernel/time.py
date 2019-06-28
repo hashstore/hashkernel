@@ -1,30 +1,31 @@
 import pytz
 from croniter import croniter
 
-from hashkernel import Stringable, EnsureIt, StrKeyMixin
+from hashkernel import EnsureIt, Stringable, StrKeyMixin
 
 
-class CronExp(Stringable,EnsureIt,StrKeyMixin):
-    '''
+class CronExp(Stringable, EnsureIt, StrKeyMixin):
+    """
     >>> c = CronExp('* * 9 * *')
     >>> c
     CronExp('* * 9 * *')
     >>> str(c)
     '* * 9 * *'
-    '''
+    """
+
     def __init__(self, s):
         self.exp = s
         self.croniter()
 
     def croniter(self, dt=None):
-        return croniter(self.exp,dt)
+        return croniter(self.exp, dt)
 
     def __str__(self):
         return self.exp
 
 
-class TimeZone(Stringable,EnsureIt,StrKeyMixin):
-    '''
+class TimeZone(Stringable, EnsureIt, StrKeyMixin):
+    """
     >>> c = TimeZone('Asia/Tokyo')
     >>> c
     TimeZone('Asia/Tokyo')
@@ -34,7 +35,8 @@ class TimeZone(Stringable,EnsureIt,StrKeyMixin):
     Traceback (most recent call last):
     ...
     UnknownTimeZoneError: 'Asia/Toky'
-    '''
+    """
+
     def __init__(self, s):
         self.tzName = s
         self.tz()
@@ -44,4 +46,3 @@ class TimeZone(Stringable,EnsureIt,StrKeyMixin):
 
     def __str__(self):
         return self.tzName
-

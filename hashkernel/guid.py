@@ -1,6 +1,9 @@
-from datetime import datetime
 import os
-from nanotime import nanotime, datetime as datetime2nanotime
+from datetime import datetime
+
+from nanotime import datetime as datetime2nanotime
+from nanotime import nanotime
+
 from hashkernel.packer import NANOTIME
 
 
@@ -8,7 +11,7 @@ def new_guid_data():
     return pack_now() + os.urandom(24)
 
 
-def pack_now()->bytes:
+def pack_now() -> bytes:
     """
 
     >>> len(pack_now())
@@ -25,7 +28,7 @@ def nanotime_now():
     return datetime2nanotime(datetime.utcnow())
 
 
-def guid_to_nanotime(guid: bytes)->nanotime:
+def guid_to_nanotime(guid: bytes) -> nanotime:
     """
     >>> nt_before = nanotime_now()
     >>> data = new_guid_data()

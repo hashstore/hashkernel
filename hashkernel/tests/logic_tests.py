@@ -1,8 +1,9 @@
-import hashkernel.logic as logic
-import hashkernel.tests.logic_test_module as plugin
 from logging import getLogger
+
 from hs_build_tools.pytest import eq_, ok_
 
+import hashkernel.logic as logic
+import hashkernel.tests.logic_test_module as plugin
 from hashkernel import to_json
 
 log = getLogger(__name__)
@@ -23,29 +24,28 @@ log = getLogger(__name__)
 def test_json():
     hl = logic.HashLogic.from_module(plugin)
     json = str(hl)
-    match = \
-        '{"methods": [' \
-            '{"in_mold": [' \
-                '"n:Required[hashkernel.bakery.cake:Cake]", ' \
-                '"i:Required[int]"], ' \
-            '"out_mold": [' \
-                '"_:Required[hashkernel.bakery.cake:Cake]"], ' \
-            '"ref": "hashkernel.tests.logic_test_module:fn"}, ' \
-            '{"in_mold": [], ' \
-            '"out_mold": [' \
-                '"name:Required[str]", ' \
-                '"id:Required[int]", ' \
-                '"x:Required[hashkernel.bakery.cake:Cake]"], ' \
-            '"ref": "hashkernel.tests.logic_test_module:fn2"}, ' \
-            '{"in_mold": [' \
-                '"n:Required[hashkernel.bakery.cake:Cake]", ' \
-                '"i:Required[int]=5"], ' \
-            '"out_mold": [' \
-                '"_:Required[hashkernel.bakery.cake:Cake]"], ' \
-            '"ref": "hashkernel.tests.logic_test_module:fn3"}], ' \
-        '"name": "hashkernel.tests.logic_test_module"}' \
-
+    match = (
+        '{"methods": ['
+        '{"in_mold": ['
+        '"n:Required[hashkernel.bakery.cake:Cake]", '
+        '"i:Required[int]"], '
+        '"out_mold": ['
+        '"_:Required[hashkernel.bakery.cake:Cake]"], '
+        '"ref": "hashkernel.tests.logic_test_module:fn"}, '
+        '{"in_mold": [], '
+        '"out_mold": ['
+        '"name:Required[str]", '
+        '"id:Required[int]", '
+        '"x:Required[hashkernel.bakery.cake:Cake]"], '
+        '"ref": "hashkernel.tests.logic_test_module:fn2"}, '
+        '{"in_mold": ['
+        '"n:Required[hashkernel.bakery.cake:Cake]", '
+        '"i:Required[int]=5"], '
+        '"out_mold": ['
+        '"_:Required[hashkernel.bakery.cake:Cake]"], '
+        '"ref": "hashkernel.tests.logic_test_module:fn3"}], '
+        '"name": "hashkernel.tests.logic_test_module"}'
+    )
     eq_(json, match)
     hl2 = logic.HashLogic(to_json(hl))
     eq_(str(hl2), match)
-

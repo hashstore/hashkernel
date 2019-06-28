@@ -2,44 +2,56 @@
 # -*- coding: utf-8 -*-
 
 import abc
-
+import enum
+import json
+import logging
+import os
 import threading
 from datetime import datetime
-from hashkernel import (
-    Stringable, EnsureIt, utf8_encode, Jsonable, GlobalRef,
-    utf8_decode, Primitive)
 from io import BytesIO
-import os
-
-from hashkernel.bakery import (
-    TypesProcessor, CakeTypes, CakeProperties, CakeMode)
-
-from hashkernel.base_x import base_x
-import json
-import enum
 from pathlib import PurePosixPath
 from typing import (
-    Union, Optional, Any, Callable, Tuple, List, Iterable, Dict, IO,
-    Set, ClassVar)
-import logging
-from hashkernel.file_types import (guess_name, file_types)
-from hashkernel.guid import new_guid_data
-from hashkernel.smattr import (JsonWrap, SmAttr, BytesWrap)
-from hashkernel.hashing import (
-    Hasher, shard_name_int, shard_num, HashBytes)
-import pkg_resources
-import inspect
+    IO,
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
+import pkg_resources
+
+from hashkernel import (
+    EnsureIt,
+    GlobalRef,
+    Jsonable,
+    Primitive,
+    Stringable,
+    utf8_decode,
+    utf8_encode,
+)
+from hashkernel.bakery import CakeMode, CakeProperties, CakeTypes, TypesProcessor
+from hashkernel.base_x import base_x
+from hashkernel.file_types import file_types, guess_name
+from hashkernel.guid import new_guid_data
+from hashkernel.hashing import HashBytes, Hasher, shard_name_int, shard_num
+from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
 
 log = logging.getLogger(__name__)
 
 B62 = base_x(62)
 
+
 def _cake_types_plugins():
     return filter(
         lambda v: issubclass(type(v), TypesProcessor),
-        ( ep.load() for ep in
-          pkg_resources.iter_entry_points('hashkernel.cake_types') ))
+        (ep.load() for ep in pkg_resources.iter_entry_points("hashkernel.cake_types")),
+    )
 
 
 class CakeHeader:
@@ -68,38 +80,38 @@ class CakeHeader:
     NODE:ClassVar['CakeHeader']
     USER:ClassVar['CakeHeader']
     """
-    NO_CLASS_INLINE: ClassVar['CakeHeader']
-    NO_CLASS: ClassVar['CakeHeader']
-    JOURNAL: ClassVar['CakeHeader']
-    FOLDER_INLINE: ClassVar['CakeHeader']
-    FOLDER: ClassVar['CakeHeader']
-    TIMESTAMP: ClassVar['CakeHeader']
-    QUESTION_MSG_INLINE: ClassVar['CakeHeader']
-    QUESTION_MSG: ClassVar['CakeHeader']
-    RESPONSE_MSG_INLINE: ClassVar['CakeHeader']
-    RESPONSE_MSG: ClassVar['CakeHeader']
-    DATA_CHUNK_MSG_INLINE: ClassVar['CakeHeader']
-    DATA_CHUNK_MSG: ClassVar['CakeHeader']
-    JSON_WRAP_INLINE: ClassVar['CakeHeader']
-    JSON_WRAP: ClassVar['CakeHeader']
-    BYTES_WRAP_INLINE: ClassVar['CakeHeader']
-    BYTES_WRAP: ClassVar['CakeHeader']
-    JOURNAL_FOLDER: ClassVar['CakeHeader']
-    VTREE_FOLDER: ClassVar['CakeHeader']
-    MOUNT_FOLDER: ClassVar['CakeHeader']
-    SESSION: ClassVar['CakeHeader']
-    NODE: ClassVar['CakeHeader']
-    USER: ClassVar['CakeHeader']
+
+    NO_CLASS_INLINE: ClassVar["CakeHeader"]
+    NO_CLASS: ClassVar["CakeHeader"]
+    JOURNAL: ClassVar["CakeHeader"]
+    FOLDER_INLINE: ClassVar["CakeHeader"]
+    FOLDER: ClassVar["CakeHeader"]
+    TIMESTAMP: ClassVar["CakeHeader"]
+    QUESTION_MSG_INLINE: ClassVar["CakeHeader"]
+    QUESTION_MSG: ClassVar["CakeHeader"]
+    RESPONSE_MSG_INLINE: ClassVar["CakeHeader"]
+    RESPONSE_MSG: ClassVar["CakeHeader"]
+    DATA_CHUNK_MSG_INLINE: ClassVar["CakeHeader"]
+    DATA_CHUNK_MSG: ClassVar["CakeHeader"]
+    JSON_WRAP_INLINE: ClassVar["CakeHeader"]
+    JSON_WRAP: ClassVar["CakeHeader"]
+    BYTES_WRAP_INLINE: ClassVar["CakeHeader"]
+    BYTES_WRAP: ClassVar["CakeHeader"]
+    JOURNAL_FOLDER: ClassVar["CakeHeader"]
+    VTREE_FOLDER: ClassVar["CakeHeader"]
+    MOUNT_FOLDER: ClassVar["CakeHeader"]
+    SESSION: ClassVar["CakeHeader"]
+    NODE: ClassVar["CakeHeader"]
+    USER: ClassVar["CakeHeader"]
 
     __magic__ = 5321
-    __headers__ :List[Union['CakeHeader',None]] = [None
-                                                   for _ in range(62)]
+    __headers__: List[Union["CakeHeader", None]] = [None for _ in range(62)]
 
-    idx:int
-    mode:CakeMode
-    name:str
-    modifiers:Set[CakeProperties]
-    gref:Optional[GlobalRef]
+    idx: int
+    mode: CakeMode
+    name: str
+    modifiers: Set[CakeProperties]
+    gref: Optional[GlobalRef]
 
     def __new__(cls, value):
         if type(value) is cls:
@@ -122,12 +134,12 @@ class CakeHeader:
                 cls.__headers__[idx] = inst
             inst.modifiers.update(ct.modifiers)
             if ct.gref is not None:
-                if inst.gref is None :
+                if inst.gref is None:
                     inst.gref = ct.gref
                 elif inst.gref != ct.gref:
-                    raise ValueError(f'conflict gref: {inst.gref} vs {ct.gref}')
+                    raise ValueError(f"conflict gref: {inst.gref} vs {ct.gref}")
             if inst.mode != mode:
-                raise ValueError(f'conflict mode: {inst.mode.name} vs {mode.name}')
+                raise ValueError(f"conflict mode: {inst.mode.name} vs {mode.name}")
             return inst
 
     def __str__(self):
@@ -136,20 +148,20 @@ class CakeHeader:
     @classmethod
     def typings(cls):
         for h in cls.headers():
-            print(f'{h.name}:ClassVar[\'{type(h).__name__}\']')
+            print(f"{h.name}:ClassVar['{type(h).__name__}']")
 
     @classmethod
-    def headers(cls)->Iterable['CakeHeader']:
-        return ( h for h in cls.__headers__ if h is not None)
+    def headers(cls) -> Iterable["CakeHeader"]:
+        return (h for h in cls.__headers__ if h is not None)
 
     @classmethod
-    def inline(cls, header:'CakeHeader'):
+    def inline(cls, header: "CakeHeader"):
         if header.mode != CakeMode.SHA256:
             raise AssertionError(f"has to be {CakeMode.SHA256}")
-        return cls(header.idx-1)
+        return cls(header.idx - 1)
 
     @classmethod
-    def guess_from_type(cls, gref: Union[type,GlobalRef])->'CakeHeader':
+    def guess_from_type(cls, gref: Union[type, GlobalRef]) -> "CakeHeader":
         gref = GlobalRef.ensure_it(gref)
         for h in cls.headers():
             if CakeProperties.IS_RESOLVED in h.modifiers:
@@ -168,10 +180,10 @@ for types in (CakeTypes, *_cake_types_plugins()):
 MAX_NUM_OF_SHARDS = 8192
 
 
-inline_max_bytes=32
+inline_max_bytes = 32
 
 
-def nop_on_chunk(chunk: bytes)->None:
+def nop_on_chunk(chunk: bytes) -> None:
     """
     Does noting
 
@@ -183,10 +195,11 @@ def nop_on_chunk(chunk: bytes)->None:
     pass
 
 
-def process_stream(fd:IO[bytes],
-                   on_chunk:Callable[[bytes], None]=nop_on_chunk,
-                   chunk_size:int=65355
-                   )->Tuple[bytes,Optional[bytes]]:
+def process_stream(
+    fd: IO[bytes],
+    on_chunk: Callable[[bytes], None] = nop_on_chunk,
+    chunk_size: int = 65355,
+) -> Tuple[bytes, Optional[bytes]]:
     """
     process stream to calculate hash, length of data,
     and if it is smaller then hash size, holds on to stream
@@ -209,8 +222,8 @@ def process_stream(fd:IO[bytes],
         if length <= inline_max_bytes:
             inline_data += chunk
     fd.close()
-    return (hasher.digest(),
-            None if length > inline_max_bytes else inline_data)
+    return (hasher.digest(), None if length > inline_max_bytes else inline_data)
+
 
 class Cake(Stringable, EnsureIt, Primitive):
     """
@@ -276,34 +289,36 @@ class Cake(Stringable, EnsureIt, Primitive):
     is_vtree:bool
 
     """
-    is_inlined:bool
-    is_immutable:bool
-    is_resolved:bool
-    is_folder:bool
-    is_guid:bool
-    is_journal:bool
-    is_vtree:bool
 
-    def __init__(self,
-                 s:Optional[str],
-                 data:Optional[bytes]=None,
-                 header:Optional[CakeHeader]=None
-                 )->None:
+    is_inlined: bool
+    is_immutable: bool
+    is_resolved: bool
+    is_folder: bool
+    is_guid: bool
+    is_journal: bool
+    is_vtree: bool
+
+    def __init__(
+        self,
+        s: Optional[str],
+        data: Optional[bytes] = None,
+        header: Optional[CakeHeader] = None,
+    ) -> None:
         if s is None:
-            if data is None or header is None :
-                raise AssertionError(
-                    f'both data={data} and header={header} required')
+            if data is None or header is None:
+                raise AssertionError(f"both data={data} and header={header} required")
             self._data = data
             self.header = header
         else:
             self._data = B62.decode(s[1:])
             self.header = CakeHeader(s[:1])
-        CakeProperties.set_properties(
-            self, *self.header.modifiers)
+        CakeProperties.set_properties(self, *self.header.modifiers)
         if not self.is_inlined and len(self._data) != 32:
-            raise AssertionError(f'invalid CAKey: {s} {data} {header} {self.is_inlined}' )
+            raise AssertionError(
+                f"invalid CAKey: {s} {data} {header} {self.is_inlined}"
+            )
 
-    def shard_num(self, base:int)->int:
+    def shard_num(self, base: int) -> int:
         """
         >>> Cake('0').shard_num(8192)
         0
@@ -321,79 +336,67 @@ class Cake(Stringable, EnsureIt, Primitive):
         else:
             return 0
 
-    def shard_name(self, base: int)->str:
+    def shard_name(self, base: int) -> str:
         return shard_name_int(self.shard_num(base))
 
     @staticmethod
-    def from_digest_and_inline_data(digest: bytes,
-                                    buffer: Optional[bytes],
-                                    header = CakeHeader.NO_CLASS
-                                    )->'Cake':
+    def from_digest_and_inline_data(
+        digest: bytes, buffer: Optional[bytes], header=CakeHeader.NO_CLASS
+    ) -> "Cake":
         if buffer is not None and len(buffer) <= inline_max_bytes:
-            return Cake(None,
-                        data=buffer,
-                        header=CakeHeader.inline(header))
+            return Cake(None, data=buffer, header=CakeHeader.inline(header))
         else:
-            return Cake(None,
-                        data=digest,
-                        header=header)
+            return Cake(None, data=digest, header=header)
 
     @staticmethod
-    def from_stream(fd: IO[bytes], header=CakeHeader.NO_CLASS)->'Cake':
+    def from_stream(fd: IO[bytes], header=CakeHeader.NO_CLASS) -> "Cake":
         digest, inline_data = process_stream(fd)
-        return Cake.from_digest_and_inline_data(
-            digest, inline_data, header)
+        return Cake.from_digest_and_inline_data(digest, inline_data, header)
 
     @staticmethod
-    def from_bytes(s:bytes, header=CakeHeader.NO_CLASS)->'Cake':
+    def from_bytes(s: bytes, header=CakeHeader.NO_CLASS) -> "Cake":
         return Cake.from_stream(BytesIO(s), header)
 
     @staticmethod
-    def from_file(file:str, header)->'Cake':
-        return Cake.from_stream(open(file, 'rb'), header)
-
+    def from_file(file: str, header) -> "Cake":
+        return Cake.from_stream(open(file, "rb"), header)
 
     @staticmethod
-    def new_guid(header=CakeHeader.TIMESTAMP)->'Cake':
+    def new_guid(header=CakeHeader.TIMESTAMP) -> "Cake":
         cake = Cake.random_cake(header)
         cake.assert_guid()
         return cake
 
     @staticmethod
     def random_cake(header):
-        cake = Cake(
-            None,
-            data=new_guid_data(),
-            header=header)
+        cake = Cake(None, data=new_guid_data(), header=header)
         return cake
 
-
-    def augment_header(self, new_header:CakeHeader)->'Cake':
+    def augment_header(self, new_header: CakeHeader) -> "Cake":
         self.assert_guid()
         if new_header == self.header:
             return self
         return Cake(None, data=self._data, header=new_header)
 
-    def has_data(self)->bool:
+    def has_data(self) -> bool:
         return self.is_inlined
 
-
-    def data(self)->Optional[bytes]:
+    def data(self) -> Optional[bytes]:
         return self._data if self.is_inlined else None
 
-    def digest(self)->bytes:
-        if not(hasattr(self, '_digest')):
+    def digest(self) -> bytes:
+        if not (hasattr(self, "_digest")):
             if self.is_inlined:
                 self._digest = Hasher(self._data).digest()
             else:
                 self._digest = self._data
         return self._digest
 
-    def assert_guid(self)->None:
+    def assert_guid(self) -> None:
         if not self.is_guid:
-            raise AssertionError('has to be a guid: %r' % self)
+            raise AssertionError("has to be a guid: %r" % self)
 
-    def hash_bytes(self)->bytes:
+    def hash_bytes(self) -> bytes:
         """
         :raise AssertionError when Cake is not hash based
         :return: hash in bytes
@@ -402,24 +405,23 @@ class Cake(Stringable, EnsureIt, Primitive):
             raise AssertionError(f"Not-hash {self.header.mode} {self}")
         return self._data
 
-    def __str__(self)->str:
+    def __str__(self) -> str:
         return str(self.header) + B62.encode(self._data)
 
-    def __repr__(self)->str:
+    def __repr__(self) -> str:
         return f"Cake({str(self)!r})"
 
-    def __hash__(self)->int:
-        if not(hasattr(self, '_hash')):
+    def __hash__(self) -> int:
+        if not (hasattr(self, "_hash")):
             self._hash = hash(self.digest())
         return self._hash
 
-    def __eq__(self, other)->bool:
+    def __eq__(self, other) -> bool:
         if not isinstance(other, Cake):
             return False
-        return self._data == other._data and \
-               self.header == other.header
+        return self._data == other._data and self.header == other.header
 
-    def __ne__(self, other)->bool:
+    def __ne__(self, other) -> bool:
         return not self.__eq__(other)
 
 
@@ -427,17 +429,17 @@ HashBytes.register(Cake)
 
 
 class HasCake(metaclass=abc.ABCMeta):
-
     @abc.abstractmethod
     def cake(self) -> Cake:
-        raise NotImplementedError('subclasses must override')
+        raise NotImplementedError("subclasses must override")
 
 
 class HasCakeFromBytes:
     def cake(self) -> Cake:
         return Cake.from_bytes(
-            bytes(self), # type:ignore
-            header=CakeHeader.guess_from_type(type(self)))
+            bytes(self),  # type:ignore
+            header=CakeHeader.guess_from_type(type(self)),
+        )
 
 
 HasCake.register(HasCakeFromBytes)
@@ -508,8 +510,9 @@ class CakeRack(Jsonable):
     >>> cakes.get_name_by_cake("1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT")
     'longer'
     """
-    def __init__(self,o:Any=None)->None:
-        self.store: Dict[str,Optional[Cake]] = {}
+
+    def __init__(self, o: Any = None) -> None:
+        self.store: Dict[str, Optional[Cake]] = {}
         self._clear_cached()
         if o is not None:
             self.parse(o)
@@ -522,42 +525,40 @@ class CakeRack(Jsonable):
         self._in_bytes: Any = None
         self._defined: Any = None
 
-    def inverse(self)->Dict[Optional[Cake],str]:
+    def inverse(self) -> Dict[Optional[Cake], str]:
         if self._inverse is None:
             self._inverse = {v: k for k, v in self.store.items()}
         return self._inverse
 
-    def cake(self)->Cake:
+    def cake(self) -> Cake:
         if self._cake is None:
             in_bytes = bytes(self)
             self._cake = Cake.from_digest_and_inline_data(
-                Hasher(in_bytes).digest(),
-                in_bytes,
-                header=CakeHeader.FOLDER)
+                Hasher(in_bytes).digest(), in_bytes, header=CakeHeader.FOLDER
+            )
         return self._cake
 
-    def content(self)->str:
+    def content(self) -> str:
         if self._content is None:
             self._content = str(self)
         return self._content
 
-    def __bytes__(self)->bytes:
+    def __bytes__(self) -> bytes:
         if self._in_bytes is None:
             self._in_bytes = utf8_encode(self.content())
         return self._in_bytes
 
-    def size(self)->int:
+    def size(self) -> int:
         if self._size is None:
             self._size = len(bytes(self))
         return self._size
 
-    def is_defined(self)->bool:
+    def is_defined(self) -> bool:
         if self._defined is None:
-            self._defined = all(
-                v is not None for v in self.store.values())
+            self._defined = all(v is not None for v in self.store.values())
         return self._defined
 
-    def parse(self, o:Any)->'CakeRack':
+    def parse(self, o: Any) -> "CakeRack":
         self._clear_cached()
         if isinstance(o, bytes):
             names, cakes = json.loads(utf8_decode(o))
@@ -570,9 +571,9 @@ class CakeRack(Jsonable):
         self.store.update(zip(names, map(Cake.ensure_it_or_none, cakes)))
         return self
 
-    def merge(self,
-              previous:'CakeRack'
-              )->Iterable[Tuple[PatchAction,str,Optional[Cake]]]:
+    def merge(
+        self, previous: "CakeRack"
+    ) -> Iterable[Tuple[PatchAction, str, Optional[Cake]]]:
         """
         >>> o1 = Cake.from_bytes(b'The quick brown fox jumps over')
         >>> o2v1 = Cake.from_bytes(b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.')
@@ -629,44 +630,44 @@ class CakeRack(Jsonable):
                             yield PatchAction.delete, k, None
                             yield PatchAction.update, k, v
 
-    def is_neuron(self, k)->Optional[bool]:
+    def is_neuron(self, k) -> Optional[bool]:
         v = self.store[k]
         return v is None or v.is_folder
 
-    def __iter__(self)->Iterable[str]:
+    def __iter__(self) -> Iterable[str]:
         return iter(self.keys())
 
-    def __setitem__(self, k:str, v:Union[Cake,str,None])->None:
+    def __setitem__(self, k: str, v: Union[Cake, str, None]) -> None:
         self._clear_cached()
         self.store[k] = Cake.ensure_it_or_none(v)
 
-    def __delitem__(self, k:str):
+    def __delitem__(self, k: str):
         self._clear_cached()
         del self.store[k]
 
-    def __getitem__(self, k:str)->Optional[Cake]:
+    def __getitem__(self, k: str) -> Optional[Cake]:
         return self.store[k]
 
-    def __len__(self)->int:
+    def __len__(self) -> int:
         return len(self.store)
 
-    def __contains__(self, k:str)->bool:
+    def __contains__(self, k: str) -> bool:
         return k in self.store
 
-    def get_name_by_cake(self, k:Union[Cake,str]):
+    def get_name_by_cake(self, k: Union[Cake, str]):
         return self.inverse()[Cake.ensure_it(k)]
 
-    def keys(self)->List[str]:
+    def keys(self) -> List[str]:
         names = list(self.store.keys())
         names.sort()
         return names
 
-    def get_cakes(self, names=None)->List[Optional[Cake]]:
+    def get_cakes(self, names=None) -> List[Optional[Cake]]:
         if names is None:
             names = self.keys()
         return [self.store[k] for k in names]
 
-    def __to_json__(self)->Tuple[List[str],List[Optional[Cake]]]:
+    def __to_json__(self) -> Tuple[List[str], List[Optional[Cake]]]:
         keys = self.keys()
         return (keys, self.get_cakes(keys))
 
@@ -718,13 +719,14 @@ class CakePath(Stringable, EnsureIt, Primitive):
     >>> str(CakePath('q/x/палка_в/колесе.bin'))
     'q/x/палка_в/колесе.bin'
     """
-    def __init__(self, s, _root = None, _path = []):
-        if s is  None:
+
+    def __init__(self, s, _root=None, _path=[]):
+        if s is None:
             self.root = _root
             self.path = _path
         else:
             split = PurePosixPath(s).parts
-            if len(split) > 0 and split[0] == '/' :
+            if len(split) > 0 and split[0] == "/":
                 self.root = Cake(split[1])
                 self.path = split[2:]
             else:
@@ -737,7 +739,7 @@ class CakePath(Stringable, EnsureIt, Primitive):
         return CakePath(None, _path=path, _root=self.root)
 
     def parent(self):
-        if self.relative() or len(self.path) == 0 :
+        if self.relative() or len(self.path) == 0:
             return None
         return CakePath(None, _path=self.path[:-1], _root=self.root)
 
@@ -747,12 +749,12 @@ class CakePath(Stringable, EnsureIt, Primitive):
         l = len(self.path)
         reminder = None
         if l < 1:
-            next= None
+            next = None
         else:
-            next=self.path[0]
+            next = self.path[0]
             if l > 1:
                 reminder = CakePath(None, _path=self.path[1:])
-        return next,reminder
+        return next, reminder
 
     def relative(self):
         return self.root is None
@@ -764,8 +766,7 @@ class CakePath(Stringable, EnsureIt, Primitive):
         if self.relative():
             path = list(current_cake_path.path)
             path.extend(self.path)
-            return CakePath(
-                None ,_root=current_cake_path.root, _path=path)
+            return CakePath(None, _root=current_cake_path.root, _path=path)
         else:
             return self
 
@@ -773,30 +774,30 @@ class CakePath(Stringable, EnsureIt, Primitive):
         if self.relative():
             return self.path_join()
         else:
-            return f'/{str(self.root)}/{self.path_join()}'
+            return f"/{str(self.root)}/{self.path_join()}"
 
     def path_join(self):
-        return '/'.join(self.path)
+        return "/".join(self.path)
 
     def filename(self):
         l = len(self.path)
-        if l > 0 and self.path[l-1]:
-            return self.path[l-1]
+        if l > 0 and self.path[l - 1]:
+            return self.path[l - 1]
 
 
 def cake_or_path(s, relative_to_root=False):
     if isinstance(s, Cake) or isinstance(s, CakePath):
         return s
-    elif s[:1] == '/':
+    elif s[:1] == "/":
         return CakePath(s)
-    elif relative_to_root and '/' in s:
-        return CakePath('/'+s)
+    elif relative_to_root and "/" in s:
+        return CakePath("/" + s)
     else:
         return Cake(s)
 
 
 def ensure_cakepath(s):
-    if not(isinstance(s, (Cake,CakePath) )):
+    if not (isinstance(s, (Cake, CakePath))):
         s = cake_or_path(s)
     if isinstance(s, Cake):
         return CakePath(None, _root=s)
@@ -835,29 +836,28 @@ def ensure_cakepath(s):
 
 
 class HashSession(metaclass=abc.ABCMeta):
-
     @staticmethod
-    def get() -> 'HashSession':
+    def get() -> "HashSession":
         return threading.local().hash_ctx
 
     @staticmethod
-    def set(ctx: 'HashSession') -> None:
+    def set(ctx: "HashSession") -> None:
         threading.local().hash_ctx = ctx
 
     @staticmethod
     def close() -> None:
         l = threading.local()
-        if hasattr(l, 'hash_ctx'):
+        if hasattr(l, "hash_ctx"):
             l.hash_ctx.close()
             l.hash_ctx = None
 
     @abc.abstractmethod
-    def get_info(self, cake_path:CakePath ) -> 'PathInfo':
-        raise NotImplementedError('subclasses must override')
+    def get_info(self, cake_path: CakePath) -> "PathInfo":
+        raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    def get_content(self, cake_path:CakePath ) -> 'LookupInfo':
-        raise NotImplementedError('subclasses must override')
+    def get_content(self, cake_path: CakePath) -> "LookupInfo":
+        raise NotImplementedError("subclasses must override")
 
     # @abc.abstractmethod
     # def write_content(self, fp:IO[bytes], chunk_size:int=65355
@@ -898,7 +898,7 @@ class PathInfo(SmAttr):
 class Content(PathInfo):
     __serialize_as__ = PathInfo
     data: Optional[bytes]
-    stream_fn: Optional[Callable[[],IO[bytes]]]
+    stream_fn: Optional[Callable[[], IO[bytes]]]
     file: Optional[str]
 
     def has_data(self) -> bool:
@@ -914,11 +914,11 @@ class Content(PathInfo):
         if self.data is not None:
             return BytesIO(self.data)
         elif self.file is not None:
-            return open(self.file, 'rb')
+            return open(self.file, "rb")
         elif self.stream_fn is not None:
             return self.stream_fn()
         else:
-            raise AssertionError(f'cannot stream: {repr(self)}')
+            raise AssertionError(f"cannot stream: {repr(self)}")
 
     def has_file(self):
         return self.file is not None
@@ -928,27 +928,26 @@ class Content(PathInfo):
 
     @classmethod
     def from_file(cls, file):
-        if not(os.path.exists(file)):
+        if not (os.path.exists(file)):
             raise FileNotFoundError()
         file_type = guess_name(file)
-        return cls(file=file,
-                   file_type=file_type,
-                   mime=file_types[file_type].mime)
+        return cls(file=file, file_type=file_type, mime=file_types[file_type].mime)
 
     @classmethod
-    def from_data_and_file_type(cls, file_type:str,
-                           data:Optional[bytes]=None,
-                           file:Optional[str]=None ):
+    def from_data_and_file_type(
+        cls, file_type: str, data: Optional[bytes] = None, file: Optional[str] = None
+    ):
         if data is not None:
-            return cls(data=data, size=len(data),
-                       file_type=file_type,
-                       mime=file_types[file_type].mime)
+            return cls(
+                data=data,
+                size=len(data),
+                file_type=file_type,
+                mime=file_types[file_type].mime,
+            )
         elif file is not None:
-            return cls(file=file,
-                       file_type=file_type,
-                       mime=file_types[file_type].mime)
+            return cls(file=file, file_type=file_type, mime=file_types[file_type].mime)
         else:
-            raise AssertionError('file or data should be defined')
+            raise AssertionError("file or data should be defined")
 
 
 class LookupInfo(Content):
@@ -956,19 +955,23 @@ class LookupInfo(Content):
     info: Optional[PathInfo]
 
 
-class RemoteError(ValueError): pass
+class RemoteError(ValueError):
+    pass
 
 
-class CredentialsError(ValueError): pass
+class CredentialsError(ValueError):
+    pass
 
 
-class NotAuthorizedError(ValueError): pass
+class NotAuthorizedError(ValueError):
+    pass
 
 
-class NotFoundError(ValueError): pass
+class NotFoundError(ValueError):
+    pass
 
 
-RESERVED_NAMES = ('_', '~', '-')
+RESERVED_NAMES = ("_", "~", "-")
 
 
 def check_bookmark_name(name):
@@ -983,7 +986,7 @@ def check_bookmark_name(name):
     ...
     ValueError: Cannot contain slash: a/h
     """
-    if '/' in name:
-        raise ValueError('Cannot contain slash: ' +name)
+    if "/" in name:
+        raise ValueError("Cannot contain slash: " + name)
     if name in RESERVED_NAMES:
-        raise ValueError('Reserved name: '+name)
+        raise ValueError("Reserved name: " + name)

@@ -2,7 +2,7 @@ import typing
 
 
 def get_args(cls, default=None):
-    if hasattr(cls, '__args__'):
+    if hasattr(cls, "__args__"):
         return cls.__args__
     return default
 
@@ -16,7 +16,7 @@ def is_typing(tt, t, args):
         return False
 
 
-def is_tuple(t, args = None):
+def is_tuple(t, args=None):
     """
     >>> n = None
     >>> o = typing.Optional[int]
@@ -53,7 +53,7 @@ def is_optional(t, args=None):
         return False
 
 
-def is_list(t,args=None):
+def is_list(t, args=None):
     """
     >>> n = None
     >>> o = typing.Optional[int]
@@ -69,7 +69,7 @@ def is_list(t,args=None):
     return is_typing(typing.List, t, args)
 
 
-def is_dict(t,args=None):
+def is_dict(t, args=None):
     """
     >>> n = None
     >>> o = typing.Optional[int]
@@ -101,6 +101,7 @@ def is_from_typing_module(cls):
     """
     return cls.__module__ == typing.__name__
 
+
 def is_classvar(t):
     """
 
@@ -111,6 +112,7 @@ def is_classvar(t):
 
     """
     return is_from_typing_module(t) and str(t).startswith("typing.ClassVar[")
+
 
 def get_attr_hints(o):
     """
@@ -123,8 +125,4 @@ def get_attr_hints(o):
     >>> get_attr_hints(X)
     {'y': <class 'float'>}
     """
-    return {
-        k: h
-        for k, h in typing.get_type_hints(o).items()
-        if not is_classvar(h)
-    }
+    return {k: h for k, h in typing.get_type_hints(o).items() if not is_classvar(h)}

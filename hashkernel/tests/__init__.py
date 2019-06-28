@@ -7,4 +7,3 @@ class StringableExample(Stringable):
 
     def __str__(self):
         return self.s
-
