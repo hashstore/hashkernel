@@ -39,7 +39,7 @@ from hashkernel.bakery import CakeMode, CakeProperties, CakeTypes, TypesProcesso
 from hashkernel.base_x import base_x
 from hashkernel.file_types import file_types, guess_name
 from hashkernel.guid import new_guid_data
-from hashkernel.hashing import HashBytes, Hasher, shard_name_int, shard_num
+from hashkernel.hashing import HashBytes, Hasher, shard_name_int, shard_based_on_two_bites
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
 
 log = logging.getLogger(__name__)
@@ -250,7 +250,7 @@ class Cake(Stringable, EnsureIt, Primitive):
     >>> short_k.data() == short_content
     True
     >>> str(short_k)
-    '01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi'
+    '1aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi0'
 
     Longer content is hashed with SHA256:
 
@@ -263,7 +263,7 @@ class Cake(Stringable, EnsureIt, Primitive):
     >>> longer_k.data() is None
     True
     >>> str(longer_k)
-    '1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT'
+    'zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1'
     >>> len(longer_k.hash_bytes())
     32
     >>> len(longer_k.digest())
@@ -310,8 +310,8 @@ class Cake(Stringable, EnsureIt, Primitive):
             self._data = data
             self.header = header
         else:
-            self._data = B62.decode(s[1:])
-            self.header = CakeHeader(s[:1])
+            self._data = B62.decode(s[:-1])
+            self.header = CakeHeader(s[-1:])
         CakeProperties.set_properties(self, *self.header.modifiers)
         if not self.is_inlined and len(self._data) != 32:
             raise AssertionError(
@@ -324,13 +324,13 @@ class Cake(Stringable, EnsureIt, Primitive):
         0
         >>> Cake.from_bytes(b' ').shard_num(8192)
         32
-        >>> Cake('1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT').shard_num(8192)
+        >>> Cake('zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1').shard_num(8192)
         5937
 
         """
         l = len(self._data)
         if l >= 2:
-            return shard_num(self._data, base)
+            return shard_based_on_two_bites(self._data, base)
         elif l == 1:
             return self._data[0]
         else:
@@ -369,8 +369,7 @@ class Cake(Stringable, EnsureIt, Primitive):
 
     @staticmethod
     def random_cake(header):
-        cake = Cake(None, data=new_guid_data(), header=header)
-        return cake
+        return Cake(None, data=new_guid_data(), header=header)
 
     def augment_header(self, new_header: CakeHeader) -> "Cake":
         self.assert_guid()
@@ -406,7 +405,7 @@ class Cake(Stringable, EnsureIt, Primitive):
         return self._data
 
     def __str__(self) -> str:
-        return str(self.header) + B62.encode(self._data)
+        return  B62.encode(self._data)+str(self.header)
 
     def __repr__(self) -> str:
         return f"Cake({str(self)!r})"
@@ -502,12 +501,12 @@ class CakeRack(Jsonable):
     >>> cakes.keys()
     ['longer', 'short']
     >>> str(cakes.cake())
-    '4hgtcrgt9lOFTbs2jBGWxoa7YCTKQDl81GGBblrsqGnF'
+    's6dPCvdSRfton1gG9OZnzRVe5m3Z0u3ixl3tU4xGLlr4'
     >>> cakes.size()
     117
     >>> cakes.content()
-    '[["longer", "short"], ["1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT", "01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi"]]'
-    >>> cakes.get_name_by_cake("1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT")
+    '[["longer", "short"], ["zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1", "1aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi0"]]'
+    >>> cakes.get_name_by_cake("zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1")
     'longer'
     """
 
@@ -588,23 +587,23 @@ class CakeRack(Jsonable):
         >>> r2['o2']=o2v2
         >>> r2['o3']=o3
         >>> list(r2.merge(r1))
-        [(<PatchAction.update: 1>, 'o2', Cake('1NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ5'))]
+        [(<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ51'))]
         >>> list(r1.merge(r2))
-        [(<PatchAction.update: 1>, 'o2', Cake('1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT'))]
+        [(<PatchAction.update: 1>, 'o2', Cake('zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1'))]
         >>> r1['o1'] = None
         >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', Cake('01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi')),
-        (<PatchAction.update: 1>, 'o2', Cake('1NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ5'))]
+        (<PatchAction.update: 1>, 'o1', Cake('1aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi0')),
+        (<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ51'))]
         >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o2', Cake('1zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT'))]
+        (<PatchAction.update: 1>, 'o2', Cake('zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT1'))]
         >>> del r1["o2"]
         >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', Cake('01aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi')),
-        (<PatchAction.update: 1>, 'o2', Cake('1NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ5'))]
+        (<PatchAction.update: 1>, 'o1', Cake('1aMUQDApalaaYbXFjBVMMvyCAMfSPcTojI0745igi0')),
+        (<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ51'))]
         >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
         [(<PatchAction.delete: -1>, 'o1', None),
         (<PatchAction.update: 1>, 'o1', None),
@@ -677,38 +676,38 @@ HasCake.register(CakeRack)
 
 class CakePath(Stringable, EnsureIt, Primitive):
     """
-    >>> Cake.from_bytes(b'[["b.text"], ["06wO"]]')
-    Cake('03AesyExFURweyj3t32aiReMJEpCXbD')
-    >>> root = CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD')
+    >>> Cake.from_bytes(b'[["b.text"], ["6wO0"]]')
+    Cake('3AesyExFURweyj3t32aiRmQy0lHWJn0')
+    >>> root = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0')
     >>> root
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/')
     >>> root.root
-    Cake('03AesyExFURweyj3t32aiReMJEpCXbD')
+    Cake('3AesyExFURweyj3t32aiRmQy0lHWJn0')
     >>> root.root.header.mode
     <CakeMode.INLINE: 0>
     >>> root.root.data()
-    b'[["b.text"], ["06wO"]]'
-    >>> absolute = CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/b.txt')
+    b'[["b.text"], ["6wO0"]]'
+    >>> absolute = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt')
     >>> absolute
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/b.txt')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt')
     >>> relative = CakePath('y/z')
     >>> relative
     CakePath('y/z')
     >>> relative.make_absolute(absolute)
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/b.txt/y/z')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt/y/z')
 
     `make_absolute()` have no effect to path that already
     absolute
 
-    >>> p0 = CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/r/f')
+    >>> p0 = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r/f')
     >>> p0.make_absolute(absolute)
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/r/f')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r/f')
     >>> p1 = p0.parent()
     >>> p2 = p1.parent()
     >>> p1
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/r')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r')
     >>> p2
-    CakePath('/03AesyExFURweyj3t32aiReMJEpCXbD/')
+    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/')
     >>> p2.parent()
     >>> p0.path_join()
     'r/f'

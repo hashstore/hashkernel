@@ -3,7 +3,7 @@ import datetime
 import sys
 from logging import getLogger
 
-from hs_build_tools.pytest import assert_text, eq_, ok_
+from hs_build_tools.pytest import assert_text,  ok_
 
 import hashkernel as kernel
 import hashkernel.docs as docs
@@ -23,7 +23,7 @@ log = getLogger(__name__)
 #               docs, log_box):
 #         r = doctest.testmod(t)
 #         ok_(r.attempted > 0, f'There is no doctests in module {t}')
-#         eq_(r.failed,0)
+#         assert r.failed ==0
 
 
 def test_reraise():
@@ -75,20 +75,20 @@ class JsonableExample(kernel.Jsonable):
 
 def test_ables():
     x = StringableIterable("x")
-    eq_(bytes(x), b"x")
+    assert bytes(x) == b"x"
 
     z5 = JsonableExample("z", 5)
-    eq_(bytes(z5), b'{"i": 5, "s": "z"}')
+    assert bytes(z5) == b'{"i": 5, "s": "z"}'
     z3 = JsonableExample("z", 3)
     z5too = JsonableExample("z", 5)
     ok_(z5 == z5too)
     ok_(z5 != z3)
     ok_(not (z5 == z3))
 
-    eq_(kernel.to_dict(z5), kernel.to_json(z5))
-    eq_(kernel.to_tuple(z5), ("z", 5))
+    assert kernel.to_dict(z5) == kernel.to_json(z5)
+    assert kernel.to_tuple(z5) == ("z", 5)
 
-    eq_(kernel.to_tuple(x), ("x",))
+    assert kernel.to_tuple(x) == ("x",)
     try:
         kernel.to_dict(x)
         ok_(False)
@@ -106,13 +106,11 @@ def test_json_encode_decode():
     except:
         ok_("is not JSON serializable" in kernel.exception_message())
 
-    eq_(
-        kernel.json_encode(datetime.datetime(2019, 4, 26, 19, 46, 50, 217946)),
-        '"2019-04-26T19:46:50.217946"',
-    )
-    eq_(kernel.json_encode(datetime.date(2019, 4, 26)), '"2019-04-26"')
-    eq_(kernel.json_encode(JsonableExample("z", 5)), '{"i": 5, "s": "z"}')
-    eq_(kernel.json_decode('{"i": 5, "s": "z"}'), {"i": 5, "s": "z"})
+    assert kernel.json_encode(datetime.datetime(2019, 4, 26, 19, 46, 50, 217946)) == \
+        '"2019-04-26T19:46:50.217946"'
+    assert kernel.json_encode(datetime.date(2019, 4, 26)) == '"2019-04-26"'
+    assert kernel.json_encode(JsonableExample("z", 5)) == '{"i": 5, "s": "z"}'
+    assert kernel.json_decode('{"i": 5, "s": "z"}') == {"i": 5, "s": "z"}
     try:
         kernel.json_decode('{"i": 5, "s": "z"')
         ok_(False)
@@ -142,10 +140,7 @@ def test_mix_in():
         def __str__(self):
             return self.k
 
-    eq_(
-        kernel.mix_in(kernel.StrKeyMixin, B2),
-        ["_StrKeyMixin__cached_str", "__eq__", "__hash__", "__ne__"],
-    )
+    assert kernel.mix_in(kernel.StrKeyMixin, B2) == ["_StrKeyMixin__cached_str", "__eq__", "__hash__", "__ne__"]
 
     class B3(kernel.StrKeyMixin):
         def __init__(self, k):
@@ -172,29 +167,23 @@ def test_mix_in():
         def __eq__(self, other):
             raise NotImplementedError()
 
-    eq_(
-        kernel.mix_in(B1, B6),
-        [
+    assert kernel.mix_in(B1, B6) == [
             "_StrKeyMixin__cached_str",
             "__eq__",
             "__hash__",
             "__init__",
             "__ne__",
             "__str__",
-        ],
-    )
-    eq_(
-        kernel.mix_in(B1, B7, lambda s, _: s != "__eq__"),
-        ["_StrKeyMixin__cached_str", "__hash__", "__init__", "__ne__", "__str__"],
-    )
+        ]
+    assert kernel.mix_in(B1, B7, lambda s, _: s != "__eq__") == ["_StrKeyMixin__cached_str", "__hash__", "__init__", "__ne__", "__str__"]
     kernel.mix_in(B4, B5)
     kernel.mix_in(kernel.StrKeyMixin, B5)
 
     def retest(B, match=(False, True, True, False)):
-        eq_(B("a") != B("a"), match[0])
-        eq_(B("a") != B("b"), match[1])
-        eq_(B("a") == B("a"), match[2])
-        eq_(B("a") == B("b"), match[3])
+        assert (B("a") != B("a")) == match[0]
+        assert (B("a") != B("b")) == match[1]
+        assert (B("a") == B("a")) == match[2]
+        assert (B("a") == B("b")) == match[3]
 
     retest(B1)
     retest(B2)
@@ -260,28 +249,22 @@ def hello(i: int, s: str = "xyz") -> int:
 
 def test_doc_str_template():
     dst = docs.DocStringTemplate(hello.__doc__, {"Args", "Returns"})
-    eq_(dst.var_groups["Args"].keys(), {"s"})
-    eq_(dst.var_groups["Returns"].keys(), {"_"})
-    eq_(
-        list(dst.var_groups["Returns"].format(4)),
-        ["    Returns:", "        _: very important number"],
-    )
+    assert dst.var_groups["Args"].keys() == {"s"}
+    assert dst.var_groups["Returns"].keys() == {"_"}
+    assert list(dst.var_groups["Returns"].format(4)) == ["    Returns:", "        _: very important number"]
     assert_text(dst.doc(), hello.__doc__)
 
     dst = docs.DocStringTemplate(A.__doc__, {"Attributes"})
     attributes_ = dst.var_groups["Attributes"]
-    eq_(attributes_.keys(), {"i", "s", "d"})
-    eq_(
-        list(attributes_.format(4)),
-        [
+    assert attributes_.keys(), {"i", "s", "d"}
+    assert list(attributes_.format(4)) == [
             "    Attributes:",
             "        possible atributes of class",
             "        i: integer",
             "        s: string with default",
             "        d: optional datetime",
-        ],
-    )
-    eq_(str(attributes_["s"].content), "string with default")
+        ]
+    assert str(attributes_["s"].content) == "string with default"
     assert_text(dst.doc(), A.__doc__)
 
     attributes_.init_parse()  # no harm to call it second time
@@ -290,13 +273,10 @@ def test_doc_str_template():
         docs.DocStringTemplate(A_ValueError.__doc__, {"Attributes"})
         ok_(False)
     except ValueError as e:
-        eq_(
-            str(e),
-            "Missleading indent=7? var_indent=8 " "line='attribute contributed' ",
-        )
+        assert str(e) == "Missleading indent=7? var_indent=8 " "line='attribute contributed' "
 
     dstNone = docs.DocStringTemplate(None, {})
-    eq_(dstNone.doc(), "")
+    assert dstNone.doc() == ""
 
 
 def test_CodeEnum():
@@ -304,15 +284,15 @@ def test_CodeEnum():
         A = 0
         B = 1
 
-    eq_(CodeEnumExample(1), CodeEnumExample.B)
-    eq_(CodeEnumExample(0), CodeEnumExample.A)
-    eq_(CodeEnumExample["B"], CodeEnumExample.B)
-    eq_(CodeEnumExample("B"), CodeEnumExample.B)
-    eq_(CodeEnumExample("A"), CodeEnumExample.A)
+    assert CodeEnumExample(1) == CodeEnumExample.B
+    assert CodeEnumExample(0) == CodeEnumExample.A
+    assert CodeEnumExample["B"] == CodeEnumExample.B
+    assert CodeEnumExample("B") == CodeEnumExample.B
+    assert CodeEnumExample("A") == CodeEnumExample.A
     CodeEnumExample.A.assert_equals(CodeEnumExample.A)
     try:
         CodeEnumExample.A.assert_equals(CodeEnumExample.B)
         ok_(False)
     except AssertionError:
         ...
-    eq_(hex(CodeEnumExample.A), "0x0")
+    assert hex(CodeEnumExample.A) == "0x0"

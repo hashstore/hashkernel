@@ -94,9 +94,9 @@ def is_it_shard(shard_name: str, max_num: int) -> bool:
     return shard_num >= 0 and shard_num < max_num
 
 
-def shard_num(hash_bytes: bytes, base: int):
+def shard_based_on_two_bites(hash_bytes: bytes, base: int) -> int:
     """
-    >>> shard_num(b'ab', 7)
+    >>> shard_based_on_two_bites(b'ab', 7)
     3
     """
     b1, b2 = hash_bytes[:2]

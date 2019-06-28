@@ -1,7 +1,7 @@
 from datetime import datetime
 from logging import getLogger
 
-from hs_build_tools.pytest import eq_, ok_
+from hs_build_tools.pytest import ok_
 
 import hashkernel.guid as guid
 import hashkernel.packer as p
@@ -15,7 +15,7 @@ def test_docs():
     for m in (p, guid):
         r = doctest.testmod(m)
         ok_(r.attempted > 0, "There is not doctests in module")
-        eq_(r.failed, 0)
+        assert r.failed == 0
 
 
 def test_1():
@@ -26,26 +26,21 @@ def test_1():
     pack = z.pack(
         (begining_of_time, 13497439e-30, "Hello World!!!", 42.0, 1000, 1000, 244)
     )
-    eq_(
-        pack.hex(),
-        "0000000000000000"
-        "29f7654a4151303b"
-        "8e48656c6c6f20576f726c64212121"
-        "00002842"
-        "e8030000"
-        "e803"
-        "f4",
-    )
+    assert pack.hex() == \
+        "0000000000000000" \
+        "29f7654a4151303b" \
+        "8e48656c6c6f20576f726c64212121" \
+        "00002842" \
+        "e8030000" \
+        "e803" \
+        "f4"
     unpack, sz = z.unpack(pack, 0)
-    eq_(
-        unpack,
-        (begining_of_time, 1.3497439e-23, "Hello World!!!", 42.0, 1000, 1000, 244),
-    )
-    eq_(len(pack), sz)
+    assert unpack == (begining_of_time, 1.3497439e-23, "Hello World!!!", 42.0, 1000, 1000, 244)
+    assert len(pack) == sz
 
     z = p.TuplePacker(p.FixedSizePacker(3), p.UTC_DATETIME, p.INT_8)
     pack = z.pack((bytes([65, 66, 67]), begining_of_time, 17))
-    eq_(pack.hex(), "414243" "0000000000000000" "11")
+    assert pack.hex() == "414243" "0000000000000000" "11"
     unpack, sz = z.unpack(pack, 0)
-    eq_(unpack, (b"ABC", begining_of_time, 17))
-    eq_(len(pack), sz)
+    assert unpack == (b"ABC", begining_of_time, 17)
+    assert len(pack) == sz

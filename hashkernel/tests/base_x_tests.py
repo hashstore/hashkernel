@@ -1,6 +1,6 @@
 from random import randint, seed
 
-from hs_build_tools.pytest import eq_, ok_
+from hs_build_tools.pytest import  ok_
 
 import hashkernel.base_x as bx
 
@@ -13,13 +13,13 @@ b58 = bx.base_x(58)
 
 
 def test_nulls():
-    eq_(b58.decode("12"), b"\x00\x01")
-    eq_(b58.decode(b"12"), b"\x00\x01")
-    eq_(b58.encode(b"\0\1"), "12")
-    eq_(b58.decode("1"), b"\x00")
-    eq_(b58.encode(b"\0"), "1")
-    eq_(b58.decode(""), b"")
-    eq_(b58.encode(b""), "")
+    assert b58.decode("12") == b"\x00\x01"
+    assert b58.decode(b"12") == b"\x00\x01"
+    assert b58.encode(b"\0\1") == "12"
+    assert b58.decode("1") == b"\x00"
+    assert b58.encode(b"\0") == "1"
+    assert b58.decode("") == b""
+    assert b58.encode(b"") == ""
     try:
         b58.encode("")
         ok_(False)
@@ -36,6 +36,6 @@ def test_randomized():
 
         for codec in all_codecs:
             s = codec.encode(b)
-            eq_(codec.decode(s), b)
+            assert codec.decode(s) == b
             s = codec.encode_check(b)
-            eq_(codec.decode_check(s), b)
+            assert codec.decode_check(s) == b

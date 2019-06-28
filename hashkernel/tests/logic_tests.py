@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from hs_build_tools.pytest import eq_, ok_
+from hs_build_tools.pytest import  ok_
 
 import hashkernel.logic as logic
 import hashkernel.tests.logic_test_module as plugin
@@ -13,7 +13,7 @@ log = getLogger(__name__)
 #     import doctest
 #     r = doctest.testmod(logic)
 #     ok_(r.attempted > 0, 'There is not doctests in module')
-#     eq_(r.failed,0)
+#     assert r.failed ==0
 
 # class Dag(logic.Task):
 #     v:int
@@ -46,6 +46,6 @@ def test_json():
         '"ref": "hashkernel.tests.logic_test_module:fn3"}], '
         '"name": "hashkernel.tests.logic_test_module"}'
     )
-    eq_(json, match)
+    assert json == match
     hl2 = logic.HashLogic(to_json(hl))
-    eq_(str(hl2), match)
+    assert str(hl2) == match

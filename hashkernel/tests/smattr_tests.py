@@ -2,7 +2,7 @@ from datetime import datetime
 from logging import getLogger
 from typing import Dict, List, Optional, Tuple
 
-from hs_build_tools.pytest import assert_text, eq_, ok_
+from hs_build_tools.pytest import assert_text, ok_
 
 from hashkernel import GlobalRef, exception_message, to_json
 from hashkernel.smattr import (
@@ -21,7 +21,7 @@ def test_docs():
 
     r = doctest.testmod(smattr)
     ok_(r.attempted > 0, f"There is not doctests in module")
-    eq_(r.failed, 0)
+    assert r.failed == 0
 
 
 class A(SmAttr):
@@ -59,7 +59,7 @@ def pack_wolves(i: int, s: str = "xyz") -> Tuple[int, str]:
 
 def test_extract_molds_from_function():
     in_mold, out_mold, dst = extract_molds_from_function(pack_wolves)
-    eq_(str(out_mold), '["num_of_wolves:Required[int]", "pack_name:Required[str]"]')
+    assert str(out_mold) == '["num_of_wolves:Required[int]", "pack_name:Required[str]"]'
     assert_text(
         dst.doc(),
         """ Greeting protocol
@@ -104,17 +104,13 @@ def test_wrap():
     s = str(abc)
 
     def do_check(w):
-        eq_(str(w.unwrap()), s)
-        eq_(
-            str(w),
-            '{"classRef": "hashkernel.tests.smattr_tests:Abc", '
-            '"json": {"name": "n", "val": 555}}',
-        )
-        eq_(str(JsonWrap(to_json(w)).unwrap()), s)
+        assert str(w.unwrap()) == s
+        assert str(w) == '{"classRef": "hashkernel.tests.smattr_tests:Abc", "json": {"name": "n", "val": 555}}'
+        assert str(JsonWrap(to_json(w)).unwrap()) == s
 
     do_check(JsonWrap({"classRef": GlobalRef(Abc), "json": {"name": "n", "val": 555}}))
     do_check(JsonWrap.wrap(abc))
     try:
         JsonWrap.wrap(5)
     except AttributeError:
-        eq_("Not jsonable: 5", exception_message())
+        assert "Not jsonable: 5" == exception_message()
