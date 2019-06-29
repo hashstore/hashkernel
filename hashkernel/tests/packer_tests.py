@@ -1,21 +1,10 @@
 from datetime import datetime
 from logging import getLogger
 
-from hs_build_tools.pytest import ok_
 
-import hashkernel.guid as guid
 import hashkernel.packer as p
 
 log = getLogger(__name__)
-
-
-def test_docs():
-    import doctest
-
-    for m in (p, guid):
-        r = doctest.testmod(m)
-        ok_(r.attempted > 0, "There is not doctests in module")
-        assert r.failed == 0
 
 
 def test_1():

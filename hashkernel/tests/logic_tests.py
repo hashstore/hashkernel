@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from hs_build_tools.pytest import ok_
+
 
 import hashkernel.logic as logic
 import hashkernel.tests.logic_test_module as plugin
@@ -12,7 +12,7 @@ log = getLogger(__name__)
 # def test_docs():
 #     import doctest
 #     r = doctest.testmod(logic)
-#     ok_(r.attempted > 0, 'There is not doctests in module')
+#     assert (r.attempted > 0, 'There is not doctests in module')
 #     assert r.failed ==0
 
 # class Dag(logic.Task):

@@ -1,7 +1,5 @@
 from random import randint, seed
 
-from hs_build_tools.pytest import ok_
-
 import hashkernel.base_x as bx
 
 
@@ -22,7 +20,7 @@ def test_nulls():
     assert b58.encode(b"") == ""
     try:
         b58.encode("")
-        ok_(False)
+        assert (False)
     except TypeError:
         pass
 

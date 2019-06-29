@@ -6,7 +6,7 @@ import tempfile
 from io import BytesIO
 from logging import getLogger
 
-from hs_build_tools.pytest import ok_
+
 
 import hashkernel.bakery as bakery
 import hashkernel.bakery.cake as cake
@@ -20,7 +20,7 @@ def test_PatchAction():
     assert cake.PatchAction.delete == cake.PatchAction["delete"]
     assert cake.PatchAction.delete == cake.PatchAction.ensure_it("delete")
     assert cake.PatchAction.update == cake.PatchAction.ensure_it_or_none("update")
-    ok_(cake.PatchAction.ensure_it_or_none(None) is None)
+    assert (cake.PatchAction.ensure_it_or_none(None) is None)
     assert str(cake.PatchAction.update) == "update"
 
 
@@ -32,9 +32,9 @@ def test_CAKe():
         assert u1.digest() == u1n.digest()
         assert u1 == u1n
         if d is None:
-            ok_(not (u1.is_inlined))
+            assert (not (u1.is_inlined))
         else:
-            ok_(u1.is_inlined)
+            assert (u1.is_inlined)
             assert c == u1.data()
 
     do_test(b"", "0", True)
@@ -51,12 +51,12 @@ def test_CAKe():
     d = c.Cake.new_guid(c.CakeHeader.MOUNT_FOLDER)
     x = c.Cake.new_guid(c.CakeHeader.MOUNT_FOLDER)
     z = c.Cake(str(d))
-    ok_(z == d)
+    assert (z == d)
     assert (z != d) == False
-    ok_(z != x)
-    ok_(d != x)
-    ok_(z.header == d.header)
-    ok_(str(z) == str(d))
+    assert (z != x)
+    assert (d != x)
+    assert (z.header == d.header)
+    assert (str(z) == str(d))
 
 
 def test_Bundle():
@@ -73,12 +73,12 @@ def test_Bundle():
     u2 = b2.cake()
     assert u_f == u2
     assert u1 == u2
-    ok_(u1 == u2)
+    assert (u1 == u2)
     b1["a"] = inline_udk
     udk_bundle_str = '[["a"], ["%s"]]' % inline_udk
     assert str(b1) == udk_bundle_str
     u1 = b1.cake()
-    ok_(u1 != u2)
+    assert (u1 != u2)
     b2.parse(utf8_reader(BytesIO(bytes(b1))))
     assert str(b2) == udk_bundle_str
     assert b2.size() == 55

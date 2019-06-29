@@ -2,26 +2,16 @@ from datetime import datetime
 from logging import getLogger
 from typing import Dict, List, Optional, Tuple
 
-from hs_build_tools.pytest import assert_text, ok_
+from hs_build_tools.pytest import assert_text
 
 from hashkernel import GlobalRef, exception_message, to_json
 from hashkernel.smattr import (
     JsonWrap,
     SmAttr,
     extract_molds_from_function,
-    typing_factory,
 )
 
 log = getLogger(__name__)
-
-
-def test_docs():
-    import doctest
-    import hashkernel.smattr as smattr
-
-    r = doctest.testmod(smattr)
-    ok_(r.attempted > 0, f"There is not doctests in module")
-    assert r.failed == 0
 
 
 class A(SmAttr):

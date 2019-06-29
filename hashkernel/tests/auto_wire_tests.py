@@ -1,6 +1,6 @@
 from logging import getLogger
 
-from hs_build_tools.pytest import ok_
+
 
 from hashkernel import exception_message
 from hashkernel.auto_wire import AutoWire, AutoWireRoot, wire_names
@@ -38,6 +38,6 @@ def test_wiring():
 
     try:
         q = x._q
-        ok_(False)
+        assert (False)
     except AttributeError:
         assert exception_message() == "no privates: _q"
