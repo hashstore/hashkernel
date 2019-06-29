@@ -44,7 +44,10 @@ def read_file(f):
 long_description = read_file("README.md")
 
 try:
-    from hs_build_tools.release import get_version_and_add_release_cmd
+    try:
+        from hs_build_tools.release import get_version_and_add_release_cmd
+    except ModuleNotFoundError:
+        from hs_build_tools.setup import get_version_and_add_release_cmd #todo: remove when hs-build-tools released
 
     version = get_version_and_add_release_cmd("version.txt", cmdclass_dict)
 except ModuleNotFoundError:
