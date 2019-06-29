@@ -1,7 +1,5 @@
 from logging import getLogger
 
-
-
 import hashkernel.logic as logic
 import hashkernel.tests.logic_test_module as plugin
 from hashkernel import to_json

@@ -49,8 +49,8 @@ def test_reraise():
             except:
                 e = sys.exc_info()[1]
                 msg = kernel.exception_message(e)
-                assert ("EOF" in msg)
-                assert ("bye" in msg)
+                assert "EOF" in msg
+                assert "bye" in msg
 
 
 class StringableIterable(StringableExample):
@@ -81,9 +81,9 @@ def test_ables():
     assert bytes(z5) == b'{"i": 5, "s": "z"}'
     z3 = JsonableExample("z", 3)
     z5too = JsonableExample("z", 5)
-    assert (z5 == z5too)
-    assert (z5 != z3)
-    assert (not (z5 == z3))
+    assert z5 == z5too
+    assert z5 != z3
+    assert not (z5 == z3)
 
     assert kernel.to_dict(z5) == kernel.to_json(z5)
     assert kernel.to_tuple(z5) == ("z", 5)
@@ -91,7 +91,7 @@ def test_ables():
     assert kernel.to_tuple(x) == ("x",)
     try:
         kernel.to_dict(x)
-        assert (False)
+        assert False
     except NotImplementedError:
         ...
 
@@ -102,9 +102,9 @@ def test_json_encode_decode():
 
     try:
         kernel.json_encode(q())
-        assert (False)
+        assert False
     except:
-        assert ("is not JSON serializable" in kernel.exception_message())
+        assert "is not JSON serializable" in kernel.exception_message()
 
     assert (
         kernel.json_encode(datetime.datetime(2019, 4, 26, 19, 46, 50, 217946))
@@ -115,9 +115,9 @@ def test_json_encode_decode():
     assert kernel.json_decode('{"i": 5, "s": "z"}') == {"i": 5, "s": "z"}
     try:
         kernel.json_decode('{"i": 5, "s": "z"')
-        assert (False)
+        assert False
     except ValueError:
-        assert ('text=\'{"i": 5, "s": "z"\'' in kernel.exception_message())
+        assert 'text=\'{"i": 5, "s": "z"\'' in kernel.exception_message()
 
 
 def test_mix_in():
@@ -205,15 +205,15 @@ def test_mix_in():
     retest(B5)
     retest(B6)
 
-    assert (B6("x") == B6("x"))
+    assert B6("x") == B6("x")
     try:
         B7("x") == B7("x")
-        assert (False)
+        assert False
     except NotImplementedError:
         ...
 
-    assert (isinstance(B6("x"), StrKeyAbcMixin))
-    assert (not (isinstance(B5("x"), StrKeyAbcMixin)))
+    assert isinstance(B6("x"), StrKeyAbcMixin)
+    assert not (isinstance(B5("x"), StrKeyAbcMixin))
 
 
 class A:
@@ -287,7 +287,7 @@ def test_doc_str_template():
 
     try:
         docs.DocStringTemplate(A_ValueError.__doc__, {"Attributes"})
-        assert (False)
+        assert False
     except ValueError as e:
         assert (
             str(e) == "Missleading indent=7? var_indent=8 "
@@ -311,7 +311,7 @@ def test_CodeEnum():
     CodeEnumExample.A.assert_equals(CodeEnumExample.A)
     try:
         CodeEnumExample.A.assert_equals(CodeEnumExample.B)
-        assert (False)
+        assert False
     except AssertionError:
         ...
     assert hex(CodeEnumExample.A) == "0x0"

@@ -20,7 +20,7 @@ def test_nulls():
     assert b58.encode(b"") == ""
     try:
         b58.encode("")
-        assert (False)
+        assert False
     except TypeError:
         pass
 

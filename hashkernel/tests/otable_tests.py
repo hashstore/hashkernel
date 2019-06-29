@@ -43,13 +43,13 @@ def test_gref_with_molded_table():
     assert str(GlobalRef(OTable)) == tn
     aref = str(GlobalRef(OTable[A]))
     assert aref == f"{tn}[hashkernel.tests.otable_tests:A]"
-    assert (ATable is OTable[A])
+    assert ATable is OTable[A]
     a_table = GlobalRef(aref).get_instance()
-    assert (ATable is a_table)
+    assert ATable is a_table
 
 
 def test_typing_with_template():
     s = f"List[{GlobalRef(OTable[A])}]"
     tt = typing_factory(s)
     assert s == str(typing_factory(str(tt)))
-    assert (tt.val_cref.cls is OTable[A])
+    assert tt.val_cref.cls is OTable[A]

@@ -5,11 +5,7 @@ from typing import Dict, List, Optional, Tuple
 from hs_build_tools.pytest import assert_text
 
 from hashkernel import GlobalRef, exception_message, to_json
-from hashkernel.smattr import (
-    JsonWrap,
-    SmAttr,
-    extract_molds_from_function,
-)
+from hashkernel.smattr import JsonWrap, SmAttr, extract_molds_from_function
 
 log = getLogger(__name__)
 

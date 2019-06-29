@@ -1,7 +1,6 @@
 from datetime import datetime
 from logging import getLogger
 
-
 import hashkernel.packer as p
 
 log = getLogger(__name__)
