@@ -17,9 +17,7 @@ Cake_REF, CakeRack_REF, QuestionMsg_REF, DataChunkMsg_REF, ResponseMsg_REF = (
 
 
 class CakeProperties(enum.Enum):
-    IS_INLINED = enum.auto()
     IS_IMMUTABLE = enum.auto()
-    IS_RESOLVED = enum.auto()
     IS_FOLDER = enum.auto()
     IS_GUID = enum.auto()
     IS_JOURNAL = enum.auto()
@@ -40,9 +38,8 @@ class CakeProperties(enum.Enum):
 
 
 class CakeMode(CodeEnum):
-    INLINE = (0, CakeProperties.IS_IMMUTABLE, CakeProperties.IS_INLINED)
-    SHA256 = (1, CakeProperties.IS_IMMUTABLE, CakeProperties.IS_RESOLVED)
-    GUID = (2, CakeProperties.IS_GUID)
+    SHA256 = (0, CakeProperties.IS_IMMUTABLE)
+    GUID = (1, CakeProperties.IS_GUID)
 
     def __init__(self, code: int, *modifiers: CakeProperties) -> None:
         CodeEnum.__init__(self, code)
@@ -58,7 +55,7 @@ class CakeType(SmAttr):
         return ClassRef.ensure_it_or_none(self.gref)
 
     def __str__(self):
-        return f"mode={self.mode},gref={self.gref}," f"modifiers={self.modifiers}"
+        return f"mode={self.mode},gref={self.gref},modifiers={self.modifiers}"
 
     def __repr__(self):
         return f"{type(self).__name__}({str(self)})"
@@ -70,16 +67,8 @@ class TypesProcessor(type):
         for k in dct:
             if k[:1] != "_" and isinstance(dct[k], CakeType):
                 ct: CakeType = dct[k]
-                if ct.mode is None:
-                    x.append((f"{k}_INLINE", CakeMode.INLINE, ct))
-                    x.append((f"{k}", CakeMode.SHA256, ct))
-                elif ct.mode == CakeMode.GUID:
-                    x.append((k, ct.mode, ct))
-                else:
-                    raise AssertionError(
-                        "mode should be GUID or None. None means "
-                        "immutable data and expanded to INLINE and SHA"
-                    )
+                assert ct.mode is not None
+                x.append((k, ct.mode, ct))
         cls.__headers__ = x
         cls.__start_index__ = getattr(cls, "__start_index__", 0)
 
@@ -90,15 +79,17 @@ class CakeTypes(metaclass=TypesProcessor):
     True
     """
 
-    NO_CLASS = CakeType()
+    NO_CLASS = CakeType(mode=CakeMode.SHA256)
     JOURNAL = CakeType(mode=CakeMode.GUID, modifiers=[CakeProperties.IS_JOURNAL])
-    FOLDER = CakeType(modifiers=[CakeProperties.IS_FOLDER], gref=CakeRack_REF)
+    FOLDER = CakeType(
+        mode=CakeMode.SHA256, modifiers=[CakeProperties.IS_FOLDER], gref=CakeRack_REF
+    )
     TIMESTAMP = CakeType(mode=CakeMode.GUID)
-    QUESTION_MSG = CakeType(gref=QuestionMsg_REF)
-    RESPONSE_MSG = CakeType(gref=ResponseMsg_REF)
-    DATA_CHUNK_MSG = CakeType(gref=DataChunkMsg_REF)
-    JSON_WRAP = CakeType(gref=GlobalRef(JsonWrap))
-    BYTES_WRAP = CakeType(gref=GlobalRef(BytesWrap))
+    QUESTION_MSG = CakeType(mode=CakeMode.SHA256)
+    RESPONSE_MSG = CakeType(mode=CakeMode.SHA256)
+    DATA_CHUNK_MSG = CakeType(mode=CakeMode.SHA256)
+    JSON_WRAP = CakeType(mode=CakeMode.SHA256, gref=GlobalRef(JsonWrap))
+    BYTES_WRAP = CakeType(mode=CakeMode.SHA256, gref=GlobalRef(BytesWrap))
     JOURNAL_FOLDER = CakeType(
         mode=CakeMode.GUID,
         gref=CakeRack_REF,

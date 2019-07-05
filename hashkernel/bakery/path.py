@@ -1,4 +1,3 @@
-import abc
 import os
 from datetime import datetime
 from io import BytesIO
@@ -13,38 +12,36 @@ from hashkernel.smattr import SmAttr
 
 class CakePath(Stringable, EnsureIt, Primitive):
     """
-    >>> Cake.from_bytes(b'[["b.text"], ["6wO0"]]')
-    Cake('3AesyExFURweyj3t32aiRmQy0lHWJn0')
-    >>> root = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0')
+    >>> Cake.from_bytes(b'[["b.text"], [null]]')
+    Cake('vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
+    >>> root = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
     >>> root
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/')
     >>> root.root
-    Cake('3AesyExFURweyj3t32aiRmQy0lHWJn0')
+    Cake('vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
     >>> root.root.header.mode
-    <CakeMode.INLINE: 0>
-    >>> root.root.data()
-    b'[["b.text"], ["6wO0"]]'
-    >>> absolute = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt')
+    <CakeMode.SHA256: 0>
+    >>> absolute = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')
     >>> absolute
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')
     >>> relative = CakePath('y/z')
     >>> relative
     CakePath('y/z')
     >>> relative.make_absolute(absolute)
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/b.txt/y/z')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt/y/z')
 
     `make_absolute()` have no effect to path that already
     absolute
 
-    >>> p0 = CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r/f')
+    >>> p0 = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r/f')
     >>> p0.make_absolute(absolute)
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r/f')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r/f')
     >>> p1 = p0.parent()
     >>> p2 = p1.parent()
     >>> p1
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/r')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r')
     >>> p2
-    CakePath('/3AesyExFURweyj3t32aiRmQy0lHWJn0/')
+    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/')
     >>> p2.parent()
     >>> p0.path_join()
     'r/f'

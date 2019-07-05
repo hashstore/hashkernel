@@ -2,41 +2,55 @@ import abc
 import base64
 import os
 from hashlib import sha1, sha256
-from typing import Optional
+from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Stringable, ensure_bytes, ensure_string
 from hashkernel.base_x import base_x
 
 B36 = base_x(36)
 
-
-class HashBytes(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def hash_bytes(self) -> bytes:
-        raise NotImplementedError("subclasses must override")
+ALGO = sha256
 
 
-class Hasher(HashBytes):
+class Hasher:
     """
     >>> Hasher().digest()
     b"\\xe3\\xb0\\xc4B\\x98\\xfc\\x1c\\x14\\x9a\\xfb\\xf4\\xc8\\x99o\\xb9$'\\xaeA\\xe4d\\x9b\\x93L\\xa4\\x95\\x99\\x1bxR\\xb8U"
-    >>> Hasher(b"Hello").hash_bytes()
+    >>> Hasher(b"Hello").digest()
     b'\\x18_\\x8d\\xb3"q\\xfe%\\xf5a\\xa6\\xfc\\x93\\x8b.&C\\x06\\xec0N\\xdaQ\\x80\\x07\\xd1vH&8\\x19i'
+    >>> Hasher.SIZEOF
+    32
     """
 
-    def __init__(self, data: Optional[bytes] = None) -> None:
-        self.sha = sha256()
+    SIZEOF = len(ALGO().digest())
+
+    def __init__(
+        self,
+        data: Optional[bytes] = None,
+        on_update: Optional[Callable[[bytes], None]] = None,
+    ) -> None:
+        self.sha = ALGO()
+        self.on_update = on_update
         if data is not None:
             self.update(data)
 
-    def update(self, b: bytes):
+    def update(self, b: bytes) -> "Hasher":
         self.sha.update(b)
+        if self.on_update is not None:
+            self.on_update(b)
+        return self
+
+    def update_from_stream(self, fd: IO[bytes], chunk_size: int = 65355) -> "Hasher":
+        while True:
+            chunk = fd.read(chunk_size)
+            if len(chunk) <= 0:
+                break
+            self.update(chunk)
+        fd.close()
+        return self
 
     def digest(self) -> bytes:
         return self.sha.digest()
-
-    def hash_bytes(self) -> bytes:
-        return self.digest()
 
 
 def shard_name_int(num: int):
@@ -94,12 +108,12 @@ def is_it_shard(shard_name: str, max_num: int) -> bool:
     return shard_num >= 0 and shard_num < max_num
 
 
-def shard_based_on_two_bites(hash_bytes: bytes, base: int) -> int:
+def shard_based_on_two_bites(digest: bytes, base: int) -> int:
     """
     >>> shard_based_on_two_bites(b'ab', 7)
     3
     """
-    b1, b2 = hash_bytes[:2]
+    b1, b2 = digest[:2]
     return (b1 * 256 + b2) % base
 
 
