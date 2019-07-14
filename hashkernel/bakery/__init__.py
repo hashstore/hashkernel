@@ -32,8 +32,8 @@ log = logging.getLogger(__name__)
 
 class CakeProperties(enum.Enum):
     IS_HASH = enum.auto()
-    IS_FOLDER = enum.auto()
     IS_GUID = enum.auto()
+    IS_FOLDER = enum.auto()
     IS_JOURNAL = enum.auto()
     IS_VTREE = enum.auto()
 
@@ -63,6 +63,9 @@ class CakeHeader:
     headers: Optional["CakeHeaders"]
 
     def __init__(self, modifiers, gref=None, idx=None, name=None, headers=None):
+        assert (
+            CakeProperties.IS_GUID in modifiers or CakeProperties.IS_HASH in modifiers
+        )
         self.modifiers = modifiers
         self.gref = gref
         self.idx = idx
@@ -85,21 +88,19 @@ class CakeHeader:
         return bytes((self.idx,))
 
 
-class _AutoRegister(type):
+class HeaderRegistar(type):
     def __init__(cls, name, bases, dct):
         cls.__headers__ = [None for _ in range(62)]
         cls.__by_name__: Dict[str, "CakeHeader"] = {}
         cls.__types__: Optional[Dict[GlobalRef, "CakeHeader"]] = None
-        idx = 0
+        idx = dct.get("__start_idx__", 0)
         for k in dct:
             if k[:1] != "_":
                 if isinstance(dct[k], CakeHeader):
                     ch: CakeHeader = dct[k]
                     ch.idx = idx
                     ch.name = k
-                    assert k not in cls.__by_name__
-                    cls.__headers__[idx] = ch
-                    cls.__by_name__[k] = ch
+                    cls.register(ch)
                     idx += 1
 
     def __getitem__(cls, k):
@@ -123,6 +124,7 @@ class _AutoRegister(type):
             ch.idx = next(i for i, h in enumerate(cls.__headers__) if h is None)
         cls.__headers__[ch.idx] = ch
         cls.__by_name__[ch.name] = ch
+        ch.headers = cls
 
     def by_type(cls, gref: Union[type, GlobalRef]) -> Optional["CakeHeader"]:
         gref = GlobalRef.ensure_it(gref)
@@ -138,7 +140,7 @@ class _AutoRegister(type):
         return (h for h in cls.__headers__ if h is not None)
 
 
-class CakeHeaders(metaclass=_AutoRegister):
+class CakeHeaders(metaclass=HeaderRegistar):
     NO_CLASS = CakeHeader({CakeProperties.IS_HASH})
     JOURNAL = CakeHeader({CakeProperties.IS_GUID, CakeProperties.IS_JOURNAL})
     FOLDER = CakeHeader({CakeProperties.IS_HASH, CakeProperties.IS_FOLDER})

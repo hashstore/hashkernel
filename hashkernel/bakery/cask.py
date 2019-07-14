@@ -4,7 +4,7 @@ from typing import NamedTuple, Optional, Sequence, Set, Tuple
 from nanotime import nanotime
 
 from hashkernel import CodeEnum
-from hashkernel.bakery import Cake
+from hashkernel.bakery import Cake, CakeHeaders
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
@@ -77,11 +77,21 @@ class CheckpointEntry(NamedTuple):
     chunk_id: Cake
     type: CheckPointType
 
+
 class CheckpointEntry(NamedTuple):
     start: int
     end: int
     chunk_id: Cake
     type: CheckPointType
+
+
+class PrevCaskEntry(NamedTuple):
+    prev_cask: Cake
+
+
+class NextCaskEntry(NamedTuple):
+    next_cask: Cake
+
 
 def map_tuple_packers(types, component_packers):
     packers = []
@@ -94,7 +104,14 @@ def map_tuple_packers(types, component_packers):
     return packers
 
 
-ENTRY_TYPES = (DataEntry, JournalEntry, VtreeEntry, CheckpointEntry)
+ENTRY_TYPES = (
+    DataEntry,
+    JournalEntry,
+    VtreeEntry,
+    CheckpointEntry,
+    PrevCaskEntry,
+    NextCaskEntry,
+)
 
 ENTRY_PACKERS = map_tuple_packers(
     ENTRY_TYPES,
