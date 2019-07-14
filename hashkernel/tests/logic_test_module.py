@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from hashkernel.bakery.cake import Cake
+from hashkernel.bakery import Cake
 from hashkernel.logic import DagMeta, EdgeMold, Task
 
 

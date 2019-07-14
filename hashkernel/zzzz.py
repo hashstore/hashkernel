@@ -1,7 +1,6 @@
 # Genrated by: (for f in `ls *py|sed s/...$//`;do echo import hashkernel.$f;done) |grep -v zzzz >> zzzz.py
 import hashkernel.auto_wire
 import hashkernel.bakery
-import hashkernel.bakery.cake
 import hashkernel.base_x
 import hashkernel.docs
 import hashkernel.executible

@@ -9,7 +9,7 @@
 # import time
 #
 # from hashkernel import ensure_bytes, exception_message, json_encode
-# from hashkernel.bakery.cake import Content, NotAuthorizedError
+# from hashkernel.bakery import Content, NotAuthorizedError
 # from hashkernel.file_types import file_types
 #
 # JSON__MIME = file_types["JSON"].mime

@@ -3,7 +3,7 @@ import traceback
 from typing import Any, Dict, Generator, Optional
 
 from hashkernel import Conversion, GlobalRef, exception_message, to_json
-from hashkernel.bakery.cake import QuestionMsg, ResponseChain, ResponseMsg
+from hashkernel.bakery import QuestionMsg, ResponseChain, ResponseMsg
 from hashkernel.smattr import Mold, SmAttr, extract_molds_from_function
 
 EDGE_CLS_NAMES = {"Input", "Output"}

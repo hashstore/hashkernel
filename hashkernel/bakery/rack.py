@@ -3,7 +3,7 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from hashkernel import Jsonable, utf8_decode, utf8_encode
-from hashkernel.bakery.cake import Cake, CakeHeader, HasCake
+from hashkernel.bakery import Cake, CakeHeader, CakeHeaders, HasCake
 from hashkernel.hashing import Hasher
 from hashkernel.smattr import SmAttr
 
@@ -75,7 +75,7 @@ class CakeRack(Jsonable):
     def cake(self) -> Cake:
         if self._cake is None:
             self._cake = Cake(
-                None, digest=Hasher(bytes(self)).digest(), header=CakeHeader.FOLDER
+                None, digest=Hasher(bytes(self)).digest(), header=CakeHeaders.FOLDER
             )
         return self._cake
 
@@ -214,3 +214,5 @@ class CakeRack(Jsonable):
 
 
 HasCake.register(CakeRack)
+
+CakeHeaders.FOLDER.update_gref(CakeRack)

@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
-from hashkernel.bakery.cake import Cake
+from hashkernel.bakery import Cake
 from hashkernel.file_types import file_types, guess_name
 from hashkernel.smattr import SmAttr
 
@@ -19,8 +19,6 @@ class CakePath(Stringable, EnsureIt, Primitive):
     CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/')
     >>> root.root
     Cake('vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
-    >>> root.root.header.mode
-    <CakeMode.SHA256: 0>
     >>> absolute = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')
     >>> absolute
     CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')

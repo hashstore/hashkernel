@@ -1,7 +1,7 @@
 import abc
 import struct
 from datetime import datetime, timezone
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 from nanotime import nanotime
 
@@ -12,11 +12,15 @@ class NeedMoreBytes(Exception):
     def __init__(self, how_much: int = None):
         self.how_much = how_much
 
-    @staticmethod
-    def check_underflow(buff_len, fragment_end) -> int:
+    @classmethod
+    def check_buffer(cls, buff_len, fragment_end) -> int:
         if buff_len < fragment_end:
-            raise NeedMoreBytes(fragment_end - buff_len)
+            raise cls(fragment_end - buff_len)
         return fragment_end
+
+
+class SkipMoreBytes(Exception):
+    ...
 
 
 SIGNIFICANT_BITS = 7
@@ -108,7 +112,7 @@ def unpack_size(buff: bytes, offset: int) -> Tuple[int, int]:
     sz = 0
     buff_len = len(buff)
     for i in range(3):
-        NeedMoreBytes.check_underflow(buff_len, offset + i + 1)
+        NeedMoreBytes.check_buffer(buff_len, offset + i + 1)
         v = buff[offset + i]
         end = v & END_BIT
         sz += (v & SEVEN_BITS) << (i * SIGNIFICANT_BITS)
@@ -119,6 +123,7 @@ def unpack_size(buff: bytes, offset: int) -> Tuple[int, int]:
 
 class Packer(metaclass=abc.ABCMeta):
     cls: type
+    size: Optional[int] = None
 
     @abc.abstractmethod
     def pack(self, v: Any) -> bytes:
@@ -130,6 +135,10 @@ class Packer(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
         raise NotImplementedError("subclasses must override")
 
 
@@ -146,7 +155,7 @@ class SizedPacker(Packer):
               new_offset: new offset in buffer
         """
         size, data_offset = unpack_size(buffer, offset)
-        new_offset = NeedMoreBytes.check_underflow(len(buffer), data_offset + size)
+        new_offset = NeedMoreBytes.check_buffer(len(buffer), data_offset + size)
         return buffer[data_offset:new_offset], new_offset
 
     def skip(self, buffer: bytes, offset: int) -> int:
@@ -155,7 +164,35 @@ class SizedPacker(Packer):
               new offset in buffer
         """
         size, data_offset = unpack_size(buffer, offset)
-        return NeedMoreBytes.check_underflow(len(buffer), data_offset + size)
+        return SkipMoreBytes.check_buffer(len(buffer), data_offset + size)
+
+
+class GreedyBytesPacker(Packer):
+    """
+    Read buffer to the end, with assumption that buffer end is
+    aligned with end of last variable
+    """
+
+    cls = bytes
+
+    def pack(self, v: bytes) -> bytes:
+        return v
+
+    def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
+        """
+        Returns:
+              value: unpacked value
+              new_offset: new offset in buffer
+        """
+        new_offset = len(buffer)
+        return buffer[offset:new_offset], new_offset
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        """
+        Returns:
+              new offset in buffer
+        """
+        return len(buffer)
 
 
 class FixedSizePacker(Packer):
@@ -165,10 +202,8 @@ class FixedSizePacker(Packer):
         self.size = size
 
     def pack(self, v: bytes) -> bytes:
-        if len(v) == self.size:
-            return v
-        else:
-            raise AssertionError(f"{len(v)} != {self.size}")
+        assert len(v) == self.size, f"{len(v)} != {self._size}"
+        return v
 
     def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
         """
@@ -177,7 +212,7 @@ class FixedSizePacker(Packer):
               new_offset: new offset in buffer
         """
         new_offset = offset + self.size
-        NeedMoreBytes.check_underflow(len(buffer), new_offset)
+        NeedMoreBytes.check_buffer(len(buffer), new_offset)
         return buffer[offset:new_offset], new_offset
 
     def skip(self, buffer: bytes, offset: int) -> int:
@@ -185,7 +220,7 @@ class FixedSizePacker(Packer):
         Returns:
               new offset in buffer
         """
-        return NeedMoreBytes.check_underflow(len(buffer), offset + self.size)
+        return SkipMoreBytes.check_buffer(len(buffer), offset + self.size)
 
 
 class TypePacker(Packer):
@@ -204,7 +239,7 @@ class TypePacker(Packer):
               new_offset: new offset in buffer
         """
         new_offset = self.size + offset
-        NeedMoreBytes.check_underflow(len(buffer), new_offset)
+        NeedMoreBytes.check_buffer(len(buffer), new_offset)
         unpacked_values = struct.unpack(self.fmt, buffer[offset:new_offset])
         return unpacked_values[0], new_offset
 
@@ -213,7 +248,7 @@ class TypePacker(Packer):
         Returns:
               new offset in buffer
         """
-        return NeedMoreBytes.check_underflow(len(buffer), offset + self.size)
+        return SkipMoreBytes.check_buffer(len(buffer), offset + self.size)
 
 
 class ProxyPacker(Packer):
@@ -221,12 +256,14 @@ class ProxyPacker(Packer):
         self,
         cls: type,
         packer: Packer,
-        in_callback: Callable[[Any], Any],
-        out_callback: Callable[[Any], Any],
+        in_callback: Callable[[Any], Any] = bytes,
+        out_callback: Callable[[Any], Any] = None,
     ) -> None:
         self.cls = cls
         self.packer = packer
         self.in_callback = in_callback
+        if out_callback is None:
+            out_callback = cls
         self.out_callback = out_callback
 
     def pack(self, v: Any) -> bytes:
@@ -252,8 +289,13 @@ class ProxyPacker(Packer):
 class TuplePacker(Packer):
     cls = tuple
 
-    def __init__(self, *packers: Packer) -> None:
+    def __init__(self, *packers: Packer, cls=tuple) -> None:
         self.packers = packers
+        self.cls = cls
+        try:
+            self.size = sum(map(lambda p: p.size), packers)
+        except TypeError:  # expected on `size==None`
+            self.size = None
 
     def pack(self, values: tuple) -> bytes:
         tuple_size = len(self.packers)
@@ -272,7 +314,7 @@ class TuplePacker(Packer):
         for p in self.packers:
             v, offset = p.unpack(buffer, offset)
             values.append(v)
-        return tuple(values), offset
+        return self.cls(values), offset
 
     def skip(self, buffer: bytes, offset: int) -> int:
         """
@@ -303,6 +345,17 @@ UTC_DATETIME = ProxyPacker(
 )
 
 UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
+
+GREEDY_BYTES = GreedyBytesPacker()
+UTF8_GREEDY_STR = ProxyPacker(str, GREEDY_BYTES, utf8_encode, utf8_decode)
+
+
+def unpack_greedily(
+    self, buffer: bytes, offset: int, size: int, greedy_packer: Packer
+) -> Tuple[Any, int]:
+    new_buffer, new_offset = FixedSizePacker(size).unpack(buffer, offset)
+    result, _ = greedy_packer.unpack(new_buffer, 0)
+    return result, new_offset
 
 
 def ensure_packer(o: Any) -> Packer:

@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 from hashkernel import CodeEnum, ensure_module
-from hashkernel.bakery.cake import Cake
+from hashkernel.bakery import Cake
 from hashkernel.logic import HashLogic
 from hashkernel.smattr import SmAttr
 

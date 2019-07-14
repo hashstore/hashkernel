@@ -477,7 +477,23 @@ CodeEnumT = TypeVar("CodeEnumT", bound="CodeEnum")
 
 
 class CodeEnum(Stringable, enum.Enum):
-    def __init__(self, code: int) -> None:
+    """
+    >>> class CodeEnumExample(CodeEnum):
+    ...     A = 0
+    ...     B = 1, "some important help message"
+    ...
+    >>> int(CodeEnumExample.A)
+    0
+    >>> CodeEnumExample(0)
+    <CodeEnumExample.A: 0>
+    >>> CodeEnumExample.B.__doc__
+    'some important help message'
+
+
+    """
+
+    def __init__(self, code: int, doc: str = "") -> None:
+        self.__doc__ = doc
         self.code = code
         type(self)._value2member_map_[code] = self  # type: ignore
 
@@ -495,6 +511,9 @@ class CodeEnum(Stringable, enum.Enum):
     def assert_equals(self, type):
         if type != self:
             raise AssertionError(f"has to be {self} and not {type}")
+
+    def __int__(self):
+        return self.code
 
     def __index__(self):
         return self.code

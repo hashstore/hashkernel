@@ -301,7 +301,12 @@ def test_doc_str_template():
 def test_CodeEnum():
     class CodeEnumExample(kernel.CodeEnum):
         A = 0
-        B = 1
+        B = (
+            1,
+            """
+        some important help message
+        """,
+        )
 
     assert CodeEnumExample(1) == CodeEnumExample.B
     assert CodeEnumExample(0) == CodeEnumExample.A
@@ -314,4 +319,5 @@ def test_CodeEnum():
         assert False
     except AssertionError:
         ...
+    assert int(CodeEnumExample.A) == 0
     assert hex(CodeEnumExample.A) == "0x0"
