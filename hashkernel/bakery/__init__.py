@@ -187,13 +187,17 @@ class Cake(Stringable, EnsureIt, Primitive):
     'l01natqrQGg1ueJkFIc9mUYt18gcJjdsPLSLyzGgjY70'
     >>> short_k.is_guid
     False
+    >>> short_k.is_hash
+    True
     >>> longer_content = b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
     >>> longer_k = Cake.from_bytes(longer_content)
     >>> str(longer_k)
     'zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT0'
     >>> len(longer_k.digest)
     32
-    >>> len(set([hash(longer_k) , hash(longer_k)]))
+    >>> len({hash(longer_k), hash(Cake(str(longer_k)))})
+    1
+    >>> len({longer_k , Cake(str(longer_k))})
     1
 
     Global Unique ID can be generated, it is 32 byte
@@ -206,16 +210,16 @@ class Cake(Stringable, EnsureIt, Primitive):
     44
     >>> CakeProperties.typings()
     is_hash:bool
-    is_folder:bool
     is_guid:bool
+    is_folder:bool
     is_journal:bool
     is_vtree:bool
 
     """
 
     is_hash: bool
-    is_folder: bool
     is_guid: bool
+    is_folder: bool
     is_journal: bool
     is_vtree: bool
 
