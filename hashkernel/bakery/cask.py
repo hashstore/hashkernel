@@ -44,18 +44,21 @@ class CheckPointType(CodeEnum):
     )
 
 
-class Record(NamedTuple):
-    entry_type: int
-    entry_size: int
-    tstamp: nanotime
-    src: Cake
+_COMPONENTS_PACKERS = {
+    str: UTF8_GREEDY_STR,
+    Cake: Cake.__packer__,
+    bytes: GREEDY_BYTES,
+    int: INT_32,
+    CheckPointType: ProxyPacker(CheckPointType, INT_8, int),
+}
 
 
-Record_PACKER = ProxyPacker(
-    Record,
-    TuplePacker(INT_8, INT_32, NANOTIME, Cake.__packer__),
-    lambda rec: (rec.type, rec.entry_size, rec.tstamp, rec.src),
-)
+def build_entry_packer(cls: type) -> TuplePacker:
+    mold = Mold(cls)
+    comp_classes = (a.typing.val_cref.cls for a in mold.attrs.values())
+    return TuplePacker(
+        *map(lambda cls: _COMPONENTS_PACKERS[cls], comp_classes), cls=cls
+    )
 
 
 class DataEntry(NamedTuple):
@@ -66,62 +69,110 @@ class JournalEntry(NamedTuple):
     value: Cake
 
 
-class VtreeEntry(NamedTuple):
+class SetPathInVtreeEntry(NamedTuple):
     value: Cake
+    path: str
+
+
+class DeletePathInVtreeEntry(NamedTuple):
     path: str
 
 
 class CheckpointEntry(NamedTuple):
     start: int
     end: int
-    chunk_id: Cake
+    section_id: Cake
     type: CheckPointType
 
 
-class CheckpointEntry(NamedTuple):
-    start: int
-    end: int
-    chunk_id: Cake
-    type: CheckPointType
+class EntryType(CodeEnum):
+    """
+    >>> [ (e,e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
+    [(<EntryType.DATA: 0>, None), (<EntryType.JOURNAL: 1>, 33),
+    (<EntryType.SET_PATH_IN_VTREE: 2>, None), (<EntryType.DELETE_PATH_IN_VTREE: 3>, None),
+    (<EntryType.CHECK_POINT: 4>, 42), (<EntryType.NEXT_SEGMENT: 5>, 0),
+    (<EntryType.PREVIOUS_SEGMENT: 6>, 0), (<EntryType.FIRST_SEGMENT: 7>, 0)]
+
+    """
+
+    DATA = (
+        0,
+        DataEntry,
+        """
+    Data identified by `src` hash""",
+    )
+
+    JOURNAL = (
+        1,
+        JournalEntry,
+        """
+    Entry in `src` journal set to current `value`""",
+    )
+
+    SET_PATH_IN_VTREE = (
+        2,
+        SetPathInVtreeEntry,
+        """
+    `src` identify vtree and entry contains new `value` for `path`""",
+    )
+
+    DELETE_PATH_IN_VTREE = (
+        3,
+        DeletePathInVtreeEntry,
+        """
+    `src` identify vtree and entry contains `path` to deleted""",
+    )
+
+    CHECK_POINT = (
+        4,
+        CheckpointEntry,
+        """ 
+    `start` and `end` position and `section_id` hash of section and 
+    `type` points to reason why checkpoint happened""",
+    )
+
+    NEXT_SEGMENT = (
+        5,
+        None,
+        """
+    `src` has address of cask segment""",
+    )
+
+    PREVIOUS_SEGMENT = (
+        6,
+        None,
+        """
+    `src` has address of cask segment""",
+    )
+
+    FIRST_SEGMENT = (
+        7,
+        None,
+        """
+    `src` has address of cask segment""",
+    )
+
+    def __init__(self, code, entry_cls, doc):
+        CodeEnum.__init__(self, code, doc)
+        self.entry_cls = entry_cls
+        self.entry_packer = None
+        if self.entry_cls is not None:
+            self.entry_packer = build_entry_packer(self.entry_cls)
+            self.size = self.entry_packer.size
+        else:
+            self.size = 0
 
 
-class PrevCaskEntry(NamedTuple):
-    prev_cask: Cake
+class Record(NamedTuple):
+    entry_type: EntryType
+    tstamp: nanotime
+    src: Cake
 
 
-class NextCaskEntry(NamedTuple):
-    next_cask: Cake
-
-
-def map_tuple_packers(types, component_packers):
-    packers = []
-    for cls in types:
-        mold = Mold(cls)
-        comp_classes = (a.typing.val_cref.cls for a in mold.attrs.values())
-        packers.append(
-            TuplePacker(*map(lambda cls: component_packers[cls], comp_classes), cls=cls)
-        )
-    return packers
-
-
-ENTRY_TYPES = (
-    DataEntry,
-    JournalEntry,
-    VtreeEntry,
-    CheckpointEntry,
-    PrevCaskEntry,
-    NextCaskEntry,
-)
-
-ENTRY_PACKERS = map_tuple_packers(
-    ENTRY_TYPES,
-    {
-        str: UTF8_GREEDY_STR,
-        Cake: Cake.__packer__,
-        bytes: GREEDY_BYTES,
-        int: INT_32,
-        CheckPointType: ProxyPacker(CheckPointType, INT_8, int),
-    },
+Record_PACKER = ProxyPacker(
+    Record,
+    TuplePacker(INT_8, INT_32, NANOTIME, Cake.__packer__),
+    lambda rec: (rec.type, rec.entry_size, rec.tstamp, rec.src),
 )
 
 

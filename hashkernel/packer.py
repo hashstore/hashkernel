@@ -202,7 +202,7 @@ class FixedSizePacker(Packer):
         self.size = size
 
     def pack(self, v: bytes) -> bytes:
-        assert len(v) == self.size, f"{len(v)} != {self._size}"
+        assert len(v) == self.size, f"{len(v)} != {self.size}"
         return v
 
     def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
@@ -261,6 +261,7 @@ class ProxyPacker(Packer):
     ) -> None:
         self.cls = cls
         self.packer = packer
+        self.size = self.packer.size
         self.to_bytes = to_bytes
         if to_cls is None:
             to_cls = cls
@@ -293,7 +294,7 @@ class TuplePacker(Packer):
         self.packers = packers
         self.cls = cls
         try:
-            self.size = sum(map(lambda p: p.size), packers)
+            self.size = sum(map(lambda p: p.size, packers))
         except TypeError:  # expected on `size==None`
             self.size = None
 
@@ -351,7 +352,7 @@ UTF8_GREEDY_STR = ProxyPacker(str, GREEDY_BYTES, utf8_encode, utf8_decode)
 
 
 def unpack_greedily(
-    self, buffer: bytes, offset: int, size: int, greedy_packer: Packer
+    buffer: bytes, offset: int, size: int, greedy_packer: Packer
 ) -> Tuple[Any, int]:
     new_buffer, new_offset = FixedSizePacker(size).unpack(buffer, offset)
     result, _ = greedy_packer.unpack(new_buffer, 0)
