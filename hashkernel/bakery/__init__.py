@@ -18,7 +18,7 @@ from typing import (
     Optional,
     Set,
     Union,
-)
+    NamedTuple)
 
 from hashkernel import EnsureIt, GlobalRef, Primitive, Stringable
 from hashkernel.base_x import base_x
@@ -26,6 +26,7 @@ from hashkernel.guid import RANDOM_PART_SIZE, new_guid_data
 from hashkernel.hashing import Hasher
 from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
+from nanotime import nanotime
 
 log = logging.getLogger(__name__)
 
@@ -330,6 +331,7 @@ class HasCakeFromBytes:
 HasCake.register(HasCakeFromBytes)
 
 
+
 class QuestionMsg(SmAttr, HasCakeFromBytes):
     ref: GlobalRef
     data: Dict[str, Any]
@@ -349,6 +351,15 @@ class ResponseMsg(ResponseChain, HasCakeFromBytes):
 
     def is_error(self):
         return self.traceback is not None
+
+
+class TimedCake(NamedTuple):
+    time: nanotime
+    cake: Cake
+
+
+class Journal:
+    entries: List[TimedCake]
 
 
 class BlockStream:

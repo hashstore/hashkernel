@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import NamedTuple, Optional, Sequence, Set, Tuple
+from typing import NamedTuple, Optional, Sequence, Set, Tuple, Dict, \
+    Union
 
 from nanotime import nanotime
 
 from hashkernel import CodeEnum
-from hashkernel.bakery import Cake, CakeHeaders
+from hashkernel.bakery import Cake, CakeHeaders, BlockStream, Journal
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
@@ -13,9 +14,8 @@ from hashkernel.packer import (
     UTF8_GREEDY_STR,
     ProxyPacker,
     TuplePacker,
-)
-from hashkernel.smattr import Mold
-
+    build_code_enum_packer)
+from hashkernel.smattr import Mold, build_named_tuple_packer
 
 """
 Somewhat inspired by BitCask
@@ -36,8 +36,15 @@ class CheckPointType(CodeEnum):
     maximum checkpoint time is exeeded.
     """,
     )
-    ON_CLOSE = (
+    ON_SEGMENT = (
         2,
+        """ 
+    last entry in cask file when segment is closed, must be to be preceded
+    NEXT_SEGMENT entry. This cask All entries will go to next segment's cask
+    """,
+    )
+    ON_CLOSE = (
+        3,
         """
     when cask is closed for manipulation
     """,
@@ -49,16 +56,12 @@ _COMPONENTS_PACKERS = {
     Cake: Cake.__packer__,
     bytes: GREEDY_BYTES,
     int: INT_32,
-    CheckPointType: ProxyPacker(CheckPointType, INT_8, int),
+    CheckPointType: build_code_enum_packer(CheckPointType),
 }
 
 
 def build_entry_packer(cls: type) -> TuplePacker:
-    mold = Mold(cls)
-    comp_classes = (a.typing.val_cref.cls for a in mold.attrs.values())
-    return TuplePacker(
-        *map(lambda cls: _COMPONENTS_PACKERS[cls], comp_classes), cls=cls
-    )
+    return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
 
 
 class DataEntry(NamedTuple):
@@ -106,50 +109,60 @@ class EntryType(CodeEnum):
         1,
         JournalEntry,
         """
-    Entry in `src` journal set to current `value`""",
+        Entry in `src` journal set to current `value`
+        """,
     )
 
     SET_PATH_IN_VTREE = (
         2,
         SetPathInVtreeEntry,
         """
-    `src` identify vtree and entry contains new `value` for `path`""",
+        `src` identify vtree and entry contains new `value` for `path`
+        """,
     )
 
     DELETE_PATH_IN_VTREE = (
         3,
         DeletePathInVtreeEntry,
         """
-    `src` identify vtree and entry contains `path` to deleted""",
+        `src` identify vtree and entry contains `path` to deleted
+        """,
     )
 
     CHECK_POINT = (
         4,
         CheckpointEntry,
         """ 
-    `start` and `end` position and `section_id` hash of section and 
-    `type` points to reason why checkpoint happened""",
+        `start` and `end` position and `section_id` hash of section and 
+        `type` points to reason why checkpoint happened.
+        """,
     )
 
     NEXT_SEGMENT = (
         5,
         None,
         """
-    `src` has address of cask segment""",
+        `src` has address of next cask segment. This entry has to 
+        precede ON_SEGMENT checkpoint.
+        """,
     )
 
     PREVIOUS_SEGMENT = (
         6,
         None,
         """
-    `src` has address of cask segment""",
+        `src` has address of prev cask segment. This entry has to 
+        follow FIRST_SEGMENT entry in each continuing segment cask.  
+        """,
     )
 
     FIRST_SEGMENT = (
         7,
         None,
         """
-    `src` has address of cask segment""",
+        `src` has address of first cask segment. It has to be first 
+        entry in any cask.
+        """,
     )
 
     def __init__(self, code, entry_cls, doc):
@@ -205,8 +218,9 @@ class CaskType(CodeEnum):
         """,
     )
 
-    def cask_path(self, dir: Path, guid: Cake) -> Path:
-        return dir / f"{guid.digest36()}.{self.name.lower()}"
+    def cask_path(self,  guid: Cake) -> Path:
+        return f"{guid.digest36()}.{self.name.lower()}"
+
 
     @staticmethod
     def split_file_name(file_name: str) -> Tuple["CaskType", Cake]:
@@ -223,19 +237,15 @@ class CaskType(CodeEnum):
 
 
 def find_cask_by_guid(
-    dir: Path, guid: Cake, types: Sequence[CaskType] = CaskType
+        dir: Path,
+        guid: Cake,
+        types: Sequence[CaskType] = CaskType
 ) -> Optional[Path]:
     for ct in types:
         path = ct.cask_path(dir, guid)
         if path.exists():
             return path
     return None
-
-
-class Caskade:
-    """
-
-    """
 
 
 class CaskFile:
@@ -246,21 +256,128 @@ class CaskFile:
 
 
     """
+    __enforce_private = object()
 
-    def __init__(self, path: Path, guid: Optional[Cake] = None):
-        self.write_allowed = False
-        if guid is None:
-            if path.is_dir():
-                self.guid = Cake.new_guid(CakeHeaders.CASK)
-                self.write_allowed = True
-                self.path = CaskType.ACTIVE.cask_path(path, self.guid)
-            else:
-                digest, extension = path.name.split(".")
-                self.guid = Cake.from_digest36(digest, CakeHeaders.CASK)
-                self.path = path.dir
-        else:
-            self.path = find_cask_by_guid(path, guid)
-            self.guid = guid
+    caskade: "Caskade"
+    path: Path
+    guid: Cake
+    type: bool
+
+    def __init__(self, enforce_private, caskade, path, guid, type):
+        assert enforce_private == self.__enforce_private, 'private constructor'
+        self.caskade = caskade
+        self.path = path
+        self.guid = guid
+        self.type = type
+
+    @classmethod
+    def active_cask(cls, caskade:"Caskade"):
+        return cls.by_guid(caskade,
+                           Cake.new_guid(CakeHeaders.CASK),
+                           CaskType.ACTIVE)
+
+    @classmethod
+    def by_guid(cls, caskade:"Caskade", guid:Cake, cask_type: CaskType):
+        path = caskade.dir / cask_type.cask_path(guid)
+        return cls(cls.__enforce_private, caskade, path, guid, cask_type)
+
+    @classmethod
+    def by_file(cls, caskade:"Caskade", fname:str):
+        digest, extension = fname.name.split(".")
+        guid = Cake.from_digest36(digest, CakeHeaders.CASK)
+        cask_type = CaskType(extension.upper())
+        return cls(cls.__enforce_private, caskade, caskade.dir / fname, guid, cask_type)
+
+    def keys(self) -> Set[Cake]:
+        ...
+
+    def __getitem__(self, item):
+        ...
+
+    def write_bytes(self, content: bytes) -> Cake:
+        assert self.write_allowed
+        ...
+
+    def write_journal(self, src: Cake, value: Cake):
+        assert self.write_allowed
+        ...
+
+    def write_path(self, src: Cake, path: str, value: Cake):
+        assert self.write_allowed
+        ...
+
+
+class DataLocation(NamedTuple):
+    offset: int
+    size: int
+    file: "CaskFile"
+
+
+class Caskade:
+    """
+
+    """
+    dir: Path
+    casks: Dict[Cake, CaskFile]
+    data: Dict[Cake, DataLocation]
+    active: CaskFile
+    shadows: Dict[Cake, CaskFile]
+    journals: Dict[Cake, Journal]
+
+    def __getitem__(self, id: Cake)-> Union[bytes,BlockStream]:
+        ...
+
+
+    def write_bytes(self, content: bytes) -> Cake:
+        ...
+
+    def write_journal(self, src: Cake, value: Cake):
+        ...
+
+    def write_path(self, src: Cake, path: str, value: Optional[Cake]):
+        ...
+
+
+
+class CaskFile:
+    """
+    cask type: in append mode, shadow
+    Ideas:
+        CaskJournal - backbone of caskade
+
+
+    """
+    __enforce_private = object()
+
+    caskade: Caskade
+    path: Path
+    guid: Cake
+    type: bool
+
+    def __init__(self, enforcer, caskade, path, guid, type):
+        assert enforcer == self.__enforce_private, 'private constructor'
+        self.caskade = caskade
+        self.path = path
+        self.guid = guid
+        self.type = type
+
+    @classmethod
+    def active_cask(cls, caskade:Caskade):
+        return cls.by_guid(caskade,
+                           Cake.new_guid(CakeHeaders.CASK),
+                           CaskType.ACTIVE)
+
+    @classmethod
+    def by_guid(cls, caskade:Caskade, guid:Cake, cask_type: CaskType):
+        path = caskade.dir / cask_type.cask_path(guid)
+        return cls(cls.__enforce_private, caskade, path, guid, cask_type)
+
+    @classmethod
+    def by_file(cls, caskade:Caskade, fname:str):
+        digest, extension = fname.name.split(".")
+        guid = Cake.from_digest36(digest, CakeHeaders.CASK)
+        cask_type = CaskType(extension.upper())
+        return cls(cls.__enforce_private, caskade, caskade.dir / fname, guid, cask_type)
 
     def keys(self) -> Set[Cake]:
         ...

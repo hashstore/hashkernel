@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    get_type_hints,
 )
 
 from hashkernel.packer import SIZED_BYTES, UTF8_STR, Packer, ProxyPacker, TuplePacker
@@ -662,3 +661,8 @@ class BytesWrap(SmAttr):
             return cls(input)
 
         return factory
+
+def build_named_tuple_packer(cls: type, mapper:Callable[[type],Packer]) -> TuplePacker:
+    mold = Mold(cls)
+    comp_classes = (a.typing.val_cref.cls for a in mold.attrs.values())
+    return TuplePacker( *map(mapper, comp_classes), cls=cls )
