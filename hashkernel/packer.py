@@ -256,19 +256,19 @@ class ProxyPacker(Packer):
         self,
         cls: type,
         packer: Packer,
-        to_bytes: Callable[[Any], Any] = bytes,
+        to_proxy: Callable[[Any], Any] = bytes,
         to_cls: Callable[[Any], Any] = None,
     ) -> None:
         self.cls = cls
         self.packer = packer
         self.size = self.packer.size
-        self.to_bytes = to_bytes
+        self.to_proxy = to_proxy
         if to_cls is None:
             to_cls = cls
         self.to_cls = to_cls
 
     def pack(self, v: Any) -> bytes:
-        return self.packer.pack(self.to_bytes(v))
+        return self.packer.pack(self.to_proxy(v))
 
     def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
         """

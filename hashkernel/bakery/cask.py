@@ -333,5 +333,3 @@ class Caskade:
 
     def write_path(self, src: Cake, path: str, value: Optional[Cake]):
         ...
-
-

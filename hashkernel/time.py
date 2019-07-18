@@ -7,7 +7,7 @@ from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
 from hashkernel import EnsureIt, Stringable, StrKeyMixin
-from hashkernel.packer import INT_8, NANOTIME, TuplePacker
+from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
 def nanotime2datetime(nt: nanotime) -> datetime:
@@ -31,44 +31,63 @@ FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
 _TIMEDELTAS = [timedelta(seconds=nanotime(_nt_offset(i)).seconds()) for i in range(31)]
 
 
-def ttl_idx(ttl: Union[nanotime, timedelta, None] = None) -> int:
+class TTL:
     """
     TTL never expires
-    >>> ttl_idx()
+    >>> TTL().idx
     31
-    >>> ttl_idx(timedelta(seconds=5))
+    >>> TTL(timedelta(seconds=5)).idx
     0
-    >>> ttl_idx(timedelta(seconds=10))
+    >>> TTL(timedelta(seconds=10)).idx
     1
-    >>> ttl_idx(timedelta(days=10))
+    >>> TTL(timedelta(days=10)).idx
     17
-    >>> ttl_idx(timedelta(days=365*200))
+    >>> TTL(timedelta(days=365*200)).idx
     30
 
     Too far in future means never expires
-    >>> ttl_idx(timedelta(days=365*300))
+    >>> TTL(timedelta(days=365*300)).idx
     31
 
-    >>> ttl_idx(nanotime(576460000*1e9))
+    >>> TTL(nanotime(576460000*1e9)).idx
     26
 
     MAYBE: switch to binary search and see how it improve
     """
-    idx = 31
-    if isinstance(ttl, nanotime):
-        ttl = timedelta(seconds=ttl.seconds())
-    if isinstance(ttl, timedelta):
-        idx = 0
-        for td in _TIMEDELTAS:
-            if ttl < td:
-                break
-            idx += 1
-    else:
-        assert ttl is None
-    return idx
+
+    idx: int
+
+    def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None) -> int:
+        idx = 31
+        if isinstance(ttl, nanotime):
+            ttl = timedelta(seconds=ttl.seconds())
+        if isinstance(ttl, timedelta):
+            idx = 0
+            for td in _TIMEDELTAS:
+                if ttl < td:
+                    break
+                idx += 1
+        elif isinstance(ttl, int):
+            idx = ttl
+        else:
+            assert ttl is None, f"{ttl}"
+        assert idx < 32 and idx >= 0
+        self.idx = idx
+
+    def timedelta(self):
+        return _TIMEDELTAS[self.idx]
+
+    def expires(self, t: nanotime) -> nanotime:
+        ns = t.nanoseconds() + _nt_offset(self.idx)
+        return FOREVER if ns >= FOREVER.nanoseconds() else nanotime(ns)
+
+    def __int__(self):
+        return self.idx
 
 
-TTL_TUPLE_PACKER = TuplePacker(NANOTIME, INT_8)
+TTL_PACKER = ProxyPacker(TTL, INT_8, int)
+
+NANOTTL_TUPLE_PACKER = TuplePacker(NANOTIME, TTL_PACKER)
 
 
 class nano_ttl:
@@ -76,12 +95,12 @@ class nano_ttl:
     >>> nano_ttl.SIZEOF
     9
     >>> nt = nano_ttl(nanotime_now())
-    >>> nt.ttl() == FOREVER
+    >>> nt.time_expires() == FOREVER
     True
 
     >>> nt_before = nanotime_now()
     >>> nt = nano_ttl(nanotime_now(), timedelta(days=10))
-    >>> ttl_delta = (nanotime2datetime(nt.ttl())-nanotime2datetime(nt.time))
+    >>> ttl_delta = (nanotime2datetime(nt.time_expires())-nanotime2datetime(nt.time))
     >>> timedelta(days=10) <= ttl_delta
     True
     >>> ttl_delta.days
@@ -89,29 +108,31 @@ class nano_ttl:
 
     """
 
-    SIZEOF = TTL_TUPLE_PACKER.size
+    SIZEOF = NANOTTL_TUPLE_PACKER.size
 
     time: nanotime
-    ttl_idx: int
+    ttl: TTL
 
     def __init__(
         self,
         t: Union[datetime, nanotime, bytes],
-        ttl: Union[int, nanotime, timedelta, None] = None,
+        ttl: Union[TTL, int, nanotime, timedelta, None] = None,
     ):
         if isinstance(t, bytes):
             assert ttl is None
-            (self.time, self.ttl_idx), _ = TTL_TUPLE_PACKER.unpack(t, 0)
+            (self.time, self.ttl), _ = NANOTTL_TUPLE_PACKER.unpack(t, 0)
         else:
             self.time = datetime2nanotime(t) if isinstance(t, datetime) else t
-            self.ttl_idx = ttl if isinstance(ttl, int) else ttl_idx(ttl)
+            self.ttl = ttl if isinstance(ttl, TTL) else TTL(ttl)
 
-    def ttl(self) -> nanotime:
-        ttl_ns = self.time.nanoseconds() + _nt_offset(self.ttl_idx)
-        return FOREVER if ttl_ns >= FOREVER.nanoseconds() else nanotime(ttl_ns)
+    def time_expires(self) -> nanotime:
+        return self.ttl.expires(self.time)
 
     def __bytes__(self):
-        return TTL_TUPLE_PACKER.pack((self.time, self.ttl_idx))
+        return NANOTTL_TUPLE_PACKER.pack((self.time, self.ttl))
+
+
+NANO_TTL_PACKER = ProxyPacker(nano_ttl, NANOTTL_TUPLE_PACKER)
 
 
 class CronExp(Stringable, EnsureIt, StrKeyMixin):

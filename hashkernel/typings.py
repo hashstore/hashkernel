@@ -126,3 +126,27 @@ def get_attr_hints(o):
     {'y': <class 'float'>}
     """
     return {k: h for k, h in typing.get_type_hints(o).items() if not is_classvar(h)}
+
+
+def is_NamedTuple(cls):
+    """
+    >>> class AB(typing.NamedTuple):
+    ...    a: int
+    ...    b: float
+    ...
+    >>> is_NamedTuple(AB)
+    True
+    >>> from collections import namedtuple
+    >>> X = namedtuple('X', 'x1 x2')
+    >>> is_NamedTuple(X)
+    False
+    >>> is_NamedTuple(int)
+    False
+    >>> is_NamedTuple(tuple)
+    False
+    """
+    if issubclass(cls, tuple):
+        types = getattr(cls, "_field_types", None)
+        if types is not None:
+            return all(hasattr(cls, k) for k in types)
+    return False

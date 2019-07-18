@@ -24,13 +24,20 @@ from typing import (
 
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, GlobalRef, Primitive, Stringable
+from hashkernel import CodeEnum, EnsureIt, GlobalRef, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.guid import new_guid_data
 from hashkernel.hashing import Hasher
-from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
-from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
-from hashkernel.time import nano_ttl
+from hashkernel.packer import (
+    NANOTIME,
+    FixedSizePacker,
+    Packer,
+    ProxyPacker,
+    build_code_enum_packer,
+)
+from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr, build_named_tuple_packer
+from hashkernel.time import NANO_TTL_PACKER, nano_ttl
+from hashkernel.typings import is_NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -364,8 +371,24 @@ class ResponseMsg(ResponseChain, HasCakeFromBytes):
 
 
 class TimedCake(NamedTuple):
-    time: nanotime
+    tstamp: nanotime
     cake: Cake
+
+
+_BAKERY_PACKERS = {Cake: Cake.__packer__, nanotime: NANOTIME, nano_ttl: NANO_TTL_PACKER}
+
+
+def type_to_packer_resolver(cls: type) -> Packer:
+    if cls in _BAKERY_PACKERS:
+        return _BAKERY_PACKERS[cls]
+    if issubclass(cls, CodeEnum):
+        return build_code_enum_packer(cls)
+    if is_NamedTuple(cls):
+        return build_named_tuple_packer(cls, type_to_packer_resolver)
+    raise KeyError(cls)
+
+
+TIMED_CAKE_PACKER = type_to_packer_resolver(TimedCake)
 
 
 class Journal:
