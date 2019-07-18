@@ -2,17 +2,15 @@ import os
 from datetime import timedelta
 from typing import Union
 
-from hashkernel.time import nanotime_now, nano_ttl
 from nanotime import nanotime
 
+from hashkernel.time import nano_ttl, nanotime_now
 
 RANDOM_PART_SIZE = 23
 
 
 def new_guid_data(ttl: Union[nanotime, timedelta, None] = None):
     return pack_now(ttl) + os.urandom(RANDOM_PART_SIZE)
-
-
 
 
 def pack_now(ttl: Union[nanotime, timedelta, None] = None) -> bytes:
@@ -26,11 +24,7 @@ def pack_now(ttl: Union[nanotime, timedelta, None] = None) -> bytes:
 
     :return: pack utc time into 9 bytes
     """
-    return bytes(nano_ttl(nanotime_now(),ttl))
-
-
-
-
+    return bytes(nano_ttl(nanotime_now(), ttl))
 
 
 def guid_to_nano_ttl(guid: bytes) -> nano_ttl:
@@ -50,5 +44,3 @@ def guid_to_nano_ttl(guid: bytes) -> nano_ttl:
     :return: time extracted from guid
     """
     return nano_ttl(guid)
-
-

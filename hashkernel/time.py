@@ -1,13 +1,14 @@
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
 from typing import Union
 
 import pytz
 from croniter import croniter
-
-from hashkernel import EnsureIt, Stringable, StrKeyMixin
-from hashkernel.packer import NANOTIME, INT_8, TuplePacker
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
+
+from hashkernel import EnsureIt, Stringable, StrKeyMixin
+from hashkernel.packer import INT_8, NANOTIME, TuplePacker
+
 
 def nanotime2datetime(nt: nanotime) -> datetime:
     """
@@ -19,6 +20,7 @@ def nanotime2datetime(nt: nanotime) -> datetime:
 
 def _nt_offset(i: int) -> int:
     return 1 << (33 + (i & 0x1F))
+
 
 def nanotime_now():
     return datetime2nanotime(datetime.utcnow())
@@ -68,6 +70,7 @@ def ttl_idx(ttl: Union[nanotime, timedelta, None] = None) -> int:
 
 TTL_TUPLE_PACKER = TuplePacker(NANOTIME, INT_8)
 
+
 class nano_ttl:
     """
     >>> nano_ttl.SIZEOF
@@ -85,27 +88,30 @@ class nano_ttl:
     13
 
     """
+
     SIZEOF = TTL_TUPLE_PACKER.size
 
     time: nanotime
     ttl_idx: int
 
-    def __init__(self, t:Union[datetime, nanotime, bytes], ttl: Union[int, nanotime, timedelta, None] = None):
+    def __init__(
+        self,
+        t: Union[datetime, nanotime, bytes],
+        ttl: Union[int, nanotime, timedelta, None] = None,
+    ):
         if isinstance(t, bytes):
             assert ttl is None
-            (self.time, self.ttl_idx),_ = TTL_TUPLE_PACKER.unpack(t, 0)
+            (self.time, self.ttl_idx), _ = TTL_TUPLE_PACKER.unpack(t, 0)
         else:
             self.time = datetime2nanotime(t) if isinstance(t, datetime) else t
             self.ttl_idx = ttl if isinstance(ttl, int) else ttl_idx(ttl)
 
-    def ttl(self)->nanotime:
+    def ttl(self) -> nanotime:
         ttl_ns = self.time.nanoseconds() + _nt_offset(self.ttl_idx)
         return FOREVER if ttl_ns >= FOREVER.nanoseconds() else nanotime(ttl_ns)
 
     def __bytes__(self):
-        return TTL_TUPLE_PACKER.pack( (self.time, self.ttl_idx) )
-
-
+        return TTL_TUPLE_PACKER.pack((self.time, self.ttl_idx))
 
 
 class CronExp(Stringable, EnsureIt, StrKeyMixin):

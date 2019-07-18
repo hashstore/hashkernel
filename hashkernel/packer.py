@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, Tuple
 
 from nanotime import nanotime
 
-from hashkernel import utf8_decode, utf8_encode, CodeEnumT
+from hashkernel import utf8_decode, utf8_encode
 
 
 class NeedMoreBytes(Exception):
@@ -349,6 +349,7 @@ UTF8_STR = ProxyPacker(str, SIZED_BYTES, utf8_encode, utf8_decode)
 
 GREEDY_BYTES = GreedyBytesPacker()
 UTF8_GREEDY_STR = ProxyPacker(str, GREEDY_BYTES, utf8_encode, utf8_decode)
+
 
 def build_code_enum_packer(code_enum_cls) -> Packer:
     return ProxyPacker(code_enum_cls, INT_8, int)

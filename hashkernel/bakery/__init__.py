@@ -6,6 +6,7 @@ import enum
 import logging
 import threading
 from contextlib import contextmanager
+from datetime import timedelta
 from io import BytesIO
 from typing import (
     IO,
@@ -15,18 +16,21 @@ from typing import (
     Dict,
     Iterable,
     List,
+    NamedTuple,
     Optional,
     Set,
     Union,
-    NamedTuple)
+)
+
+from nanotime import nanotime
 
 from hashkernel import EnsureIt, GlobalRef, Primitive, Stringable
 from hashkernel.base_x import base_x
-from hashkernel.guid import RANDOM_PART_SIZE, new_guid_data
+from hashkernel.guid import new_guid_data
 from hashkernel.hashing import Hasher
 from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr
-from nanotime import nanotime
+from hashkernel.time import nano_ttl
 
 log = logging.getLogger(__name__)
 
@@ -250,14 +254,18 @@ class Cake(Stringable, EnsureIt, Primitive):
             len(self.digest) == Hasher.SIZEOF
         ), f"invalid cake digest: {s} {digest} {header} "
 
+    def timing(self) -> nano_ttl:
+        assert self.is_guid
+        return nano_ttl(self.digest)
+
     def uniform_digest(self):
         """
-        in case of guid first bytes of digest contains time and ttl which
+        in case of guid first bytes of digest contains `nano_ttl` which
         is not unifomrly distributed
 
         :return: Portion of digest that could be used for sharding and routing
         """
-        return self.digest[32 - RANDOM_PART_SIZE :]
+        return self.digest[nano_ttl.SIZEOF :]
 
     @staticmethod
     def from_stream(fd: IO[bytes], header=CakeHeaders.NO_CLASS) -> "Cake":
@@ -275,8 +283,11 @@ class Cake(Stringable, EnsureIt, Primitive):
         return Cake.from_stream(open(file, "rb"), header)
 
     @staticmethod
-    def new_guid(header=CakeHeaders.TIMESTAMP) -> "Cake":
-        return Cake(None, digest=new_guid_data(), header=header)
+    def new_guid(
+        header: CakeHeader = CakeHeaders.TIMESTAMP,
+        ttl: Union[nanotime, timedelta, None] = None,
+    ) -> "Cake":
+        return Cake(None, digest=new_guid_data(ttl), header=header)
 
     @staticmethod
     def from_digest36(digest: str, header: CakeHeader):
@@ -329,7 +340,6 @@ class HasCakeFromBytes:
 
 
 HasCake.register(HasCakeFromBytes)
-
 
 
 class QuestionMsg(SmAttr, HasCakeFromBytes):
