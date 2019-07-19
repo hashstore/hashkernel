@@ -27,8 +27,8 @@ def nanotime_now():
 
 
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
-
 _TIMEDELTAS = [timedelta(seconds=nanotime(_nt_offset(i)).seconds()) for i in range(31)]
+_MASKS = [1 << i for i in range(4, -1, -1)]
 
 
 class TTL:
@@ -52,7 +52,6 @@ class TTL:
     >>> TTL(nanotime(576460000*1e9)).idx
     26
 
-    MAYBE: switch to binary search and see how it improve
     """
 
     idx: int
@@ -63,10 +62,10 @@ class TTL:
             ttl = timedelta(seconds=ttl.seconds())
         if isinstance(ttl, timedelta):
             idx = 0
-            for td in _TIMEDELTAS:
-                if ttl < td:
-                    break
-                idx += 1
+            for m in _MASKS:
+                c = _TIMEDELTAS[idx + m - 1]
+                if ttl > c:
+                    idx += m
         elif isinstance(ttl, int):
             idx = ttl
         else:
