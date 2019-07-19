@@ -4,6 +4,7 @@
 import abc
 import enum
 import logging
+import os
 import threading
 from contextlib import contextmanager
 from datetime import timedelta
@@ -26,7 +27,6 @@ from nanotime import nanotime
 
 from hashkernel import CodeEnum, EnsureIt, GlobalRef, Primitive, Stringable
 from hashkernel.base_x import base_x
-from hashkernel.guid import new_guid_data
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
     NANOTIME,
@@ -36,7 +36,7 @@ from hashkernel.packer import (
     build_code_enum_packer,
 )
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr, build_named_tuple_packer
-from hashkernel.time import NANO_TTL_PACKER, nano_ttl
+from hashkernel.time import NANO_TTL_PACKER, nano_ttl, nanotime_now
 from hashkernel.typings import is_NamedTuple
 
 log = logging.getLogger(__name__)
@@ -183,6 +183,31 @@ class CakeHeaders(metaclass=HeaderRegistar):
 
 
 SIZEOF_CAKE = Hasher.SIZEOF + 1
+GUIDHEADER_SIZEOF = nano_ttl.SIZEOF
+UNIFORM_DIGEST_SIZEOF = Hasher.SIZEOF - GUIDHEADER_SIZEOF
+
+
+def new_guid_data(ttl: Union[nanotime, timedelta, None] = None):
+    return bytes(nano_ttl(nanotime_now(), ttl)) + os.urandom(UNIFORM_DIGEST_SIZEOF)
+
+
+def guid_to_nano_ttl(guid: bytes) -> nano_ttl:
+    """
+    >>> nt_before = nanotime_now()
+    >>> data = new_guid_data()
+    >>> len(data)
+    32
+    >>> nt_ttl = guid_to_nano_ttl(data)
+    >>> nt_after = nanotime_now()
+    >>> nt_before.nanoseconds() <= nt_ttl.time.nanoseconds()
+    True
+    >>> nt_ttl.time.nanoseconds() <= nt_after.nanoseconds()
+    True
+
+    :param guid:
+    :return: time extracted from guid
+    """
+    return nano_ttl(guid)
 
 
 class Cake(Stringable, EnsureIt, Primitive):
@@ -220,6 +245,16 @@ class Cake(Stringable, EnsureIt, Primitive):
     True
     >>> len(str(guid))
     44
+
+    >>> nt_before = nanotime_now()
+    >>> g1 = Cake.new_guid()
+    >>> nt_ttl = g1.timing()
+    >>> nt_after = nanotime_now()
+    >>> nt_before.nanoseconds() <= nt_ttl.time.nanoseconds()
+    True
+    >>> nt_ttl.time.nanoseconds() <= nt_after.nanoseconds()
+    True
+
     >>> CakeProperties.typings()
     is_hash:bool
     is_guid:bool
@@ -272,7 +307,7 @@ class Cake(Stringable, EnsureIt, Primitive):
 
         :return: Portion of digest that could be used for sharding and routing
         """
-        return self.digest[nano_ttl.SIZEOF :]
+        return self.digest[GUIDHEADER_SIZEOF:]
 
     @staticmethod
     def from_stream(fd: IO[bytes], header=CakeHeaders.NO_CLASS) -> "Cake":

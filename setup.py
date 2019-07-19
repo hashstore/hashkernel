@@ -74,7 +74,7 @@ setup(
     author="Walnut Geek",
     author_email="wg@walnutgeek.com",
     license="Apache 2.0",
-    packages=find_packages(exclude=("tests",)),
+    packages=find_packages(exclude=("*.tests",)),
     package_data={"": ["file_types.json"]},
     cmdclass=cmdclass_dict,
     entry_points={

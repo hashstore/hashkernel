@@ -33,6 +33,8 @@ _MASKS = [1 << i for i in range(4, -1, -1)]
 
 class TTL:
     """
+    TTL - Time to live interval expressed in 0 - 31 integer
+
     TTL never expires
     >>> TTL().idx
     31
@@ -51,6 +53,10 @@ class TTL:
 
     >>> TTL(nanotime(576460000*1e9)).idx
     26
+
+    Fifth TTL is about 5 minutes or in seconds
+    >>> TTL(5).timedelta().seconds
+    274
 
     """
 
