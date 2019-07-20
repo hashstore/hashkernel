@@ -1,12 +1,13 @@
 from datetime import datetime, timedelta
-from typing import Union
+from functools import total_ordering
+from typing import Tuple, Union
 
 import pytz
 from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, Stringable, StrKeyMixin
+from hashkernel import EnsureIt, OneBit, Stringable, StrKeyMixin
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -18,8 +19,36 @@ def nanotime2datetime(nt: nanotime) -> datetime:
     return datetime.utcfromtimestamp(nt.timestamp())
 
 
-def _nt_offset(i: int) -> int:
-    return 1 << (33 + (i & 0x1F))
+def split_ttl(i) -> Tuple[int, int]:
+    """
+    Splits TTL, that packs into 1 byte
+
+    Returns:
+        idx - lowest 5 bits
+        extra - higest 3 bits
+
+    >>> split_ttl(0xE5)
+    (5, 7)
+    >>> split_ttl(0x105)
+    (5, 0)
+    """
+    return (i & 0x1F), (i & 0xE0) >> 5
+
+
+def pack_ttl(ttl_idx, extra):
+    """
+    Packs TTL and extra into 1 byte. Inverse of `split_ttl()`
+
+    >>> pack_ttl(5, 7) == 0xE5
+    True
+    >>> pack_ttl(5, 0)
+    5
+    """
+    return (ttl_idx & 0x1F) + ((extra & 7) << 5)
+
+
+def offset_in_ns(ttl_idx: int) -> int:
+    return 1 << (33 + (ttl_idx & 0x1F))
 
 
 def nanotime_now():
@@ -27,10 +56,13 @@ def nanotime_now():
 
 
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
-_TIMEDELTAS = [timedelta(seconds=nanotime(_nt_offset(i)).seconds()) for i in range(31)]
+_TIMEDELTAS = [
+    timedelta(seconds=nanotime(offset_in_ns(i)).seconds()) for i in range(31)
+]
 _MASKS = [1 << i for i in range(4, -1, -1)]
 
 
+@total_ordering
 class TTL:
     """
     TTL - Time to live interval expressed in 0 - 31 integer
@@ -57,13 +89,43 @@ class TTL:
     Fifth TTL is about 5 minutes or in seconds
     >>> TTL(5).timedelta().seconds
     274
+    >>> t5=TTL(5)
+    >>> t5.get_extra_bit(OneBit(0))
+    False
+    >>> t5.set_extra_bit(OneBit(0), True)
+    >>> t5.get_extra_bit(OneBit(0))
+    True
+    >>> t5.extra
+    1
+    >>> int(t5)
+    37
+    >>> copy=TTL(int(t5))
+    >>> t5.set_extra_bit(OneBit(0), False)
+    >>> t5.get_extra_bit(OneBit(0))
+    False
+    >>> copy.get_extra_bit(OneBit(0))
+    True
+    >>> t5 < copy
+    True
+    >>> t5 > copy
+    False
+    >>> t5 != copy
+    True
+    >>> t5 == copy
+    False
+    >>> t5.set_extra_bit(OneBit(0), True)
+    >>> t5 == copy
+    True
+
 
     """
 
     idx: int
+    extra: int
 
     def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None) -> int:
         idx = 31
+        extra = 0
         if isinstance(ttl, nanotime):
             ttl = timedelta(seconds=ttl.seconds())
         if isinstance(ttl, timedelta):
@@ -73,28 +135,44 @@ class TTL:
                 if ttl > c:
                     idx += m
         elif isinstance(ttl, int):
-            idx = ttl
+            idx, extra = split_ttl(ttl)
         else:
             assert ttl is None, f"{ttl}"
-        assert idx < 32 and idx >= 0
+        assert 0 <= idx < 32
         self.idx = idx
+        self.extra = extra
 
     def timedelta(self):
         return _TIMEDELTAS[self.idx]
 
     def expires(self, t: nanotime) -> nanotime:
-        ns = t.nanoseconds() + _nt_offset(self.idx)
+        ns = t.nanoseconds() + offset_in_ns(self.idx)
         return FOREVER if ns >= FOREVER.nanoseconds() else nanotime(ns)
 
+    def __eq__(self, other):
+        return (self.idx, self.extra) == (other.idx, other.extra)
+
+    def __lt__(self, other):
+        return (self.idx, self.extra) < (other.idx, other.extra)
+
     def __int__(self):
-        return self.idx
+        return pack_ttl(self.idx, self.extra)
+
+    def get_extra_bit(self, bit: OneBit) -> bool:
+        return bool(self.extra & bit.mask)
+
+    def set_extra_bit(self, bit: OneBit, v: bool):
+        self.extra = self.extra | bit.mask if v else self.extra & bit.inverse
+
+    def __repr__(self):
+        return f"TTL({int(self)})"
 
 
 TTL_PACKER = ProxyPacker(TTL, INT_8, int)
 
 NANOTTL_TUPLE_PACKER = TuplePacker(NANOTIME, TTL_PACKER)
 
-
+@total_ordering
 class nano_ttl:
     """
     >>> nano_ttl.SIZEOF
@@ -110,6 +188,13 @@ class nano_ttl:
     True
     >>> ttl_delta.days
     13
+    >>> bytes(nano_ttl(nanotime(0x0102030405060708))).hex()
+    '01020304050607081f'
+    >>> nano_ttl(bytes(nt)) == nt
+    True
+    >>> later = nano_ttl(nanotime_now(), timedelta(days=10))
+    >>> later > nt
+    True
 
     """
 
@@ -135,6 +220,12 @@ class nano_ttl:
 
     def __bytes__(self):
         return NANOTTL_TUPLE_PACKER.pack((self.time, self.ttl))
+
+    def __eq__(self, other):
+        return (self.time.nanoseconds(), self.ttl) == (other.time.nanoseconds(), other.ttl)
+
+    def __lt__(self, other):
+        return (self.time.nanoseconds(), self.ttl) < (other.time.nanoseconds(), other.ttl)
 
 
 NANO_TTL_PACKER = ProxyPacker(nano_ttl, NANOTTL_TUPLE_PACKER)

@@ -25,18 +25,21 @@ from typing import (
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum, EnsureIt, GlobalRef, Primitive, Stringable
+from hashkernel import CodeEnum, EnsureIt, GlobalRef, OneBit, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
+    INT_8,
     NANOTIME,
     FixedSizePacker,
     Packer,
     ProxyPacker,
+    TuplePacker,
     build_code_enum_packer,
 )
+from hashkernel.plugins import query_plugins
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr, build_named_tuple_packer
-from hashkernel.time import NANO_TTL_PACKER, nano_ttl, nanotime_now
+from hashkernel.time import NANO_TTL_PACKER, TTL, TTL_PACKER, nano_ttl, nanotime_now
 from hashkernel.typings import is_NamedTuple
 
 log = logging.getLogger(__name__)
@@ -199,32 +202,48 @@ class MsgTypes(metaclass=CakeTypeRegistar):
 
 CakeTypes.extend(MsgTypes)
 
+GUIDHEADER_TUPLE = TuplePacker(NANOTIME, TTL_PACKER, INT_8)
+
+ON_HISTORY_BIT = OneBit(0)
+
+
+class GuidHeader:
+    SIZEOF = GUIDHEADER_TUPLE.size
+
+    time: nanotime
+    ttl: TTL
+    reserved: int
+
+    def __init__(
+        self,
+        t: Union[None, bytes, nanotime],
+        ttl: Optional[TTL] = None,
+        reserved: int = None,
+    ):
+
+        if isinstance(t, bytes):
+            assert ttl is None and reserved is None
+            (self.time, self.ttl, self.reserved), _ = GUIDHEADER_TUPLE.unpack(t, 0)
+        else:
+            self.time = nanotime_now() if t is None else t
+            self.ttl = TTL() if ttl is None else ttl
+            self.reserved = 0 if reserved is None else reserved
+
+    def ttl_on_history(self, set: Optional[bool] = None) -> bool:
+        if isinstance(set, bool):
+            self.ttl.set_extra_bit(ON_HISTORY_BIT, set)
+        return self.ttl.get_extra_bit(ON_HISTORY_BIT)
+
+    def __bytes__(self):
+        return GUIDHEADER_TUPLE.pack((self.time, self.ttl, self.reserved))
+
+
 SIZEOF_CAKE = Hasher.SIZEOF + 1
-GUIDHEADER_SIZEOF = nano_ttl.SIZEOF
-UNIFORM_DIGEST_SIZEOF = Hasher.SIZEOF - GUIDHEADER_SIZEOF
+UNIFORM_DIGEST_SIZEOF = Hasher.SIZEOF - GuidHeader.SIZEOF
 
 
 def new_guid_data(ttl: Union[nanotime, timedelta, None] = None):
-    return bytes(nano_ttl(nanotime_now(), ttl)) + os.urandom(UNIFORM_DIGEST_SIZEOF)
-
-
-def guid_to_nano_ttl(guid: bytes) -> nano_ttl:
-    """
-    >>> nt_before = nanotime_now()
-    >>> data = new_guid_data()
-    >>> len(data)
-    32
-    >>> nt_ttl = guid_to_nano_ttl(data)
-    >>> nt_after = nanotime_now()
-    >>> nt_before.nanoseconds() <= nt_ttl.time.nanoseconds()
-    True
-    >>> nt_ttl.time.nanoseconds() <= nt_after.nanoseconds()
-    True
-
-    :param guid:
-    :return: time extracted from guid
-    """
-    return nano_ttl(guid)
+    return bytes(GuidHeader(nanotime_now(), ttl)) + os.urandom(UNIFORM_DIGEST_SIZEOF)
 
 
 class Cake(Stringable, EnsureIt, Primitive):
@@ -254,8 +273,9 @@ class Cake(Stringable, EnsureIt, Primitive):
     >>> len({longer_k , Cake(str(longer_k))})
     1
 
-    Global Unique ID can be generated, it is 32 byte
-    random sequence packed in same way.
+    Global Unique ID can be generated, first 10 is `GuidHeader` and
+    22 byte random sequence follows. It is stored and encoded in same
+    way as hash.
 
     >>> guid = Cake.new_guid()
     >>> guid.is_guid
@@ -265,11 +285,11 @@ class Cake(Stringable, EnsureIt, Primitive):
 
     >>> nt_before = nanotime_now()
     >>> g1 = Cake.new_guid()
-    >>> nt_ttl = g1.timing()
+    >>> gh = g1.guid_header()
     >>> nt_after = nanotime_now()
-    >>> nt_before.nanoseconds() <= nt_ttl.time.nanoseconds()
+    >>> nt_before.nanoseconds() <= gh.time.nanoseconds()
     True
-    >>> nt_ttl.time.nanoseconds() <= nt_after.nanoseconds()
+    >>> gh.time.nanoseconds() <= nt_after.nanoseconds()
     True
 
     >>> CakeProperties.typings()
@@ -313,9 +333,9 @@ class Cake(Stringable, EnsureIt, Primitive):
             len(self.digest) == Hasher.SIZEOF
         ), f"invalid cake digest: {s} {digest} {type} "
 
-    def timing(self) -> nano_ttl:
+    def guid_header(self) -> GuidHeader:
         assert self.is_guid
-        return nano_ttl(self.digest)
+        return GuidHeader(self.digest)
 
     def uniform_digest(self):
         """
@@ -324,14 +344,12 @@ class Cake(Stringable, EnsureIt, Primitive):
 
         :return: Portion of digest that could be used for sharding and routing
         """
-        return self.digest[GUIDHEADER_SIZEOF:]
+        return self.digest[GuidHeader.SIZEOF :]
 
     @staticmethod
     def from_stream(fd: IO[bytes], type=CakeTypes.NO_CLASS) -> "Cake":
         assert CakeProperties.IS_HASH in type.modifiers
-        return Cake(
-            None, digest=Hasher().update_from_stream(fd).digest(), type=type
-        )
+        return Cake(None, digest=Hasher().update_from_stream(fd).digest(), type=type)
 
     @staticmethod
     def from_bytes(s: bytes, type=CakeTypes.NO_CLASS) -> "Cake":
@@ -515,3 +533,7 @@ class HashContext:
         finally:
             HashContext.set(None)
             session.close()
+
+
+for ctr in query_plugins(CakeTypeRegistar, "hashkernel.cake_types"):
+    CakeTypes.extend(ctr)

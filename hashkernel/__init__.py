@@ -21,6 +21,29 @@ class Primitive:
     pass
 
 
+class OneBit:
+    """
+    >>> for i in range(8): print(i ,str(OneBit(i)))
+    0 mask:00000001 inverse:11111110
+    1 mask:00000010 inverse:11111101
+    2 mask:00000100 inverse:11111011
+    3 mask:00001000 inverse:11110111
+    4 mask:00010000 inverse:11101111
+    5 mask:00100000 inverse:11011111
+    6 mask:01000000 inverse:10111111
+    7 mask:10000000 inverse:01111111
+
+    """
+
+    def __init__(self, position):
+        assert 0 <= position < 8
+        self.mask = 1 << position
+        self.inverse = self.mask ^ 0xFF
+
+    def __str__(self):
+        return f"mask:{self.mask:08b} inverse:{self.inverse:08b}"
+
+
 def is_primitive(cls: Any) -> bool:
     """
     >>> is_primitive(Any)
@@ -43,7 +66,7 @@ def quict(**kwargs):
     """
     Shortcut to created dictionary with `kwargs` fasion
 
-    >>> quict(a=3,x="a")
+    >>> quict(a=3, x="a")
     {'a': 3, 'x': 'a'}
     """
     r = {}
