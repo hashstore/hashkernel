@@ -3,7 +3,7 @@
 
 from logging import getLogger
 
-from hashkernel.bakery import Cake, CakeHeaders
+from hashkernel.bakery import Cake, MsgTypes
 
 log = getLogger(__name__)
 
@@ -28,12 +28,12 @@ def test_CAKe():
 
     do_test(b"a" * 46, "ofsWs1MD2bqX34KrhZDGpw8I2LGyrDadV90nYzThzPt0")
 
-    d = Cake.new_guid(CakeHeaders.MOUNT_FOLDER)
-    x = Cake.new_guid(CakeHeaders.MOUNT_FOLDER)
+    d = Cake.new_guid(MsgTypes.MOUNT_FOLDER)
+    x = Cake.new_guid(MsgTypes.MOUNT_FOLDER)
     z = Cake(str(d))
     assert z == d
     assert (z != d) == False
     assert z != x
     assert d != x
-    assert z.header == d.header
+    assert z.type == d.type
     assert str(z) == str(d)

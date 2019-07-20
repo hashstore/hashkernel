@@ -67,14 +67,14 @@ B62 = base_x(62)
 B36 = base_x(36)
 
 
-class CakeHeader:
+class CakeType:
     modifiers: Set[CakeProperties]
     gref: Optional[GlobalRef]
     idx: Optional[int]
     name: Optional[str]
-    headers: Optional["CakeHeaders"]
+    cake_types: Optional["CakeTypeRegistar"]
 
-    def __init__(self, modifiers, gref=None, idx=None, name=None, headers=None):
+    def __init__(self, modifiers, gref=None, idx=None, name=None, cake_types=None):
         assert (
             CakeProperties.IS_GUID in modifiers or CakeProperties.IS_HASH in modifiers
         )
@@ -82,7 +82,7 @@ class CakeHeader:
         self.gref = gref
         self.idx = idx
         self.name = name
-        self.headers = headers
+        self.cake_types = cake_types
 
     def update_gref(self, gref: Union[type, GlobalRef]):
         gref = GlobalRef.ensure_it(gref)
@@ -90,8 +90,8 @@ class CakeHeader:
             self.gref = gref
         else:
             assert self.gref == gref, f"conflict gref: {self.gref} vs {gref}"
-        if self.headers is not None:
-            self.headers.__types__ = None
+        if self.cake_types is not None:
+            self.cake_types.__types__ = None
 
     def __str__(self):
         return B62.alphabet[self.idx]
@@ -100,16 +100,16 @@ class CakeHeader:
         return bytes((self.idx,))
 
 
-class HeaderRegistar(type):
+class CakeTypeRegistar(type):
     def __init__(cls, name, bases, dct):
-        cls.__headers__ = [None for _ in range(62)]
-        cls.__by_name__: Dict[str, "CakeHeader"] = {}
-        cls.__types__: Optional[Dict[GlobalRef, "CakeHeader"]] = None
+        cls.__cake_types__ = [None for _ in range(62)]
+        cls.__by_name__: Dict[str, "CakeType"] = {}
+        cls.__types__: Optional[Dict[GlobalRef, "CakeType"]] = None
         idx = dct.get("__start_idx__", 0)
         for k in dct:
             if k[:1] != "_":
-                if isinstance(dct[k], CakeHeader):
-                    ch: CakeHeader = dct[k]
+                if isinstance(dct[k], CakeType):
+                    ch: CakeType = dct[k]
                     ch.idx = idx
                     ch.name = k
                     cls.register(ch)
@@ -122,65 +122,82 @@ class HeaderRegistar(type):
             else:
                 return cls.__by_name__[k]
         if isinstance(k, int):
-            v = cls.__headers__[k]
+            v = cls.__cake_types__[k]
             if v is not None:
                 return v
         raise KeyError(k)
 
-    def register(cls, ch: CakeHeader):
+    def extend(cls, ctr: "CakeTypeRegistar"):
+        for ct in ctr.cake_types():
+            cls.register(ct)
+
+    def register(cls, ch: CakeType):
         assert ch.name is not None
         assert ch.name not in cls.__by_name__
         if ch.idx is not None:
-            assert cls.__headers__[ch.idx] is None
+            assert cls.__cake_types__[ch.idx] is None
         else:
-            ch.idx = next(i for i, h in enumerate(cls.__headers__) if h is None)
-        cls.__headers__[ch.idx] = ch
+            ch.idx = next(i for i, h in enumerate(cls.__cake_types__) if h is None)
+        cls.__cake_types__[ch.idx] = ch
         cls.__by_name__[ch.name] = ch
-        ch.headers = cls
+        ch.cake_types = cls
 
-    def by_type(cls, gref: Union[type, GlobalRef]) -> Optional["CakeHeader"]:
+    def by_type(cls, gref: Union[type, GlobalRef]) -> Optional["CakeType"]:
         gref = GlobalRef.ensure_it(gref)
         if cls.__types__ is None:
             cls.__types__ = {
                 h.gref: h
-                for h in cls.headers()
+                for h in cls.cake_types()
                 if CakeProperties.IS_HASH in h.modifiers and h.gref is not None
             }
         return cls.__types__[GlobalRef.ensure_it(gref)]
 
-    def headers(cls) -> Iterable["CakeHeader"]:
-        return (h for h in cls.__headers__ if h is not None)
+    def cake_types(cls) -> Iterable["CakeType"]:
+        return (h for h in cls.__cake_types__ if h is not None)
 
 
-class CakeHeaders(metaclass=HeaderRegistar):
-    NO_CLASS = CakeHeader({CakeProperties.IS_HASH})
-    JOURNAL = CakeHeader({CakeProperties.IS_GUID, CakeProperties.IS_JOURNAL})
-    FOLDER = CakeHeader({CakeProperties.IS_HASH, CakeProperties.IS_FOLDER})
-    TIMESTAMP = CakeHeader({CakeProperties.IS_GUID})
-    CASK = CakeHeader({CakeProperties.IS_GUID})
-    BLOCKSTREAM = CakeHeader({CakeProperties.IS_HASH})
-    QUESTION_MSG = CakeHeader({CakeProperties.IS_HASH})
-    RESPONSE_MSG = CakeHeader({CakeProperties.IS_HASH})
-    DATA_CHUNK_MSG = CakeHeader({CakeProperties.IS_HASH})
-    JSON_WRAP = CakeHeader({CakeProperties.IS_HASH}, gref=GlobalRef(JsonWrap))
-    BYTES_WRAP = CakeHeader({CakeProperties.IS_HASH}, gref=GlobalRef(BytesWrap))
-    JOURNAL_FOLDER = CakeHeader(
+class CakeTypes(metaclass=CakeTypeRegistar):
+    NO_CLASS = CakeType({CakeProperties.IS_HASH})
+    JOURNAL = CakeType({CakeProperties.IS_GUID, CakeProperties.IS_JOURNAL})
+    FOLDER = CakeType({CakeProperties.IS_HASH, CakeProperties.IS_FOLDER})
+    TIMESTAMP = CakeType({CakeProperties.IS_GUID})
+    CASK = CakeType({CakeProperties.IS_GUID})
+    BLOCKSTREAM = CakeType({CakeProperties.IS_HASH})
+
+
+class MsgTypes(metaclass=CakeTypeRegistar):
+    """
+    >>> MsgTypes.QUESTION_MSG.idx
+    16
+    >>> MsgTypes.QUESTION_MSG.cake_types == CakeTypes
+    True
+    """
+
+    __start_idx__ = 0x10
+    QUESTION_MSG = CakeType({CakeProperties.IS_HASH})
+    RESPONSE_MSG = CakeType({CakeProperties.IS_HASH})
+    DATA_CHUNK_MSG = CakeType({CakeProperties.IS_HASH})
+    JSON_WRAP = CakeType({CakeProperties.IS_HASH}, gref=GlobalRef(JsonWrap))
+    BYTES_WRAP = CakeType({CakeProperties.IS_HASH}, gref=GlobalRef(BytesWrap))
+    JOURNAL_FOLDER = CakeType(
         {CakeProperties.IS_GUID, CakeProperties.IS_FOLDER, CakeProperties.IS_JOURNAL}
     )
-    VTREE_FOLDER = CakeHeader(
+    VTREE_FOLDER = CakeType(
         {CakeProperties.IS_GUID, CakeProperties.IS_FOLDER, CakeProperties.IS_VTREE}
     )
-    MOUNT_FOLDER = CakeHeader(
+    MOUNT_FOLDER = CakeType(
         {CakeProperties.IS_GUID, CakeProperties.IS_FOLDER, CakeProperties.IS_JOURNAL}
     )
-    SESSION = CakeHeader({CakeProperties.IS_GUID})
-    NODE = CakeHeader(
+    SESSION = CakeType({CakeProperties.IS_GUID})
+    NODE = CakeType(
         {CakeProperties.IS_GUID, CakeProperties.IS_FOLDER, CakeProperties.IS_JOURNAL}
     )
-    USER = CakeHeader(
+    USER = CakeType(
         {CakeProperties.IS_GUID, CakeProperties.IS_FOLDER, CakeProperties.IS_JOURNAL}
     )
 
+
+CakeTypes.extend(MsgTypes)
 
 SIZEOF_CAKE = Hasher.SIZEOF + 1
 GUIDHEADER_SIZEOF = nano_ttl.SIZEOF
@@ -276,25 +293,25 @@ class Cake(Stringable, EnsureIt, Primitive):
         self,
         s: Union[str, bytes, None],
         digest: Optional[bytes] = None,
-        header: Optional[CakeHeader] = None,
+        type: Optional[CakeType] = None,
     ) -> None:
         if s is None:
             assert (
-                digest is not None and header is not None
-            ), f"both digest={digest} and header={header} required"
+                digest is not None and type is not None
+            ), f"both digest={digest} and type={type} required"
             self.digest = digest
-            self.header = header
+            self.type = type
         elif isinstance(s, bytes):
             assert len(s) == SIZEOF_CAKE, f"invalid length of s: {len(s)}"
             self.digest = s[:-1]
-            self.header = CakeHeaders[ord(s[-1:])]
+            self.type = CakeTypes[ord(s[-1:])]
         else:
             self.digest = B62.decode(s[:-1])
-            self.header = CakeHeaders[s[-1:]]
-        CakeProperties.set_properties(self, *self.header.modifiers)
+            self.type = CakeTypes[s[-1:]]
+        CakeProperties.set_properties(self, *self.type.modifiers)
         assert (
             len(self.digest) == Hasher.SIZEOF
-        ), f"invalid cake digest: {s} {digest} {header} "
+        ), f"invalid cake digest: {s} {digest} {type} "
 
     def timing(self) -> nano_ttl:
         assert self.is_guid
@@ -310,36 +327,36 @@ class Cake(Stringable, EnsureIt, Primitive):
         return self.digest[GUIDHEADER_SIZEOF:]
 
     @staticmethod
-    def from_stream(fd: IO[bytes], header=CakeHeaders.NO_CLASS) -> "Cake":
-        assert CakeProperties.IS_HASH in header.modifiers
+    def from_stream(fd: IO[bytes], type=CakeTypes.NO_CLASS) -> "Cake":
+        assert CakeProperties.IS_HASH in type.modifiers
         return Cake(
-            None, digest=Hasher().update_from_stream(fd).digest(), header=header
+            None, digest=Hasher().update_from_stream(fd).digest(), type=type
         )
 
     @staticmethod
-    def from_bytes(s: bytes, header=CakeHeaders.NO_CLASS) -> "Cake":
-        return Cake.from_stream(BytesIO(s), header)
+    def from_bytes(s: bytes, type=CakeTypes.NO_CLASS) -> "Cake":
+        return Cake.from_stream(BytesIO(s), type)
 
     @staticmethod
-    def from_file(file: str, header) -> "Cake":
-        return Cake.from_stream(open(file, "rb"), header)
+    def from_file(file: str, type) -> "Cake":
+        return Cake.from_stream(open(file, "rb"), type)
 
     @staticmethod
     def new_guid(
-        header: CakeHeader = CakeHeaders.TIMESTAMP,
+        type: CakeType = CakeTypes.TIMESTAMP,
         ttl: Union[nanotime, timedelta, None] = None,
     ) -> "Cake":
-        return Cake(None, digest=new_guid_data(ttl), header=header)
+        return Cake(None, digest=new_guid_data(ttl), type=type)
 
     @staticmethod
-    def from_digest36(digest: str, header: CakeHeader):
-        return Cake(None, B36.decode(digest), header)
+    def from_digest36(digest: str, type: CakeType):
+        return Cake(None, B36.decode(digest), type)
 
     def assert_guid(self) -> None:
         assert self.is_guid, f"has to be a guid: {self}"
 
     def __str__(self) -> str:
-        return B62.encode(self.digest) + str(self.header)
+        return B62.encode(self.digest) + str(self.type)
 
     def digest36(self) -> str:
         return B36.encode(self.digest)
@@ -355,13 +372,13 @@ class Cake(Stringable, EnsureIt, Primitive):
     def __eq__(self, other) -> bool:
         if not isinstance(other, Cake):
             return False
-        return self.digest == other.digest and self.header == other.header
+        return self.digest == other.digest and self.type == other.type
 
     def __ne__(self, other) -> bool:
         return not self.__eq__(other)
 
     def __bytes__(self):
-        return self.digest + bytes(self.header)
+        return self.digest + bytes(self.type)
 
 
 Cake.__packer__ = ProxyPacker(Cake, FixedSizePacker(SIZEOF_CAKE))
@@ -377,7 +394,7 @@ class HasCakeFromBytes:
     def cake(self) -> Cake:
         return Cake.from_bytes(
             bytes(self),  # type:ignore
-            header=CakeHeaders.by_type(self.__class__),
+            type=CakeTypes.by_type(self.__class__),
         )
 
 
@@ -448,10 +465,10 @@ class BlockStream:
         return b"".join(map(bytes, self.blocks))
 
 
-CakeHeaders.BLOCKSTREAM.update_gref(BlockStream)
-CakeHeaders.QUESTION_MSG.update_gref(QuestionMsg)
-CakeHeaders.RESPONSE_MSG.update_gref(ResponseMsg)
-CakeHeaders.DATA_CHUNK_MSG.update_gref(DataChunkMsg)
+CakeTypes.BLOCKSTREAM.update_gref(BlockStream)
+MsgTypes.QUESTION_MSG.update_gref(QuestionMsg)
+MsgTypes.RESPONSE_MSG.update_gref(ResponseMsg)
+MsgTypes.DATA_CHUNK_MSG.update_gref(DataChunkMsg)
 
 
 class HashSession(metaclass=abc.ABCMeta):
@@ -461,7 +478,7 @@ class HashSession(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     async def store_content(
-        self, cake_header: CakeHeader, content: Union[bytes, IO[bytes]]
+        self, cake_type: CakeType, content: Union[bytes, IO[bytes]]
     ) -> Cake:
         raise NotImplementedError("subclasses must override")
 

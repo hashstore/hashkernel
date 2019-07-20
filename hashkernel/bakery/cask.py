@@ -4,7 +4,7 @@ from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
 from nanotime import nanotime
 
 from hashkernel import CodeEnum
-from hashkernel.bakery import BlockStream, Cake, CakeHeaders, Journal
+from hashkernel.bakery import BlockStream, Cake, CakeTypes, Journal
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
@@ -232,7 +232,7 @@ class CaskType(CodeEnum):
              cask_id - guid
         """
         digest, ext = file_name.split(".")
-        cask_id = Cake.from_digest36(digest, CakeHeaders.CASK)
+        cask_id = Cake.from_digest36(digest, CakeTypes.CASK)
         return CaskType[ext.upper()], cask_id
 
 
@@ -271,7 +271,7 @@ class CaskFile:
 
     @classmethod
     def active_cask(cls, caskade: "Caskade"):
-        return cls.by_guid(caskade, Cake.new_guid(CakeHeaders.CASK), CaskType.ACTIVE)
+        return cls.by_guid(caskade, Cake.new_guid(CakeTypes.CASK), CaskType.ACTIVE)
 
     @classmethod
     def by_guid(cls, caskade: "Caskade", guid: Cake, cask_type: CaskType):
@@ -281,7 +281,7 @@ class CaskFile:
     @classmethod
     def by_file(cls, caskade: "Caskade", fname: str):
         digest, extension = fname.name.split(".")
-        guid = Cake.from_digest36(digest, CakeHeaders.CASK)
+        guid = Cake.from_digest36(digest, CakeTypes.CASK)
         cask_type = CaskType(extension.upper())
         return cls(cls.__enforce_private, caskade, caskade.dir / fname, guid, cask_type)
 

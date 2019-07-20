@@ -3,7 +3,7 @@ import tempfile
 from io import BytesIO
 
 from hashkernel import to_json, utf8_reader
-from hashkernel.bakery import Cake, CakeHeaders
+from hashkernel.bakery import Cake, CakeTypes
 from hashkernel.bakery.rack import CakeRack, PatchAction
 
 
@@ -23,7 +23,7 @@ def test_Bundle():
     with tempfile.NamedTemporaryFile("w", delete=False) as w:
         w.write(b1.content())
     b2 = CakeRack().parse(b1.content())
-    u_f = Cake.from_file(w.name, header=CakeHeaders.FOLDER)
+    u_f = Cake.from_file(w.name, type=CakeTypes.FOLDER)
     os.unlink(w.name)
     u2 = b2.cake()
     assert u_f == u2

@@ -1,7 +1,7 @@
 # Etnry point for mypy to evaluate all modules
-def list_all_prod_modules():
+def all_prod_modules():
     """
-    >>> list_all_prod_modules()
+    >>> for m in all_prod_modules(): print(f'import {m}')
     import hashkernel
     import hashkernel.auto_wire
     import hashkernel.base_x
@@ -32,10 +32,10 @@ def list_all_prod_modules():
     from os import listdir
 
     for m in find_packages(exclude=("*.tests",)):
-        print(f"import {m}")
+        yield m
         for n in sorted(listdir(m.replace(".", "/"))):
             if n != "__init__.py" and n.endswith(".py"):
-                print(f"import {m}.{n[:-3]}")
+                yield f"{m}.{n[:-3]}"
 
 
 # keep in sync with output above
