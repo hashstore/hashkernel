@@ -193,6 +193,7 @@ class nano_ttl:
     '01020304050607081f'
     >>> nano_ttl(bytes(nt)) == nt
     True
+    >>> from time import sleep; sleep(1.5e-3)
     >>> later = nano_ttl(nanotime_now(), timedelta(days=10))
     >>> later > nt
     True
