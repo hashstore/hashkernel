@@ -172,6 +172,7 @@ TTL_PACKER = ProxyPacker(TTL, INT_8, int)
 
 NANOTTL_TUPLE_PACKER = TuplePacker(NANOTIME, TTL_PACKER)
 
+
 @total_ordering
 class nano_ttl:
     """
@@ -222,10 +223,16 @@ class nano_ttl:
         return NANOTTL_TUPLE_PACKER.pack((self.time, self.ttl))
 
     def __eq__(self, other):
-        return (self.time.nanoseconds(), self.ttl) == (other.time.nanoseconds(), other.ttl)
+        return (self.time.nanoseconds(), self.ttl) == (
+            other.time.nanoseconds(),
+            other.ttl,
+        )
 
     def __lt__(self, other):
-        return (self.time.nanoseconds(), self.ttl) < (other.time.nanoseconds(), other.ttl)
+        return (self.time.nanoseconds(), self.ttl) < (
+            other.time.nanoseconds(),
+            other.ttl,
+        )
 
 
 NANO_TTL_PACKER = ProxyPacker(nano_ttl, NANOTTL_TUPLE_PACKER)
