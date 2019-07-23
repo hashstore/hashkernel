@@ -96,6 +96,10 @@ class CakeType:
         if self.cake_types is not None:
             self.cake_types.__types__ = None
 
+    def __int__(self):
+        assert self.idx is not None
+        return self.idx
+
     def __str__(self):
         return B62.alphabet[self.idx]
 
@@ -118,7 +122,7 @@ class CakeTypeRegistar(type):
                     cls.register(ch)
                     idx += 1
 
-    def __getitem__(cls, k):
+    def map(cls, k):
         if isinstance(k, str):
             if len(k) == 1:
                 k = B62.index[k]
@@ -129,6 +133,9 @@ class CakeTypeRegistar(type):
             if v is not None:
                 return v
         raise KeyError(k)
+
+    def __getitem__(cls, k):
+        return cls.map(k)
 
     def extend(cls, ctr: "CakeTypeRegistar"):
         for ct in ctr.cake_types():

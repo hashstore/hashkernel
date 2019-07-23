@@ -4,7 +4,7 @@ from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
 from nanotime import nanotime
 
 from hashkernel import CodeEnum
-from hashkernel.bakery import BlockStream, Cake, CakeTypes, Journal
+from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes, Journal
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
@@ -57,6 +57,7 @@ _COMPONENTS_PACKERS = {
     Cake: Cake.__packer__,
     bytes: GREEDY_BYTES,
     int: INT_32,
+    CakeType: ProxyPacker(CakeType, INT_8, int, CakeTypes.map),
     CheckPointType: build_code_enum_packer(CheckPointType),
 }
 
@@ -67,6 +68,15 @@ def build_entry_packer(cls: type) -> TuplePacker:
 
 class DataEntry(NamedTuple):
     data: bytes
+
+
+class ActiveHistoryReconEntry(NamedTuple):
+    content: Cake
+
+
+class GuidReconEntry(NamedTuple):
+    type_overide: CakeType
+    content: Cake
 
 
 class JournalEntry(NamedTuple):
@@ -95,7 +105,8 @@ class EntryType(CodeEnum):
     [(<EntryType.DATA: 0>, None), (<EntryType.JOURNAL: 1>, 33),
     (<EntryType.SET_PATH_IN_VTREE: 2>, None), (<EntryType.DELETE_PATH_IN_VTREE: 3>, None),
     (<EntryType.CHECK_POINT: 4>, 42), (<EntryType.NEXT_SEGMENT: 5>, 0),
-    (<EntryType.PREVIOUS_SEGMENT: 6>, 0), (<EntryType.FIRST_SEGMENT: 7>, 0)]
+    (<EntryType.PREVIOUS_SEGMENT: 6>, 0), (<EntryType.FIRST_SEGMENT: 7>, 0),
+    (<EntryType.ACTIVE_HISTORY: 8>, 33), (<EntryType.GUID_RECON: 9>, 34)]
 
     """
 
@@ -163,6 +174,23 @@ class EntryType(CodeEnum):
         """
         `src` has address of first cask segment. It has to be first 
         entry in any cask.
+        """,
+    )
+
+    ACTIVE_HISTORY = (
+        8,
+        ActiveHistoryReconEntry,
+        """
+        `src` has address of prev cask segment. This entry has to 
+        follow FIRST_SEGMENT entry in each continuing segment cask.  
+        """,
+    )
+    GUID_RECON = (
+        9,
+        GuidReconEntry,
+        """
+        `src` has address of prev cask segment. This entry has to 
+        follow FIRST_SEGMENT entry in each continuing segment cask.  
         """,
     )
 
