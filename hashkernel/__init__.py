@@ -114,21 +114,6 @@ def identity(v):
     return v
 
 
-def first_elem(t):
-    """
-    >>> first_elem([5])
-    5
-    >>> first_elem((6,))
-    6
-    >>> first_elem([])
-    Traceback (most recent call last):
-    ...
-    IndexError: list index out of range
-
-    """
-    return t[0]
-
-
 def from_camel_case_to_underscores(s: str) -> str:
     """
     >>> from_camel_case_to_underscores('CamelCase')
