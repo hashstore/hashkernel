@@ -7,7 +7,8 @@ from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, OneBit, Stringable, StrKeyMixin
+from hashkernel import EnsureIt, OneBit, Stringable, StrKeyMixin, \
+    Integerable
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -63,7 +64,7 @@ _MASKS = [1 << i for i in range(4, -1, -1)]
 
 
 @total_ordering
-class TTL:
+class TTL(Integerable):
     """
     TTL - Time to live interval expressed in 0 - 31 integer
 
@@ -166,6 +167,24 @@ class TTL:
 
     def __repr__(self):
         return f"TTL({int(self)})"
+
+    @classmethod
+    def all(cls):
+        """
+        All posible `TTL`s with extra bits set to 0
+        """
+        return (cls(i) for i in range(32))
+
+
+FEW_SECONDS_TTL = TTL(0)  # 8.6s
+ABOUT_A_MINUTE_TTL = TTL(timedelta(minutes=1))
+ABOUT_AN_HOUR_TTL = TTL(timedelta(hours=1))
+ABOUT_A_DAY_TTL = TTL(timedelta(days=1))
+ABOUT_A_WEEK_TTL = TTL(timedelta(days=7))
+ABOUT_A_MONTH_TTL = TTL(timedelta(days=30))
+ABOUT_A_QUARTER_TTL = TTL(timedelta(days=90))
+ABOUT_A_YEAR_TTL = TTL(timedelta(days=366))
+FOREVER_TTL = TTL()
 
 
 TTL_PACKER = ProxyPacker(TTL, INT_8, int)

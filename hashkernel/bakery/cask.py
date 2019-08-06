@@ -1,10 +1,10 @@
-from pathlib import Path
-from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from pathlib import Path, PurePath
+from typing import NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 from nanotime import nanotime
 
 from hashkernel import CodeEnum
-from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes, Journal
+from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
@@ -15,7 +15,8 @@ from hashkernel.packer import (
     TuplePacker,
     build_code_enum_packer,
 )
-from hashkernel.smattr import Mold, build_named_tuple_packer
+from hashkernel.smattr import SmAttr, build_named_tuple_packer
+from hashkernel.time import TTL, nanotime_now
 
 
 """
@@ -24,30 +25,39 @@ Somewhat inspired by BitCask
 
 
 class CheckPointType(CodeEnum):
-    ON_SIZE = (
+    MANUAL = (
         0,
         """
-    when chunk from last checkpoint exeeded maximum size
+    Manual checkpoint. Checkpoint ignored if no activity been recorded 
+    since previous one. 
+    """,
+    )
+    ON_SIZE = (
+        1,
+        """
+    when secion from last checkpoint about ot maximum size set in config
     """,
     )
     ON_TIME = (
-        1,
-        """
-    when there was some activity sinse last last checkpoint and 
-    maximum checkpoint time is exeeded.
-    """,
-    )
-    ON_SEGMENT = (
         2,
-        """ 
-    last entry in cask file when segment is closed, must be to be preceded
-    NEXT_SEGMENT entry. This cask All entries will go to next segment's cask
+        """
+    maximum checkpoint TTL is exeeded. ignored if no activity been recorded 
+    since previous one. 
     """,
     )
-    ON_CLOSE = (
+    ON_NEXT_CASK = (
         3,
+        """ 
+    last entry in cask file when cask is closed, must be to be preceded
+    `NextCaskEntry` entry. 
+    """,
+    )
+    ON_CASKADE_CLOSE = (
+        4,
         """
-    when cask is closed for manipulation
+    last entry in cask file when caskade is closed, must be to be preceded
+    `NextCaskEntry` entry with `NULL_CAKE` in `src. Whole caskade directory 
+    will be close for modification after that. 
     """,
     )
 
@@ -70,43 +80,22 @@ class DataEntry(NamedTuple):
     data: bytes
 
 
-class ActiveHistoryReconEntry(NamedTuple):
-    content: Cake
-
-
-class GuidReconEntry(NamedTuple):
-    type_overide: CakeType
-    content: Cake
-
-
-class JournalEntry(NamedTuple):
-    value: Cake
-
-
-class SetPathInVtreeEntry(NamedTuple):
-    value: Cake
-    path: str
-
-
-class DeletePathInVtreeEntry(NamedTuple):
-    path: str
-
-
 class CheckpointEntry(NamedTuple):
     start: int
     end: int
-    section_id: Cake
     type: CheckPointType
+
+
+class PreviousCaskEntry(NamedTuple):
+    caskade_id: Cake
+    checkpoint_id: Cake
 
 
 class EntryType(CodeEnum):
     """
     >>> [ (e,e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
-    [(<EntryType.DATA: 0>, None), (<EntryType.JOURNAL: 1>, 33),
-    (<EntryType.SET_PATH_IN_VTREE: 2>, None), (<EntryType.DELETE_PATH_IN_VTREE: 3>, None),
-    (<EntryType.CHECK_POINT: 4>, 42), (<EntryType.NEXT_SEGMENT: 5>, 0),
-    (<EntryType.PREVIOUS_SEGMENT: 6>, 0), (<EntryType.FIRST_SEGMENT: 7>, 0),
-    (<EntryType.ACTIVE_HISTORY: 8>, 33), (<EntryType.GUID_RECON: 9>, 34)]
+    [(<EntryType.DATA: 0>, None), (<EntryType.CHECK_POINT: 1>, 9),
+    (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.PREVIOUS_CASK: 3>, 66)]
 
     """
 
@@ -114,83 +103,37 @@ class EntryType(CodeEnum):
         0,
         DataEntry,
         """
-    Data identified by `src` hash""",
-    )
-
-    JOURNAL = (
-        1,
-        JournalEntry,
-        """
-        Entry in `src` journal set to current `value`
-        """,
-    )
-
-    SET_PATH_IN_VTREE = (
-        2,
-        SetPathInVtreeEntry,
-        """
-        `src` identify vtree and entry contains new `value` for `path`
-        """,
-    )
-
-    DELETE_PATH_IN_VTREE = (
-        3,
-        DeletePathInVtreeEntry,
-        """
-        `src` identify vtree and entry contains `path` to deleted
+        Data identified by `src` hash
         """,
     )
 
     CHECK_POINT = (
-        4,
+        1,
         CheckpointEntry,
         """ 
-        `start` and `end` position and `section_id` hash of section and 
-        `type` points to reason why checkpoint happened.
+        `start` and `end` - absolute positions in cask filen 
+        `src` - hash of section of data from previous checkpoint 
+        `type` - reason why checkpoint happened
         """,
     )
 
-    NEXT_SEGMENT = (
-        5,
+    NEXT_CASK = (
+        2,
         None,
         """
         `src` has address of next cask segment. This entry has to 
-        precede ON_SEGMENT checkpoint.
+        precede ON_NEXT_CASK checkpoint.
         """,
     )
 
-    PREVIOUS_SEGMENT = (
-        6,
-        None,
+    PREVIOUS_CASK = (
+        3,
+        PreviousCaskEntry,
         """
-        `src` has address of prev cask segment. This entry has to 
-        follow FIRST_SEGMENT entry in each continuing segment cask.  
-        """,
-    )
-
-    FIRST_SEGMENT = (
-        7,
-        None,
-        """
-        `src` has address of first cask segment. It has to be first 
-        entry in any cask.
-        """,
-    )
-
-    ACTIVE_HISTORY = (
-        8,
-        ActiveHistoryReconEntry,
-        """
-        `src` has address of prev cask segment. This entry has to 
-        follow FIRST_SEGMENT entry in each continuing segment cask.  
-        """,
-    )
-    GUID_RECON = (
-        9,
-        GuidReconEntry,
-        """
-        `src` has address of prev cask segment. This entry has to 
-        follow FIRST_SEGMENT entry in each continuing segment cask.  
+        first entry in any cask file excluding first, `src` has 
+        cask_id of previous cask. `checkpoint_id` has checksum
+        hash that should be copied from previous's cask last 
+        checkpoint `src`.  
         """,
     )
 
@@ -233,25 +176,11 @@ class CaskType(CodeEnum):
         """,
     )
 
-    SHADOW = (
-        2,
-        """
-        cask that being synchronized with active cask on other host
-        """,
-    )
-
-    EXPIRED = (
-        3,
-        """
-        expired cask excluded from `Caskade` and will be cleaned soon
-        """,
-    )
-
-    def cask_path(self, guid: Cake) -> Path:
-        return f"{guid.digest36()}.{self.name.lower()}"
+    def cask_path(self, dir: Path, guid: Cake) -> Path:
+        return dir / f"{guid.digest36()}.{self.name.lower()}"
 
     @staticmethod
-    def split_file_name(file_name: str) -> Tuple["CaskType", Cake]:
+    def split_file_name(path: Path) -> Optional[Tuple["CaskType", Cake]]:
         """
         Split name into cask's type and id
 
@@ -259,8 +188,10 @@ class CaskType(CodeEnum):
              ct - type of Cask
              cask_id - guid
         """
-        digest, ext = file_name.split(".")
-        cask_id = Cake.from_digest36(digest, CakeTypes.CASK)
+        ext = path.suffix[1:]
+        if ext == "" or len(path.stem) < 32 or len(path.stem) > 50:
+            return None
+        cask_id = Cake.from_digest36(path.stem, CakeTypes.CASK)
         return CaskType[ext.upper()], cask_id
 
 
@@ -333,9 +264,63 @@ class CaskFile:
 
 
 class DataLocation(NamedTuple):
+    file: "CaskFile"
     offset: int
     size: int
-    file: "CaskFile"
+
+
+# class GuidRef:
+#     guid: Cake
+#     data: Union[None, Journal, VirtualTree, DataLocation]
+
+CHUNK_SIZE: int = 2 ** 21  # 2Mb
+MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
+
+SIZE_OF_CLOSE_CASK_SEQUENCE = (
+    Record_PACKER.size * 2 + EntryType.CHECK_POINT.entry_packer.size
+)
+
+MAX_CASK_SIZE_ADJUSTED = MAX_CASK_SIZE - SIZE_OF_CLOSE_CASK_SEQUENCE
+
+
+class CaskadeConfig(SmAttr):
+    origin: Cake
+    checkpoint_ttl: Optional[TTL] = None
+    checkpoint_size: int = 128 * CHUNK_SIZE
+    auto_chunk_cutoff: int = 3 * CHUNK_SIZE / 2
+
+    def cask_strategy(
+        self,
+        writen_bytes_since_previous_checkpoint: int,
+        first_activity_after_last_checkpoint: Optional[nanotime],
+        current_size: int,
+        size_to_be_written: int,
+    ) -> Tuple[nanotime, bool, bool]:
+        """
+        Returns:
+            now - current time
+            new_checkpoint_now - is it time for checkpoint
+            new_cask_now - is it time for new cask
+        """
+        now = nanotime_now()
+        if current_size + size_to_be_written > MAX_CASK_SIZE_ADJUSTED:
+            return now, False, True  # new cask
+        if writen_bytes_since_previous_checkpoint > 0:
+            if (
+                self.checkpoint_ttl is not None
+                and first_activity_after_last_checkpoint is not None
+            ):
+                expires = self.checkpoint_ttl.expires(
+                    first_activity_after_last_checkpoint
+                )
+                if expires.nanoseconds() < now.nanoseconds():
+                    return now, True, False
+            if (
+                writen_bytes_since_previous_checkpoint + size_to_be_written
+                > self.checkpoint_size
+            ):
+                return now, True, False
+        return now, False, False
 
 
 class Caskade:
@@ -344,11 +329,18 @@ class Caskade:
     """
 
     dir: Path
-    casks: Dict[Cake, CaskFile]
-    data: Dict[Cake, DataLocation]
+    config: CaskadeConfig
     active: CaskFile
-    shadows: Dict[Cake, CaskFile]
-    journals: Dict[Cake, Journal]
+    # casks: Dict[Cake, CaskFile]
+    # data: Dict[Cake, DataLocation]
+    # guids: Dict[Cake, GuidRef]
+
+    def __init__(self, dir: Union[Path, str]):
+        self.dir = Path(dir).absolute()
+        list(self.dir.iterdir())
+
+    def _config_file(self) -> Path:
+        return self.dir / ".hs_caskade"
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         ...
@@ -361,3 +353,65 @@ class Caskade:
 
     def write_path(self, src: Cake, path: str, value: Optional[Cake]):
         ...
+
+
+# class ActiveHistoryReconEntry(NamedTuple):
+#     content: Cake
+#
+#
+# class GuidReconEntry(NamedTuple):
+#     type_overide: CakeType
+#     content: Cake
+#
+#
+# class JournalEntry(NamedTuple):
+#     value: Cake
+#
+#
+# class SetPathInVtreeEntry(NamedTuple):
+#     value: Cake
+#     path: str
+#
+#
+# class DeletePathInVtreeEntry(NamedTuple):
+#     path: str
+
+# JOURNAL = (
+#     1,
+#     JournalEntry,
+#     """
+#     Entry in `src` journal set to current `value`
+#     """,
+# )
+#
+# SET_PATH_IN_VTREE = (
+#     2,
+#     SetPathInVtreeEntry,
+#     """
+#     `src` identify vtree and entry contains new `value` for `path`
+#     """,
+# )
+#
+# DELETE_PATH_IN_VTREE = (
+#     3,
+#     DeletePathInVtreeEntry,
+#     """
+#     `src` identify vtree and entry contains `path` to deleted
+#     """,
+# )
+#     ACTIVE_HISTORY = (
+#         8,
+#         ActiveHistoryReconEntry,
+#         """
+#         `src` has address of prev cask segment. This entry has to
+#         follow FIRST_SEGMENT entry in each continuing segment cask.
+#         """,
+#     )
+#     GUID_RECON = (
+#         9,
+#         GuidReconEntry,
+#         """
+#         `src` has address of prev cask segment. This entry has to
+#         follow FIRST_SEGMENT entry in each continuing segment cask.
+#         """,
+#     )

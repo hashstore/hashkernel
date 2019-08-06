@@ -28,15 +28,15 @@ class Content(Stringable):
     """
     >>> c = Content()
     >>> c.append("loer ipsum kot lakrose manta")
-    >>> list(c.format(5,15))
+    >>> list(c.format_paragraph(5,15))
     ['     loer ipsum kot', '     lakrose manta']
     >>> c = Content('loer')
     >>> c.append(" ipsum kot lakrose   manta  ")
-    >>> list(c.format(5,15))
+    >>> list(c.format_paragraph(5,15))
     ['     loer ipsum kot', '     lakrose manta']
-    >>> list(c.format(5,3))
+    >>> list(c.format_paragraph(5,3))
     ['     loer', '     ipsum', '     kot', '     lakrose', '     manta']
-    >>> list(c.format(5,3, "  aa:"))
+    >>> list(c.format_paragraph(5,3, "  aa:"))
     ['  aa:', '     loer', '     ipsum', '     kot', '     lakrose', '     manta']
     >>> str(c)
     'loer ipsum kot lakrose manta'
@@ -78,7 +78,7 @@ class Content(Stringable):
     def __str__(self):
         return " ".join(self.words)
 
-    def format(self, indent, cutoff_width, first_prefix=None):
+    def format_paragraph(self, indent, cutoff_width, first_prefix=None):
         prefix = " " * indent
         next_line = None
         if first_prefix is not None:
@@ -150,7 +150,7 @@ class VariableDocEntry(AbstractDocEntry):
             self.content.append(striped)
 
     def format(self, indent):
-        yield from self.content.format(
+        yield from self.content.format_paragraph(
             indent + 4, CUTOFF_WIDTH, " " * indent + self.name + ":"
         )
 
@@ -200,7 +200,7 @@ class GroupOfVariables(AbstractDocEntry):
         yield " " * indent + self.name + ":"
         indent += 4
         if len(self.content) > 0:
-            yield from self.content.format(indent, CUTOFF_WIDTH)
+            yield from self.content.format_paragraph(indent, CUTOFF_WIDTH)
         for _, v in self.variables.items():
             yield from v.format(indent)
 
@@ -209,12 +209,12 @@ class GroupOfVariables(AbstractDocEntry):
 
 
 class DocStringTemplate:
-    def __init__(self, doc: Optional[str], keys_expected: Set[str]) -> None:
+    def __init__(self, doc: Optional[str], keys_expected: Set[str]):
         self.keys_expected = keys_expected
         self.var_groups: Dict[str, GroupOfVariables] = {}
         self.template: List[Union[Placeholder, str]] = []
         if doc is None:
-            for k in keys_expected:
+            for k in sorted(keys_expected):
                 self.template.append(Placeholder(0, k))
                 self.template.append("")
         else:

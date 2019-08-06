@@ -64,7 +64,7 @@ def not_zero_len(v):
 
 def quict(**kwargs):
     """
-    Shortcut to created dictionary with `kwargs` fasion
+    Create dictionary from `kwargs`
 
     >>> quict(a=3, x="a")
     {'a': 3, 'x': 'a'}
@@ -244,7 +244,7 @@ class Str2Bytes:
 
 class Stringable(Str2Bytes):
     """
-    Marker to inform json_encoder to use `str(o)` to
+    Marker to inform `json_encode()` to use `str(o)` to
     serialize in json. Also assumes that any implementing
     class has constructor that recreate same object from
     it's string representation as single parameter.
@@ -253,6 +253,17 @@ class Stringable(Str2Bytes):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({repr(str(self))})"
 
+
+class Integerable(EnsureIt):
+    """
+    Marker to inform `json_encode()` to use `int(o)` to
+    serialize in json. Also assumes that any implementing
+    class has constructor that recreate same object from
+    it's integer number as single parameter.
+    """
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({int(self)})"
 
 class StrKeyMixin:
     """
@@ -309,7 +320,7 @@ class StrKeyMixin:
 
 class Jsonable(EnsureIt):
     """
-    Marker to inform json_encoder to use `to_json(o)` to
+    Marker to inform `json_encode()` to use `to_json(o)` to
     serialize in json
 
     """
@@ -340,6 +351,8 @@ def to_json(v: Any) -> Any:
         return v.isoformat()
     if isinstance(v, Stringable):
         return str(v)
+    if isinstance(v, Integerable):
+        return int(v)
     if isinstance(v, (int, bool, float, str, dict, list, tuple)):
         return v
     raise NotImplementedError()
@@ -364,6 +377,8 @@ class _StringableEncoder(json.JSONEncoder):
     def default(self, v):
         if isinstance(v, (datetime, date)):
             return v.isoformat()
+        if isinstance(v, Integerable):
+            return int(v)
         if isinstance(v, Stringable):
             return str(v)
         if hasattr(v, "__to_json__"):
@@ -556,7 +571,7 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
     True
     >>> crint.matches('3')
     False
-    >>> crgr=ClassRef(GlobalRef(GlobalRef))
+    >>> crgr=ClassRef(GlobalRef)
     >>> crgr.matches(GlobalRef(GlobalRef))
     True
     """

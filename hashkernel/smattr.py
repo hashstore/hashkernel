@@ -416,6 +416,16 @@ def extract_molds_from_function(
     False
     >>> out_b.is_single_return()
     True
+    >>> def c(i:int)->Optional[Tuple[str,int]]:
+    ...     return f'i={i}', i
+    ...
+    >>> in_b, out_b, dst = extract_molds_from_function(c)
+    >>> print(dst.doc()) #doctest: +NORMALIZE_WHITESPACE
+        Args:
+            i: Required[int]
+        Returns:
+            v0: Required[str]
+            v1: Required[int]
     >>>
     """
     dst = DocStringTemplate(fn.__doc__, {ARGS, RETURNS})
@@ -428,7 +438,9 @@ def extract_molds_from_function(
     out_mold = Mold()
 
     if return_type != type(None):
-
+        optional = is_optional(return_type)
+        if optional:
+            return_type = get_args(return_type)[0]
         if is_tuple(return_type):
             args = get_args(return_type)
             keys = [f"v{i}" for i in range(len(args))]

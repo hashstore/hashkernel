@@ -9,6 +9,7 @@ import threading
 from contextlib import contextmanager
 from datetime import timedelta
 from io import BytesIO
+from pathlib import PurePath
 from typing import (
     IO,
     Any,
@@ -408,6 +409,8 @@ class Cake(Stringable, EnsureIt, Primitive):
 
 Cake.__packer__ = ProxyPacker(Cake, FixedSizePacker(SIZEOF_CAKE))
 
+NULL_CAKE = Cake.from_bytes(b"")
+
 
 class HasCake(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -452,6 +455,20 @@ class TimedCake(NamedTuple):
     cake: Cake
 
 
+class TimedPath(NamedTuple):
+    tstamp: nanotime
+    path: PurePath
+    cake: Cake
+
+
+class Journal:
+    history: List[TimedCake]
+
+
+class VirtualTree:
+    history: List[TimedPath]
+
+
 _BAKERY_PACKERS = {Cake: Cake.__packer__, nanotime: NANOTIME, nano_ttl: NANO_TTL_PACKER}
 
 
@@ -466,10 +483,6 @@ def type_to_packer_resolver(cls: type) -> Packer:
 
 
 TIMED_CAKE_PACKER = type_to_packer_resolver(TimedCake)
-
-
-class Journal:
-    entries: List[TimedCake]
 
 
 class BlockStream:
