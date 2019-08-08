@@ -250,10 +250,6 @@ SIZEOF_CAKE = Hasher.SIZEOF + 1
 UNIFORM_DIGEST_SIZEOF = Hasher.SIZEOF - GuidHeader.SIZEOF
 
 
-def new_guid_data(ttl: Union[nanotime, timedelta, None] = None):
-    return bytes(GuidHeader(nanotime_now(), ttl)) + os.urandom(UNIFORM_DIGEST_SIZEOF)
-
-
 class Cake(Stringable, EnsureIt, Primitive):
     """
     Stands for Content Address Key.
@@ -371,8 +367,14 @@ class Cake(Stringable, EnsureIt, Primitive):
     def new_guid(
         type: CakeType = CakeTypes.TIMESTAMP,
         ttl: Union[nanotime, timedelta, None] = None,
+        uniform_digest: bytes = None,
     ) -> "Cake":
-        return Cake(None, digest=new_guid_data(ttl), type=type)
+        if uniform_digest is None:
+            uniform_digest = os.urandom(UNIFORM_DIGEST_SIZEOF)
+        else:
+            assert len(uniform_digest) == UNIFORM_DIGEST_SIZEOF
+        digest = bytes(GuidHeader(nanotime_now(), ttl)) + uniform_digest
+        return Cake(None, digest=digest, type=type)
 
     @staticmethod
     def from_digest36(digest: str, type: CakeType):

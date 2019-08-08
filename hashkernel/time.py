@@ -7,8 +7,7 @@ from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, OneBit, Stringable, StrKeyMixin, \
-    Integerable
+from hashkernel import EnsureIt, Integerable, OneBit, Stringable, StrKeyMixin
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -117,7 +116,11 @@ class TTL(Integerable):
     >>> t5.set_extra_bit(OneBit(0), True)
     >>> t5 == copy
     True
-
+    >>> from hashkernel import json_encode, to_json
+    >>> to_json(TTL(3))
+    3
+    >>> json_encode({"ttl": TTL(5)})
+    '{"ttl": 5}'
 
     """
 
@@ -185,7 +188,6 @@ ABOUT_A_MONTH_TTL = TTL(timedelta(days=30))
 ABOUT_A_QUARTER_TTL = TTL(timedelta(days=90))
 ABOUT_A_YEAR_TTL = TTL(timedelta(days=366))
 FOREVER_TTL = TTL()
-
 
 TTL_PACKER = ProxyPacker(TTL, INT_8, int)
 

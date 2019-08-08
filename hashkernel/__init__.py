@@ -5,8 +5,20 @@ import json
 import sys
 from datetime import date, datetime
 from inspect import isclass, isfunction, ismodule
+from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar, Union
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from dateutil.parser import parse as dt_parse
 
@@ -265,6 +277,7 @@ class Integerable(EnsureIt):
     def __repr__(self) -> str:
         return f"{type(self).__name__}({int(self)})"
 
+
 class StrKeyMixin:
     """
     mixin for immutable objects to implement
@@ -358,6 +371,24 @@ def to_json(v: Any) -> Any:
     raise NotImplementedError()
 
 
+def load_jsonable(path: Union[Path, str], cls: type) -> Any:
+    with Path(path).open(mode="rb") as fp:
+        return read_jsonable(fp, cls)
+
+
+def dump_jsonable(path: Union[Path, str], v: Any):
+    with Path(path).open(mode="wb") as fp:
+        return write_jsonable(fp, v)
+
+
+def read_jsonable(fp: IO[bytes], cls: type, n: int = -1) -> Any:
+    return cls(json_decode(utf8_decode(fp.read(n))))
+
+
+def write_jsonable(fp: IO[bytes], v: Any):
+    return fp.write(utf8_encode(json_encode(to_json(v))))
+
+
 def to_tuple(v: Any) -> tuple:
     if hasattr(v, "__to_tuple__"):
         return v.__to_tuple__()
@@ -430,6 +461,13 @@ class GlobalRef(Stringable, EnsureIt, StrKeyMixin):
     True
     >>> uref.get_module().__name__
     'hashkernel'
+    >>> GlobalRef("abc]")
+    Traceback (most recent call last):
+    ...
+    ValueError: not enough values to unpack (expected 2, got 1)
+    abc]
+
+
     """
 
     def __init__(self, s: Any, item: Optional[str] = None) -> None:
@@ -511,8 +549,8 @@ class CodeEnum(Stringable, enum.Enum):
     <CodeEnumExample.A: 0>
     >>> CodeEnumExample.B.__doc__
     'some important help message'
-
-
+    >>> CodeEnumExample.find_by_code(1)
+    <CodeEnumExample.B: 1>
     """
 
     def __init__(self, code: int, doc: str = "") -> None:
@@ -574,6 +612,10 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
     >>> crgr=ClassRef(GlobalRef)
     >>> crgr.matches(GlobalRef(GlobalRef))
     True
+    >>> crgr=ClassRef(GlobalRef(GlobalRef))
+    >>> crgr.matches(GlobalRef(GlobalRef))
+    True
+    >>>
     """
 
     def __init__(self, cls_or_str: Union[type, GlobalRef, str]) -> None:
@@ -583,7 +625,6 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             cls_or_str = GlobalRef(cls_or_str).get_instance()
         if isinstance(cls_or_str, GlobalRef):
             cls_or_str = cls_or_str.get_instance()
-
         self.cls = cls_or_str
         self.primitive = is_primitive(self.cls)
         if self.cls == Any:
@@ -592,12 +633,10 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             self._from_json = lazy_factory(self.cls, lambda v: dt_parse(v).date())
         elif self.cls is datetime:
             self._from_json = lazy_factory(self.cls, lambda v: dt_parse(v))
-        elif hasattr(self.cls, "__args__"):
+        elif hasattr(self.cls, "__args__") or not(isinstance(self.cls, type)):
             self._from_json = identity
-        elif isinstance(self.cls, type):
-            self._from_json = lazy_factory(self.cls, self.cls)
         else:
-            self._from_json = identity
+            self._from_json = lazy_factory(self.cls, self.cls)
 
     def matches(self, v):
         return self.cls == Any or isinstance(v, self.cls)
@@ -641,6 +680,10 @@ class Template(type):
 
 def delegate_factory(cls: type, delegate_attrs: Iterable[str]) -> Callable[[Any], Any]:
     """
+    Create factory function that searches object `o` for `delegate_attrs`
+    and check is any of these attributes have `cls` type. If no such
+    attributes found it calls `cls(o)` to cast it into desired type.
+
     >>> class Z:
     ...     def __int__(self):
     ...         return 7

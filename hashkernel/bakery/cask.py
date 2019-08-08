@@ -3,7 +3,15 @@ from typing import NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum
+from hashkernel import (
+    CodeEnum,
+    dump_jsonable,
+    json_encode,
+    load_jsonable,
+    read_jsonable,
+    to_json,
+    utf8_encode,
+)
 from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.packer import (
     GREEDY_BYTES,
@@ -287,7 +295,7 @@ class CaskadeConfig(SmAttr):
     origin: Cake
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE
-    auto_chunk_cutoff: int = 3 * CHUNK_SIZE / 2
+    auto_chunk_cutoff: int = int(3 * CHUNK_SIZE / 2)
 
     def cask_strategy(
         self,
@@ -335,8 +343,21 @@ class Caskade:
     # data: Dict[Cake, DataLocation]
     # guids: Dict[Cake, GuidRef]
 
-    def __init__(self, dir: Union[Path, str]):
+    def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.dir = Path(dir).absolute()
+        if not self.dir.exists():
+            self.dir.mkdir(mode=0o0700, parents=True)
+            self.caskade_id = Cake.new_guid(CakeTypes.CASK)
+            if config is None:
+                self.config = CaskadeConfig(origin=self.caskade_id)
+            else:
+                config.origin = self.caskade_id
+                self.config = config
+            dump_jsonable(self._config_file(), self.config)
+        else:
+            assert self.dir.is_dir()
+            self.config = load_jsonable(self._config_file(), CaskadeConfig)
+
         list(self.dir.iterdir())
 
     def _config_file(self) -> Path:
