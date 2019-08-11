@@ -296,6 +296,7 @@ class CaskadeConfig(SmAttr):
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE
     auto_chunk_cutoff: int = int(3 * CHUNK_SIZE / 2)
+    max_cask_size: int = MAX_CASK_SIZE_ADJUSTED
 
     def cask_strategy(
         self,
@@ -311,7 +312,7 @@ class CaskadeConfig(SmAttr):
             new_cask_now - is it time for new cask
         """
         now = nanotime_now()
-        if current_size + size_to_be_written > MAX_CASK_SIZE_ADJUSTED:
+        if current_size + size_to_be_written > self.max_cask_size:
             return now, False, True  # new cask
         if writen_bytes_since_previous_checkpoint > 0:
             if (
@@ -366,7 +367,7 @@ class Caskade:
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         ...
 
-    def write_bytes(self, content: bytes) -> Cake:
+    def write_bytes(self, content: bytes, type: CakeType = CakeTypes.NO_CLASS) -> Cake:
         ...
 
     def write_journal(self, src: Cake, value: Cake):

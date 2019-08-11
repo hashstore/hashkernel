@@ -633,7 +633,7 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             self._from_json = lazy_factory(self.cls, lambda v: dt_parse(v).date())
         elif self.cls is datetime:
             self._from_json = lazy_factory(self.cls, lambda v: dt_parse(v))
-        elif hasattr(self.cls, "__args__") or not(isinstance(self.cls, type)):
+        elif hasattr(self.cls, "__args__") or not (isinstance(self.cls, type)):
             self._from_json = identity
         else:
             self._from_json = lazy_factory(self.cls, self.cls)

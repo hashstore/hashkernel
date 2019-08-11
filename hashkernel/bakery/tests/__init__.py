@@ -1,8 +1,9 @@
 from random import Random
 from time import clock
 
+
 class BytesGen:
-    def __init__(self, seed = None):
+    def __init__(self, seed=None):
         self.random = Random()
         if seed is None:
             self.random.seed(clock(), version=2)
@@ -14,4 +15,3 @@ class BytesGen:
 
     def random_bytes(self, length):
         return bytes(self.randint_repeat(0, 255, int(length)))
-

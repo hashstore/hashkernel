@@ -8,6 +8,7 @@ import os
 import threading
 from contextlib import contextmanager
 from datetime import timedelta
+from functools import total_ordering
 from io import BytesIO
 from pathlib import PurePath
 from typing import (
@@ -176,6 +177,9 @@ class CakeTypes(metaclass=CakeTypeRegistar):
     BLOCKSTREAM = CakeType({CakeProperties.IS_HASH})
 
 
+CAKE_TYPE_PACKER = ProxyPacker(CakeType, INT_8, int, CakeTypes.map)
+
+
 class MsgTypes(metaclass=CakeTypeRegistar):
     """
     >>> MsgTypes.QUESTION_MSG.idx
@@ -250,6 +254,7 @@ SIZEOF_CAKE = Hasher.SIZEOF + 1
 UNIFORM_DIGEST_SIZEOF = Hasher.SIZEOF - GuidHeader.SIZEOF
 
 
+@total_ordering
 class Cake(Stringable, EnsureIt, Primitive):
     """
     Stands for Content Address Key.
@@ -384,7 +389,9 @@ class Cake(Stringable, EnsureIt, Primitive):
         assert self.is_guid, f"has to be a guid: {self}"
 
     def __str__(self) -> str:
-        return B62.encode(self.digest) + str(self.type)
+        if not (hasattr(self, "_str")):
+            self._str = B62.encode(self.digest) + str(self.type)
+        return self._str
 
     def digest36(self) -> str:
         return B36.encode(self.digest)
@@ -398,12 +405,10 @@ class Cake(Stringable, EnsureIt, Primitive):
         return self._hash
 
     def __eq__(self, other) -> bool:
-        if not isinstance(other, Cake):
-            return False
-        return self.digest == other.digest and self.type == other.type
+        return str(self) == str(other)
 
-    def __ne__(self, other) -> bool:
-        return not self.__eq__(other)
+    def __le__(self, other) -> bool:
+        return str(self) < str(other)
 
     def __bytes__(self):
         return self.digest + bytes(self.type)
@@ -471,7 +476,12 @@ class VirtualTree:
     history: List[TimedPath]
 
 
-_BAKERY_PACKERS = {Cake: Cake.__packer__, nanotime: NANOTIME, nano_ttl: NANO_TTL_PACKER}
+_BAKERY_PACKERS = {
+    Cake: Cake.__packer__,
+    nanotime: NANOTIME,
+    nano_ttl: NANO_TTL_PACKER,
+    CakeType: CAKE_TYPE_PACKER,
+}
 
 
 def type_to_packer_resolver(cls: type) -> Packer:
@@ -487,22 +497,51 @@ def type_to_packer_resolver(cls: type) -> Packer:
 TIMED_CAKE_PACKER = type_to_packer_resolver(TimedCake)
 
 
+@total_ordering
 class BlockStream:
+    """
+    >>> bs = BlockStream(blocks=[NULL_CAKE, NULL_CAKE])
+    >>> len(bytes(bs))
+    67
+    >>> bs == BlockStream(bytes(bs))
+    True
+    >>> bs != BlockStream(bytes(bs))
+    False
+    """
 
+    type: CakeType
     blocks: List[Cake]
 
-    def __init__(self, s: bytes = b""):
-        len_of_s = len(s)
-        assert SIZEOF_CAKE % len_of_s == 0
-        self.blocks = []
-        offset = 0
-        for i in range(1, 1 + len_of_s // SIZEOF_CAKE):
-            end = i * SIZEOF_CAKE
-            self.blocks.append(Cake(s[offset:end]))
-            offset = end
+    def __init__(
+        self,
+        s: Optional[bytes] = None,
+        blocks: Optional[Iterable[Cake]] = None,
+        type: CakeType = CakeTypes.NO_CLASS,
+    ):
+        if s is not None:
+            assert blocks is None
+            len_of_s = len(s)
+            assert len_of_s % SIZEOF_CAKE == 1
+            self.type = CakeTypes[ord(s[:1])]
+            self.blocks = []
+            offset = 1
+            for _ in range(len_of_s // SIZEOF_CAKE):
+                end = offset + SIZEOF_CAKE
+                self.blocks.append(Cake(s[offset:end]))
+                offset = end
+        else:
+            assert blocks is not None
+            self.type = type
+            self.blocks = list(blocks)
+
+    def __eq__(self, other):
+        return bytes(self) == bytes(other)
+
+    def __le__(self, other):
+        return bytes(self) < bytes(other)
 
     def __bytes__(self):
-        return b"".join(map(bytes, self.blocks))
+        return bytes(self.type) + b"".join(map(bytes, self.blocks))
 
 
 CakeTypes.BLOCKSTREAM.update_gref(BlockStream)

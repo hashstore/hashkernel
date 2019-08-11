@@ -52,4 +52,3 @@ def test_Bundle():
     assert len(b1) == 1
     assert str(b1) == udk_bundle_str
     assert hash(b1) == hash(udk_bundle_str)
-    assert (u1 == str(u1)) == False
