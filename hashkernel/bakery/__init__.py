@@ -338,9 +338,8 @@ class Cake(Stringable, EnsureIt, Primitive):
             self.digest = B62.decode(s[:-1])
             self.type = CakeTypes[s[-1:]]
         CakeProperties.set_properties(self, *self.type.modifiers)
-        assert (
-            len(self.digest) == Hasher.SIZEOF
-        ), f"invalid cake digest: {s} {digest} {type} "
+        if len(self.digest) != Hasher.SIZEOF:
+            raise AttributeError(f"invalid cake digest: {s} {digest.hex()} {type} ")
 
     def guid_header(self) -> GuidHeader:
         assert self.is_guid

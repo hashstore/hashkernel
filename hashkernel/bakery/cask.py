@@ -1,16 +1,12 @@
 from pathlib import Path, PurePath
-from typing import NamedTuple, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 from nanotime import nanotime
 
 from hashkernel import (
     CodeEnum,
     dump_jsonable,
-    json_encode,
     load_jsonable,
-    read_jsonable,
-    to_json,
-    utf8_encode,
 )
 from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.packer import (
@@ -94,7 +90,7 @@ class CheckpointEntry(NamedTuple):
     type: CheckPointType
 
 
-class PreviousCaskEntry(NamedTuple):
+class CaskHeaderEntry(NamedTuple):
     caskade_id: Cake
     checkpoint_id: Cake
 
@@ -103,7 +99,7 @@ class EntryType(CodeEnum):
     """
     >>> [ (e,e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
     [(<EntryType.DATA: 0>, None), (<EntryType.CHECK_POINT: 1>, 9),
-    (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.PREVIOUS_CASK: 3>, 66)]
+    (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.CASK_HEADER: 3>, 66)]
 
     """
 
@@ -134,14 +130,14 @@ class EntryType(CodeEnum):
         """,
     )
 
-    PREVIOUS_CASK = (
+    CASK_HEADER = (
         3,
-        PreviousCaskEntry,
+        CaskHeaderEntry,
         """
-        first entry in any cask file excluding first, `src` has 
-        cask_id of previous cask. `checkpoint_id` has checksum
-        hash that should be copied from previous's cask last 
-        checkpoint `src`.  
+        first entry in any cask, `src` has cask_id of previous cask 
+        or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
+        copied from previous's cask last checkpoint `src` or NULL_CAKE 
+        and caskade_id points to caskade_id of series of cask.  
         """,
     )
 
@@ -222,35 +218,31 @@ class CaskFile:
 
     """
 
-    __enforce_private = object()
-
     caskade: "Caskade"
     path: Path
     guid: Cake
-    type: bool
+    type: CaskType
 
-    def __init__(self, enforce_private, caskade, path, guid, type):
-        assert enforce_private == self.__enforce_private, "private constructor"
+    def __init__(self, caskade: "Caskade", guid: Cake, cask_type: CaskType):
         self.caskade = caskade
-        self.path = path
         self.guid = guid
-        self.type = type
+        self.type = cask_type
+        self.path = cask_type.cask_path(caskade.dir, guid)
 
     @classmethod
-    def active_cask(cls, caskade: "Caskade"):
-        return cls.by_guid(caskade, Cake.new_guid(CakeTypes.CASK), CaskType.ACTIVE)
+    def by_file(cls, caskade: "Caskade", fpath: Path) -> Optional["CaskFile"]:
+        try:
+            cask_type = CaskType(fpath.suffix.upper())
+            guid = Cake.from_digest36(fpath.stem, CakeTypes.CASK)
+            return cls(caskade, guid, cask_type)
+        except (KeyError, AttributeError) as e:
+            return None
 
-    @classmethod
-    def by_guid(cls, caskade: "Caskade", guid: Cake, cask_type: CaskType):
-        path = caskade.dir / cask_type.cask_path(guid)
-        return cls(cls.__enforce_private, caskade, path, guid, cask_type)
+    def create_file(self):
+        ...
 
-    @classmethod
-    def by_file(cls, caskade: "Caskade", fname: str):
-        digest, extension = fname.name.split(".")
-        guid = Cake.from_digest36(digest, CakeTypes.CASK)
-        cask_type = CaskType(extension.upper())
-        return cls(cls.__enforce_private, caskade, caskade.dir / fname, guid, cask_type)
+    def read_file(self):
+        ...
 
     def keys(self) -> Set[Cake]:
         ...
@@ -282,6 +274,7 @@ class DataLocation(NamedTuple):
 #     data: Union[None, Journal, VirtualTree, DataLocation]
 
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
+CHUNK_SIZE_2x = CHUNK_SIZE * 2
 MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
 
 SIZE_OF_CLOSE_CASK_SEQUENCE = (
@@ -295,8 +288,13 @@ class CaskadeConfig(SmAttr):
     origin: Cake
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE
-    auto_chunk_cutoff: int = int(3 * CHUNK_SIZE / 2)
+    auto_chunk_cutoff: int = CHUNK_SIZE_2x
     max_cask_size: int = MAX_CASK_SIZE_ADJUSTED
+
+    def __validate__(self):
+        assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
+        assert CHUNK_SIZE_2x < self.checkpoint_size
+        assert CHUNK_SIZE_2x < self.max_cask_size <= MAX_CASK_SIZE_ADJUSTED
 
     def cask_strategy(
         self,
@@ -340,12 +338,13 @@ class Caskade:
     dir: Path
     config: CaskadeConfig
     active: CaskFile
-    # casks: Dict[Cake, CaskFile]
+    casks: Dict[Cake, CaskFile]
     # data: Dict[Cake, DataLocation]
     # guids: Dict[Cake, GuidRef]
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.dir = Path(dir).absolute()
+        self.casks = {}
         if not self.dir.exists():
             self.dir.mkdir(mode=0o0700, parents=True)
             self.caskade_id = Cake.new_guid(CakeTypes.CASK)
@@ -355,11 +354,15 @@ class Caskade:
                 config.origin = self.caskade_id
                 self.config = config
             dump_jsonable(self._config_file(), self.config)
+            self.active = CaskFile(self, self.caskade_id, CaskType.ACTIVE)
+            self.active.create_file()
         else:
             assert self.dir.is_dir()
             self.config = load_jsonable(self._config_file(), CaskadeConfig)
-
-        list(self.dir.iterdir())
+            for fpath in self.dir.iterdir():
+                file = CaskFile.by_file(self, fpath)
+                if file is not None:
+                    self.casks[file.guid] = file
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"

@@ -15,7 +15,10 @@ log, out = LogTestOut.get(__name__)
 caskades = Path(out.child_dir("caskades"))
 
 common_config = CaskadeConfig(
-    origin=NULL_CAKE, checkpoint_ttl=FEW_SECONDS_TTL, checkpoint_size=8 * CHUNK_SIZE
+    origin=NULL_CAKE,
+    checkpoint_ttl=FEW_SECONDS_TTL,
+    checkpoint_size=8 * CHUNK_SIZE,
+    max_cask_size=20 * CHUNK_SIZE,
 )
 
 
@@ -32,4 +35,4 @@ def test_config(name, config):
 def test_3steps():
     caskade = Caskade(caskades / "3steps", config=common_config)
     bg = BytesGen(0)
-    caskade.write_bytes(bg.random_bytes((CHUNK_SIZE * 5) // 4))
+    caskade.write_bytes(bg.get_bytes((CHUNK_SIZE * 5) // 4))

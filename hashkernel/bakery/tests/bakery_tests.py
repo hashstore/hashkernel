@@ -3,7 +3,9 @@
 
 from logging import getLogger
 
-from hashkernel.bakery import Cake, MsgTypes
+from pytest import raises
+
+from hashkernel.bakery import Cake, CakeTypes, MsgTypes
 
 log = getLogger(__name__)
 
@@ -37,3 +39,8 @@ def test_CAKe():
     assert d != x
     assert z.type == d.type
     assert str(z) == str(d)
+
+
+def test_wrong_size_of_digest():
+    with raises(AttributeError, match="invalid cake digest: None 0757ed 0"):
+        Cake.from_digest36("abcd", CakeTypes.NO_CLASS)

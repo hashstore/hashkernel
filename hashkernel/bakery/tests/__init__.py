@@ -13,5 +13,5 @@ class BytesGen:
     def randint_repeat(self, start, end, repeat):
         return (self.random.randint(start, end) for _ in range(repeat))
 
-    def random_bytes(self, length):
+    def get_bytes(self, length):
         return bytes(self.randint_repeat(0, 255, int(length)))

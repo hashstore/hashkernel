@@ -16,6 +16,7 @@ from . import (
     json_decode,
     json_encode,
     reraise_with_msg,
+    to_dict,
     to_json,
     to_tuple,
     utf8_decode,
@@ -565,6 +566,18 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
     "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
     "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
+    >>> str(B(bytes(b))) #doctest: +NORMALIZE_WHITESPACE
+    '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
+    "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
+    "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
+    >>> str(B(to_tuple(b))) #doctest: +NORMALIZE_WHITESPACE
+    '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
+    "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
+    "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
+    >>> str(B(to_dict(b))) #doctest: +NORMALIZE_WHITESPACE
+    '{"aa": [{"x": 777, "z": null}, {"x": 3, "z": null}],
+    "dt": {"2018-06-30T16:18:27.267515": {"x": 747, "z": false}},
+    "x": "3X8X3D7svYk0rD1ncTDRTnJ81538A6ZdSPcJVsptDNYt"}'
     >>> class O(SmAttr):
     ...     x:int
     ...     z:bool = False
@@ -607,6 +620,8 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         vals_dict.update(kwargs)
         values = {k: v for k, v in vals_dict.items() if v is not None}
         mold.set_attrs(values, self)
+        if hasattr(self, "__validate__"):
+            self.__validate__()
 
     def __to_json__(self) -> Dict[str, Any]:
         return self.__serialization_mold__.mold_it(DictLike(self), Conversion.TO_JSON)
