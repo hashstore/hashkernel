@@ -3,18 +3,16 @@ from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
 
 from nanotime import nanotime
 
-from hashkernel import (
-    CodeEnum,
-    dump_jsonable,
-    load_jsonable,
-)
-from hashkernel.bakery import BlockStream, Cake, CakeType, CakeTypes
+from hashkernel import CodeEnum, dump_jsonable, load_jsonable
+from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
     INT_32,
+    INT_32_SIZED_BYTES,
     NANOTIME,
     UTF8_GREEDY_STR,
+    Packer,
     ProxyPacker,
     TuplePacker,
     build_code_enum_packer,
@@ -76,7 +74,9 @@ _COMPONENTS_PACKERS = {
 }
 
 
-def build_entry_packer(cls: type) -> TuplePacker:
+def build_entry_packer(cls: type) -> Packer:
+    if cls == bytes:
+        return INT_32_SIZED_BYTES
     return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
 
 
@@ -105,7 +105,7 @@ class EntryType(CodeEnum):
 
     DATA = (
         0,
-        DataEntry,
+        bytes,
         """
         Data identified by `src` hash
         """,
@@ -160,9 +160,16 @@ class Record(NamedTuple):
 
 Record_PACKER = ProxyPacker(
     Record,
-    TuplePacker(INT_8, INT_32, NANOTIME, Cake.__packer__),
-    lambda rec: (rec.type, rec.entry_size, rec.tstamp, rec.src),
+    TuplePacker(INT_8, NANOTIME, Cake.__packer__),
+    lambda rec: (rec.entry_type, rec.tstamp, rec.src),
 )
+
+
+def pack_record_with_entry(entry_type, src, entry, now=None):
+    if now is None:
+        now = nanotime_now()
+    rec = Record(entry_type, now, src)
+    return Record_PACKER.pack(rec) + entry_type.entry_packer.pack(entry)
 
 
 class CaskType(CodeEnum):
@@ -239,7 +246,14 @@ class CaskFile:
             return None
 
     def create_file(self):
-        ...
+        with self.path.open("xb") as fp:
+            fp.write(
+                pack_record_with_entry(
+                    EntryType.CASK_HEADER,
+                    NULL_CAKE,
+                    CaskHeaderEntry(self.caskade.caskade_id, NULL_CAKE),
+                )
+            )
 
     def read_file(self):
         ...
@@ -247,20 +261,17 @@ class CaskFile:
     def keys(self) -> Set[Cake]:
         ...
 
-    def __getitem__(self, item):
-        ...
-
     def write_bytes(self, content: bytes) -> Cake:
         assert self.write_allowed
         ...
 
-    def write_journal(self, src: Cake, value: Cake):
-        assert self.write_allowed
-        ...
-
-    def write_path(self, src: Cake, path: str, value: Cake):
-        assert self.write_allowed
-        ...
+    # def write_journal(self, src: Cake, value: Cake):
+    #     assert self.write_allowed
+    #     ...
+    #
+    # def write_path(self, src: Cake, path: str, value: Cake):
+    #     assert self.write_allowed
+    #     ...
 
 
 class DataLocation(NamedTuple):
@@ -337,9 +348,9 @@ class Caskade:
 
     dir: Path
     config: CaskadeConfig
-    active: CaskFile
+    active: Optional[CaskFile]
     casks: Dict[Cake, CaskFile]
-    # data: Dict[Cake, DataLocation]
+    data_locations: Dict[Cake, DataLocation]
     # guids: Dict[Cake, GuidRef]
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
@@ -364,20 +375,46 @@ class Caskade:
                 if file is not None:
                     self.casks[file.guid] = file
 
-    def _config_file(self) -> Path:
-        return self.dir / ".hs_caskade"
-
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         ...
 
     def write_bytes(self, content: bytes, type: CakeType = CakeTypes.NO_CLASS) -> Cake:
         ...
 
-    def write_journal(self, src: Cake, value: Cake):
+    def _config_file(self) -> Path:
+        return self.dir / ".hs_caskade"
+
+    def _add_data_location(
+        self, cake: Cake, location: DataLocation, written_data: Optional[bytes]
+    ):
+        """
+        Add data location, and when new data being written update cache.
+        """
         ...
 
-    def write_path(self, src: Cake, path: str, value: Optional[Cake]):
+    def _do_checkpoint(self,):
         ...
+
+    def _do_next_cask(self, cp_type: CheckPointType):
+        ...
+
+    def _do_end_cask_sequence(
+        self, cp_type: CheckPointType, next_cask: Cake = NULL_CAKE
+    ):
+        assert cp_type in (CheckPointType.ON_NEXT_CASK, CheckPointType.ON_CASKADE_CLOSE)
+        assert cp_type == CheckPointType.ON_CASKADE_CLOSE and next_cask == NULL_CAKE
+        now = nanotime_now()
+        Record(EntryType.CHECK_POINT, now)
+
+    def _do_close(self):
+        self.casks[self.active.guid] = self.active
+        self.active = None
+
+    # def write_journal(self, src: Cake, value: Cake):
+    #     ...
+    #
+    # def write_path(self, src: Cake, path: str, value: Optional[Cake]):
+    #     ...
 
 
 # class ActiveHistoryReconEntry(NamedTuple):

@@ -35,7 +35,7 @@ class Primitive:
 
 class OneBit:
     """
-    >>> for i in range(8): print(i ,str(OneBit(i)))
+    >>> for i in range(8): print(str(OneBit(i)))
     0 mask:00000001 inverse:11111110
     1 mask:00000010 inverse:11111101
     2 mask:00000100 inverse:11111011
@@ -49,11 +49,12 @@ class OneBit:
 
     def __init__(self, position):
         assert 0 <= position < 8
+        self.position = position
         self.mask = 1 << position
         self.inverse = self.mask ^ 0xFF
 
     def __str__(self):
-        return f"mask:{self.mask:08b} inverse:{self.inverse:08b}"
+        return f"{self.position} mask:{self.mask:08b} inverse:{self.inverse:08b}"
 
 
 def is_primitive(cls: Any) -> bool:

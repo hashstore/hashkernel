@@ -5,7 +5,7 @@ from typing import Any, Callable, Optional, Tuple
 
 from nanotime import nanotime
 
-from hashkernel import utf8_decode, utf8_encode
+from hashkernel import OneBit, utf8_decode, utf8_encode
 
 
 class NeedMoreBytes(Exception):
@@ -19,106 +19,8 @@ class NeedMoreBytes(Exception):
         return fragment_end
 
 
-class SkipMoreBytes(Exception):
+class SkipMoreBytes(NeedMoreBytes):
     ...
-
-
-SIGNIFICANT_BITS = 7
-SEVEN_BITS = 0xFF >> (8 - SIGNIFICANT_BITS)
-END_BIT = 0xFF ^ SEVEN_BITS
-
-
-def size2bytes(sz: int) -> bytes:
-    """
-    >>> size2bytes(3).hex()
-    '83'
-    >>> size2bytes(127).hex()
-    'ff'
-    >>> size2bytes(128).hex()
-    '0081'
-    >>> size2bytes(255).hex()
-    '7f81'
-    >>> size2bytes(16000).hex()
-    '00fd'
-    >>> size2bytes(17001).hex()
-    '690481'
-    >>> size2bytes(2000000).hex()
-    '0009fa'
-    >>> size2bytes(3000000).hex()
-    Traceback (most recent call last):
-    ...
-    ValueError: Size is too big: 3000000
-    """
-    sz_bytes = []
-    shift = sz
-    for _ in range(3):
-        numerical = shift & SEVEN_BITS
-        shift = shift >> SIGNIFICANT_BITS
-        if 0 == shift:
-            sz_bytes.append(numerical | END_BIT)
-            return bytes(sz_bytes)
-        else:
-            sz_bytes.append(numerical)
-    raise ValueError(f"Size is too big: {sz}")
-
-
-def pack_size(b: Any) -> bytes:
-    """
-    >>> pack_size(bytes(b'abc'))
-    b'\x83'
-    >>> pack_size('abc')
-    Traceback (most recent call last):
-    ...
-    ValueError: expected bytes not <class 'str'>
-    """
-    if isinstance(b, bytes):
-        sz = len(b)
-        return size2bytes(sz)
-    else:
-        raise ValueError(f"expected bytes not {type(b)}")
-
-
-def unpack_size(buff: bytes, offset: int) -> Tuple[int, int]:
-    """
-    >>> unpack_size(bytes([0x83]), 0)
-    (3, 1)
-    >>> unpack_size(bytes([0xff]), 0)
-    (127, 1)
-    >>> unpack_size(bytes([0x00,0x81]), 0)
-    (128, 2)
-    >>> unpack_size(bytes([0x7f,0x81]), 0)
-    (255, 2)
-    >>> unpack_size(bytes([0x00,0xfd]),0)
-    (16000, 2)
-    >>> unpack_size(bytes([0x69,0x04,0x81]),0)
-    (17001, 3)
-    >>> unpack_size(bytes([0x00,0x09,0xfa]),0)
-    (2000000, 3)
-    >>> unpack_size(bytes([0x00,0x09,0x7a,0x81]),0)
-    Traceback (most recent call last):
-    ...
-    ValueError: No end bit
-
-    >>> unpack_size(bytes([0x00,0x09]),0)
-    Traceback (most recent call last):
-    ...
-    hashkernel.packer.NeedMoreBytes: 1
-
-    Returns:
-        size: Unpacked size
-        new_offset: new offset in buffer
-
-    """
-    sz = 0
-    buff_len = len(buff)
-    for i in range(3):
-        NeedMoreBytes.check_buffer(buff_len, offset + i + 1)
-        v = buff[offset + i]
-        end = v & END_BIT
-        sz += (v & SEVEN_BITS) << (i * SIGNIFICANT_BITS)
-        if end:
-            return (sz, offset + i + 1)
-    raise ValueError("No end bit")
 
 
 class Packer(metaclass=abc.ABCMeta):
@@ -142,11 +44,106 @@ class Packer(metaclass=abc.ABCMeta):
         raise NotImplementedError("subclasses must override")
 
 
+MARK_BIT = OneBit(7)
+
+
+class AdjustableSizePacker(Packer):
+    """
+    >>> asp3 = AdjustableSizePacker(3)
+    >>> asp3.unpack(bytes([0x83]), 0)
+    (3, 1)
+    >>> asp3.unpack(bytes([0xff]), 0)
+    (127, 1)
+    >>> asp3.unpack(bytes([0x00,0x81]), 0)
+    (128, 2)
+    >>> asp3.unpack(bytes([0x7f,0x81]), 0)
+    (255, 2)
+    >>> asp3.unpack(bytes([0x00,0xfd]),0)
+    (16000, 2)
+    >>> asp3.unpack(bytes([0x69,0x04,0x81]),0)
+    (17001, 3)
+    >>> asp3.unpack(bytes([0x00,0x09,0xfa]),0)
+    (2000000, 3)
+    >>> asp3.unpack(bytes([0x00,0x09,0x7a,0x81]),0)
+    Traceback (most recent call last):
+    ...
+    ValueError: No end bit
+
+    >>> asp3.unpack(bytes([0x00,0x09]),0)
+    Traceback (most recent call last):
+    ...
+    hashkernel.packer.NeedMoreBytes: 1
+    >>> asp3.pack(3).hex()
+    '83'
+    >>> asp3.pack(127).hex()
+    'ff'
+    >>> asp3.pack(128).hex()
+    '0081'
+    >>> asp3.pack(255).hex()
+    '7f81'
+    >>> asp3.pack(16000).hex()
+    '00fd'
+    >>> asp3.pack(17001).hex()
+    '690481'
+    >>> asp3.pack(2000000).hex()
+    '0009fa'
+    >>> asp3.pack(3000000).hex()
+    Traceback (most recent call last):
+    ...
+    ValueError: Size is too big: 3000000
+    """
+
+    cls = int
+
+    def __init__(self, max_size: int):
+
+        self.max_size = max_size
+
+    def pack(self, v: int) -> bytes:
+        sz_bytes = []
+        shift = v
+        for _ in range(self.max_size):
+            numerical = shift & MARK_BIT.inverse
+            shift = shift >> MARK_BIT.position
+            if 0 == shift:
+                sz_bytes.append(numerical | MARK_BIT.mask)
+                return bytes(sz_bytes)
+            else:
+                sz_bytes.append(numerical)
+        raise ValueError(f"Size is too big: {v}")
+
+    def unpack(self, buffer: bytes, offset: int) -> Tuple[int, int]:
+        """
+
+        Returns:
+            size: Unpacked size
+            new_offset: new offset in buffer
+
+        """
+        sz = 0
+        buff_len = len(buffer)
+        for i in range(self.max_size):
+            NeedMoreBytes.check_buffer(buff_len, offset + i + 1)
+            v = buffer[offset + i]
+            end = v & MARK_BIT.mask
+            sz += (v & MARK_BIT.inverse) << (i * MARK_BIT.position)
+            if end:
+                return sz, offset + i + 1
+        raise ValueError("No end bit")
+
+    def skip(self, buffer: bytes, offset: int) -> int:
+        _, new_offset = self.unpack(buffer, offset)
+        return new_offset
+
+
 class SizedPacker(Packer):
     cls = bytes
 
+    def __init__(self, size_packer):
+        self.size_packer = size_packer
+
     def pack(self, v: bytes) -> bytes:
-        return pack_size(v) + v
+        return self.size_packer.pack(len(v)) + v
 
     def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
         """
@@ -154,7 +151,7 @@ class SizedPacker(Packer):
               value: unpacked value
               new_offset: new offset in buffer
         """
-        size, data_offset = unpack_size(buffer, offset)
+        size, data_offset = self.size_packer.unpack(buffer, offset)
         new_offset = NeedMoreBytes.check_buffer(len(buffer), data_offset + size)
         return buffer[data_offset:new_offset], new_offset
 
@@ -163,7 +160,7 @@ class SizedPacker(Packer):
         Returns:
               new offset in buffer
         """
-        size, data_offset = unpack_size(buffer, offset)
+        size, data_offset = self.size_packer.unpack(buffer, offset)
         return SkipMoreBytes.check_buffer(len(buffer), data_offset + size)
 
 
@@ -334,7 +331,11 @@ INT_64 = TypePacker(int, "<Q")
 BE_INT_64 = TypePacker(int, ">Q")
 FLOAT = TypePacker(float, "<f")
 DOUBLE = TypePacker(float, "<d")
-SIZED_BYTES = SizedPacker()
+ADJSIZE_PACKER_3 = AdjustableSizePacker(3)
+ADJSIZE_PACKER_4 = AdjustableSizePacker(4)
+SMALL_SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_3) #up to 2Mb
+SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_4) #up to 256Mb
+INT_32_SIZED_BYTES = SizedPacker(INT_32)
 
 NANOTIME = ProxyPacker(nanotime, BE_INT_64, lambda nt: nt.nanoseconds(), nanotime)
 
@@ -358,6 +359,20 @@ def build_code_enum_packer(code_enum_cls) -> Packer:
 def unpack_greedily(
     buffer: bytes, offset: int, size: int, greedy_packer: Packer
 ) -> Tuple[Any, int]:
+    """
+    >>> unpack_greedily(b'abc', 0, 3, UTF8_GREEDY_STR)
+    ('abc', 3)
+    >>> unpack_greedily(b'abc', 1, 1, UTF8_GREEDY_STR)
+    ('b', 2)
+    >>> unpack_greedily(b'abc', 0, 2, UTF8_GREEDY_STR)
+    ('ab', 2)
+    >>> unpack_greedily(b'abc', 0, 10, UTF8_GREEDY_STR)
+    Traceback (most recent call last):
+    ...
+    hashkernel.packer.NeedMoreBytes: 7
+    >>> UTF8_GREEDY_STR.pack('abc')
+    b'abc'
+    """
     new_buffer, new_offset = FixedSizePacker(size).unpack(buffer, offset)
     result, _ = greedy_packer.unpack(new_buffer, 0)
     return result, new_offset
@@ -369,3 +384,6 @@ def ensure_packer(o: Any) -> Packer:
     elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
         return o.__packer__
     raise AssertionError(f"Cannot extract packer out: {repr(o)}")
+
+
+# TODO: test  ensure_packer(), and all skip methods
