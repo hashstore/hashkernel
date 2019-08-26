@@ -1,8 +1,7 @@
 steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.6'
-        architecture: 'x64'
+        versionSpec: '$(python.version)'
       name: set_py_ver
     - script: |
         python -V

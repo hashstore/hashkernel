@@ -5,16 +5,37 @@ jobs:
   - job: Windows
     pool:
       vmImage: 'vs2017-win2016'
+    strategy:
+      matrix:
+        Python36:
+          python.version: '3.6'
+        Python37:
+          python.version: '3.7'
+      maxParallel: 2
     steps:
       - template: azure-pybuild.yml
   - job: macOS
     pool:
       vmImage: 'macOS-10.13'
+    strategy:
+      matrix:
+        Python36:
+          python.version: '3.6'
+        Python37:
+          python.version: '3.7'
+      maxParallel: 2
     steps:
       - template: azure-pybuild.yml
   - job: Linux
     pool:
       vmImage: 'ubuntu-16.04'
+    strategy:
+      matrix:
+        Python36:
+          python.version: '3.6'
+        Python37:
+          python.version: '3.7'
+      maxParallel: 2
     steps:
       - template: azure-pybuild.yml
   - job: Check
