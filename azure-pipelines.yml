@@ -2,42 +2,21 @@ trigger:
   - master
 
 jobs:
-  - job: Windows
-    pool:
+  - parameters:
+      name: Windows
       vmImage: 'vs2017-win2016'
-    strategy:
-      matrix:
-        Python36:
-          python.version: '3.6'
-        Python37:
-          python.version: '3.7'
-      maxParallel: 2
-    steps:
-      - template: azure-pybuild.yml
-  - job: macOS
-    pool:
+    template: azure-pybuild.yml
+
+  - parameters:
+      name: macOS
       vmImage: 'macOS-10.13'
-    strategy:
-      matrix:
-        Python36:
-          python.version: '3.6'
-        Python37:
-          python.version: '3.7'
-      maxParallel: 2
-    steps:
-      - template: azure-pybuild.yml
-  - job: Linux
-    pool:
+    template: azure-pybuild.yml
+
+  - parameters:
+      name: Linux
       vmImage: 'ubuntu-16.04'
-    strategy:
-      matrix:
-        Python36:
-          python.version: '3.6'
-        Python37:
-          python.version: '3.7'
-      maxParallel: 2
-    steps:
-      - template: azure-pybuild.yml
+    template: azure-pybuild.yml
+
   - job: Check
     dependsOn:
       - Windows

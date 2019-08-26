@@ -1,4 +1,19 @@
-steps:
+parameters:
+  name: ''
+  vmImage: ''
+
+jobs:
+- job: ${{ parameters.name }}
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+  strategy:
+    matrix:
+      Python36:
+        python.version: '3.6'
+      Python37:
+        python.version: '3.7'
+    maxParallel: 2
+  steps:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '$(python.version)'
