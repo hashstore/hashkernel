@@ -1,13 +1,5 @@
 from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    NamedTuple,
-    Optional,
-    Sequence,
-    Tuple,
-    Union,
-)
+from typing import Any, Dict, NamedTuple, Optional, Sequence, Tuple, Union
 
 from nanotime import nanotime
 
@@ -19,11 +11,9 @@ from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
     INT_32,
-    INT_32_SIZED_BYTES,
     NANOTIME,
     SIZED_BYTES,
     UTF8_GREEDY_STR,
-    NeedMoreBytes,
     Packer,
     ProxyPacker,
     TuplePacker,
@@ -372,9 +362,13 @@ class CaskFile:
         while curr_pos < len(fbytes):
             rec, offset = Record_PACKER.unpack(fbytes, curr_pos)
             curr_pos = offset
-            if rec.entry_type == EntryType.DATA :
-                data_size, offset = rec.entry_type.entry_packer.size_packer.unpack(fbytes, curr_pos)
-                self.caskade.data_locations[rec.src] = DataLocation(self.guid, offset, data_size)
+            if rec.entry_type == EntryType.DATA:
+                data_size, offset = rec.entry_type.entry_packer.size_packer.unpack(
+                    fbytes, curr_pos
+                )
+                self.caskade.data_locations[rec.src] = DataLocation(
+                    self.guid, offset, data_size
+                )
                 curr_pos = offset + data_size
             elif rec.entry_type is not None:
                 _, offset = rec.entry_type.unpack(fbytes, curr_pos)
@@ -492,8 +486,7 @@ class Caskade:
     def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
         cake = Cake.from_bytes(content, ct)
         if cake not in self.data_locations:
-            self.data_locations[cake] = self.active.write_bytes(content,
-                                                                cake)
+            self.data_locations[cake] = self.active.write_bytes(content, cake)
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"

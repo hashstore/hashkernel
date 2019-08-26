@@ -36,7 +36,7 @@ def outside_of_range(start: int, stop: Optional[int] = None):
 
 
 BUFFER_BITS = 14
-BUFFER_LEN = 1 << BUFFER_BITS #16k
+BUFFER_LEN = 1 << BUFFER_BITS  # 16k
 BUFFER_MASK = BUFFER_LEN - 1
 
 
@@ -75,8 +75,8 @@ class FileBytes:
         if isinstance(item, int):
             if item < 0:
                 item += self._len
-            if item < 0 or item >= self._len :
-                raise IndexError(f'index out of range {item}')
+            if item < 0 or item >= self._len:
+                raise IndexError(f"index out of range {item}")
             seg, idx = self.seg_split(item)
             return self.load_segment(seg)[idx]
         elif isinstance(item, slice):
