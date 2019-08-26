@@ -2,20 +2,21 @@ trigger:
   - master
 
 jobs:
-  - parameters:
+  - template: azure-pybuild.yml
+    parameters:
       name: Windows
       vmImage: 'vs2017-win2016'
-    template: azure-pybuild.yml
 
-  - parameters:
+  - template: azure-pybuild.yml
+    parameters:
       name: macOS
       vmImage: 'macOS-10.13'
-    template: azure-pybuild.yml
 
-  - parameters:
+  - template: azure-pybuild.yml
+    parameters:
       name: Linux
       vmImage: 'ubuntu-16.04'
-    template: azure-pybuild.yml
+
 
   - job: Check
     dependsOn:
