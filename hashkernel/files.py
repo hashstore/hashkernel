@@ -36,12 +36,12 @@ def outside_of_range(start: int, stop: Optional[int] = None):
 
 
 BUFFER_BITS = 14
-BUFFER_LEN = 1 << BUFFER_BITS
+BUFFER_LEN = 1 << BUFFER_BITS #16k
 BUFFER_MASK = BUFFER_LEN - 1
 
 
 class FileBytes:
-    def __init__(self, path: Path, max_cache: int = 256):
+    def __init__(self, path: Path, max_cache: int = 4):
         self.path = path
         self._len = self.path.stat().st_size
 
@@ -73,6 +73,10 @@ class FileBytes:
 
     def __getitem__(self, item) -> bytes:
         if isinstance(item, int):
+            if item < 0:
+                item += self._len
+            if item < 0 or item >= self._len :
+                raise IndexError(f'index out of range {item}')
             seg, idx = self.seg_split(item)
             return self.load_segment(seg)[idx]
         elif isinstance(item, slice):
@@ -82,10 +86,13 @@ class FileBytes:
             def load():
                 start_seg, start_idx = self.seg_split(start)
                 end_seg, end_idx = self.seg_split(stop)
-                yield self.load_segment(start_seg)[start_idx:]
-                for seg in range(start_seg + 1, end_seg):
-                    yield self.load_segment(seg)
-                yield self.load_segment(end_seg)[:end_idx]
+                if start_seg == end_seg:
+                    yield self.load_segment(start_seg)[start_idx:end_idx]
+                else:
+                    yield self.load_segment(start_seg)[start_idx:]
+                    for seg in range(start_seg + 1, end_seg):
+                        yield self.load_segment(seg)
+                    yield self.load_segment(end_seg)[:end_idx]
 
             return b"".join(load())
         raise KeyError(f"Not sure what to do with {item}")

@@ -8,7 +8,7 @@ from hashkernel.tests import BytesGen
 
 log, out = LogTestOut.get(__name__)
 
-FILE_SZ = 1 << 20
+FILE_SZ = (1 << 20) + 25
 
 
 def ensure_file():
@@ -32,6 +32,8 @@ def test_file_bytes():
         str(file_bytes.load_segment.cache_info())
         == "CacheInfo(hits=1, misses=2, maxsize=2, currsize=2)"
     )
+
+    assert file_bytes[-3] == 0x61
     b64k = file_bytes[0x0FFF0:0x1FFF0]
     assert len(b64k) == 1 << 16
     """
@@ -40,5 +42,14 @@ def test_file_bytes():
     """
     assert b64k[:16].hex() == "086bca97cd59bfbf03862e0bbb0a7425"
     assert b64k[16:32].hex() == "89ed9b97f4862df528d85e29cf3953d3"
+
+    assert file_bytes[-FILE_SZ] == 0x0C5
+    with pytest.raises(IndexError, match="index out of range"):
+        file_bytes[FILE_SZ]
+    with pytest.raises(IndexError, match="index out of range"):
+        file_bytes[-1-FILE_SZ]
     with pytest.raises(KeyError, match="Not sure what to do with"):
         file_bytes["a"]
+
+    assert file_bytes[FILE_SZ+5:] == b''
+    assert file_bytes[-3:-2] == b'\x61'

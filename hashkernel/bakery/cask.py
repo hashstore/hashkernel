@@ -13,6 +13,7 @@ from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
 from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
+from hashkernel.files import FileBytes
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
     GREEDY_BYTES,
@@ -365,31 +366,19 @@ class CaskFile:
             offset = self.tracker.current_offset - content_size
             return DataLocation(self.guid, offset, content_size)
 
-    def read_file(self, chunk_size=CHUNK_SIZE):
-        prefix_buffer = b""
-        load_size = chunk_size
-        global_offset = 0
-        with self.path.open("rb") as ft:
-            while True:
-                buffer = ft.read(load_size)
-                if not (buffer):
-                    assert not (prefix_buffer)
-                    break
-                load_size = chunk_size
-                buffer = prefix_buffer + buffer
-                offset = 0
-                try:
-                    while True:
-                        rec, new_offset = Record_PACKER.unpack(buffer, offset)
-                        if rec.entry_type == EntryType.DATA:
-                            cake = rec.src
-                            rec.entry_type.entry_packer.size_packer.unpack(buffer)
-                        else:
-                            rec.entry_type
-                except NeedMoreBytes as e:
-                    if e.how_much is not None and e.how_much > CHUNK_SIZE:
-                        assert e.how_much < CHUNK_SIZE_2x
-                        load_size = e.how_much
+    def read_file(self):
+        fbytes = FileBytes(self.path)
+        curr_pos = 0
+        while curr_pos < len(fbytes):
+            rec, offset = Record_PACKER.unpack(fbytes, curr_pos)
+            curr_pos = offset
+            if rec.entry_type == EntryType.DATA :
+                data_size, offset = rec.entry_type.entry_packer.size_packer.unpack(fbytes, curr_pos)
+                self.caskade.data_locations[rec.src] = DataLocation(self.guid, offset, data_size)
+                curr_pos = offset + data_size
+            elif rec.entry_type is not None:
+                _, offset = rec.entry_type.unpack(fbytes, curr_pos)
+                curr_pos = offset
 
     def write_checkpoint(self, cpt: CheckPointType):
         rec, entry = self.tracker.checkpoint(cpt)
@@ -503,7 +492,8 @@ class Caskade:
     def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
         cake = Cake.from_bytes(content, ct)
         if cake not in self.data_locations:
-            self.active.write_bytes(content, cake)
+            self.data_locations[cake] = self.active.write_bytes(content,
+                                                                cake)
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"
