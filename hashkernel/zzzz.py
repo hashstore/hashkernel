@@ -8,6 +8,7 @@ def all_prod_modules():
     import hashkernel.docs
     import hashkernel.executible
     import hashkernel.file_types
+    import hashkernel.files
     import hashkernel.hashing
     import hashkernel.kernel
     import hashkernel.log_box
@@ -53,6 +54,7 @@ import hashkernel.base_x
 import hashkernel.docs
 import hashkernel.executible
 import hashkernel.file_types
+import hashkernel.files
 import hashkernel.hashing
 import hashkernel.kernel
 import hashkernel.log_box

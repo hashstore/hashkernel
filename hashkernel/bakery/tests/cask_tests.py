@@ -7,7 +7,7 @@ from hs_build_tools import LogTestOut
 
 from hashkernel.bakery import NULL_CAKE
 from hashkernel.bakery.cask import CHUNK_SIZE, Caskade, CaskadeConfig
-from hashkernel.bakery.tests import BytesGen
+from hashkernel.tests import BytesGen
 from hashkernel.time import FEW_SECONDS_TTL
 
 log, out = LogTestOut.get(__name__)
@@ -32,6 +32,7 @@ def test_config(name, config):
     assert type(new_ck.config.checkpoint_ttl) == type(loaded_ck.config.checkpoint_ttl)
 
 
+@pytest.mark.slow
 def test_3steps():
     caskade = Caskade(caskades / "3steps", config=common_config)
     bg = BytesGen(0)

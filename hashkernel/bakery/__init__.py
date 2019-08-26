@@ -94,7 +94,7 @@ class CakeType:
         if self.gref is None:
             self.gref = gref
         else:
-            assert self.gref == gref, f"conflict gref: {self.gref} vs {gref}"
+            assert self.gref != gref, f"conflict gref: {self.gref} vs {gref}"
         if self.cake_types is not None:
             self.cake_types.__types__ = None
 

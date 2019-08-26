@@ -1,6 +1,7 @@
 import abc
 import struct
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
 
 from nanotime import nanotime
@@ -333,8 +334,8 @@ FLOAT = TypePacker(float, "<f")
 DOUBLE = TypePacker(float, "<d")
 ADJSIZE_PACKER_3 = AdjustableSizePacker(3)
 ADJSIZE_PACKER_4 = AdjustableSizePacker(4)
-SMALL_SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_3) #up to 2Mb
-SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_4) #up to 256Mb
+SMALL_SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_3)  # up to 2Mb
+SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_4)  # up to 256Mb
 INT_32_SIZED_BYTES = SizedPacker(INT_32)
 
 NANOTIME = ProxyPacker(nanotime, BE_INT_64, lambda nt: nt.nanoseconds(), nanotime)

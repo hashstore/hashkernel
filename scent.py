@@ -23,18 +23,10 @@ def os_system_in_env(e, cmd):
     return os.system(cmd if e == "current" else f". activate {e}; {cmd}")
 
 
-def run_suite(env, case, nose):
-    if nose:
-        return os_system_in_env(env, f"python -m coverage run -p -m nose {case}")
-    else:
-        if case:
-            case = '-m "not slow"'
-        return os_system_in_env(env, f"python -m coverage run -p -m pytest {case}")
-
-
-def run_tests(case, envs, html=False):
-
-    env_states = [0 == run_suite(e, case, nose=False) for e in envs]
+def run_tests(include_slow, envs, html=False):
+    args = "" if include_slow else '-m "not slow"'
+    cmd = f"python -m coverage run -p -m pytest {args}"
+    env_states = [0 == os_system_in_env(e, cmd) for e in envs]
     print(dict(zip(envs, env_states)))
     modules = " ".join(f"-m {m}" for m in mypy_modules)
     mypy = 0 == os_system_in_env(
@@ -58,17 +50,7 @@ Tests to add:
 
 @runnable
 def execute_some_tests(*args):
-    case = ""
-    case += " hashkernel.tests.kernel_tests"
-    case += " hashkernel.tests.smattr_tests"
-    case += " hashkernel.tests.auto_wire_tests"
-    case += " hashkernel.tests.otable_tests"
-    case += " hashkernel.tests.base_x_tests"
-    case += " hashkernel.tests.file_types_tests"
-    case += " hashkernel.tests.bakery_tests"
-    case += " hashkernel.tests.logic_tests"
-    case += " hashkernel.tests.packer_tests"
-    return run_tests(case, run_envs, html=True)
+    return run_tests(False, run_envs, html=True)
 
 
 if __name__ == "__main__":
@@ -79,7 +61,7 @@ if __name__ == "__main__":
         if len(sys.argv) > 2:
             envs = sys.argv[2:]
     if cmd == "test":
-        if not (run_tests("", envs, html=True)):
+        if not (run_tests(True, envs, html=True)):
             raise SystemExit(-1)
     elif cmd == "cleanup_envs":
         for env in envs:

@@ -1,17 +1,28 @@
-from pathlib import Path, PurePath
-from typing import Dict, NamedTuple, Optional, Sequence, Set, Tuple, Union
+from pathlib import Path
+from typing import (
+    Any,
+    Dict,
+    NamedTuple,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
 from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
+from hashkernel.hashing import Hasher
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_8,
     INT_32,
     INT_32_SIZED_BYTES,
     NANOTIME,
+    SIZED_BYTES,
     UTF8_GREEDY_STR,
+    NeedMoreBytes,
     Packer,
     ProxyPacker,
     TuplePacker,
@@ -76,7 +87,7 @@ _COMPONENTS_PACKERS = {
 
 def build_entry_packer(cls: type) -> Packer:
     if cls == bytes:
-        return INT_32_SIZED_BYTES
+        return SIZED_BYTES
     return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
 
 
@@ -165,11 +176,20 @@ Record_PACKER = ProxyPacker(
 )
 
 
-def pack_record_with_entry(entry_type, src, entry, now=None):
-    if now is None:
-        now = nanotime_now()
-    rec = Record(entry_type, now, src)
-    return Record_PACKER.pack(rec) + entry_type.entry_packer.pack(entry)
+def pack_entry(rec: Record, entry: Any):
+    packer = rec.entry_type.entry_packer
+    return Record_PACKER.pack(rec) + packer.pack(entry)
+
+
+CHUNK_SIZE: int = 2 ** 21  # 2Mb
+CHUNK_SIZE_2x = CHUNK_SIZE * 2
+MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
+
+SIZE_OF_CLOSE_CASK_SEQUENCE = (
+    Record_PACKER.size * 2 + EntryType.CHECK_POINT.entry_packer.size
+)
+
+MAX_CASK_SIZE_ADJUSTED = MAX_CASK_SIZE - SIZE_OF_CLOSE_CASK_SEQUENCE
 
 
 class CaskType(CodeEnum):
@@ -216,6 +236,74 @@ def find_cask_by_guid(
     return None
 
 
+class DataLocation(NamedTuple):
+    cask_id: Cake
+    offset: int
+    size: int
+
+
+class SegmentTracker:
+    hasher: Hasher
+    start_offset: int
+    current_offset: int
+    is_data: bool = False
+    first_activity_after_last_checkpoint: Optional[nanotime] = None
+    writen_bytes_since_previous_checkpoint: int = 0
+
+    def __init__(self, current_offset):
+        self.hasher = Hasher()
+        self.start_offset = self.current_offset = current_offset
+
+    def update(self, data):
+        sz = len(data)
+        self.hasher.update(data)
+        self.current_offset += sz
+        if self.is_data:
+            self.first_activity_after_last_checkpoint = nanotime_now()
+            self.writen_bytes_since_previous_checkpoint += sz
+        self.is_data = False
+
+    def will_it_spill(
+        self, config: "CaskadeConfig", time: nanotime, size_to_be_written: int
+    ) -> Optional[CheckPointType]:
+        """
+        Returns:
+            new_checkpoint_now - is it time for checkpoint
+            new_cask_now - is it time for new cask
+        """
+        if self.current_offset + size_to_be_written > config.max_cask_size:
+            return CheckPointType.ON_NEXT_CASK  # new cask
+        if self.writen_bytes_since_previous_checkpoint > 0:
+            if (
+                config.checkpoint_ttl is not None
+                and self.first_activity_after_last_checkpoint is not None
+            ):
+                expires = config.checkpoint_ttl.expires(
+                    self.first_activity_after_last_checkpoint
+                )
+                if expires.nanoseconds() < time.nanoseconds():
+                    return CheckPointType.ON_TIME
+            if (
+                self.writen_bytes_since_previous_checkpoint + size_to_be_written
+                > config.checkpoint_size
+            ):
+                return CheckPointType.ON_SIZE
+        return None
+
+    def checkpoint(self, cpt: CheckPointType) -> Tuple[Record, CheckpointEntry]:
+        return (
+            Record(
+                EntryType.CHECK_POINT,
+                nanotime_now(),
+                src=(Cake(None, digest=self.hasher.digest(), type=CakeTypes.NO_CLASS)),
+            ),
+            CheckpointEntry(self.start_offset, self.current_offset, cpt),
+        )
+
+    def next_segment(self):
+        return SegmentTracker(self.current_offset)
+
+
 class CaskFile:
     """
     cask type: in append mode, shadow
@@ -229,6 +317,7 @@ class CaskFile:
     path: Path
     guid: Cake
     type: CaskType
+    tracker: SegmentTracker
 
     def __init__(self, caskade: "Caskade", guid: Cake, cask_type: CaskType):
         self.caskade = caskade
@@ -245,25 +334,106 @@ class CaskFile:
         except (KeyError, AttributeError) as e:
             return None
 
-    def create_file(self):
-        with self.path.open("xb") as fp:
-            fp.write(
-                pack_record_with_entry(
-                    EntryType.CASK_HEADER,
-                    NULL_CAKE,
-                    CaskHeaderEntry(self.caskade.caskade_id, NULL_CAKE),
-                )
+    def create_file(
+        self,
+        tstamp=None,
+        prev_cask_id: Cake = NULL_CAKE,
+        checkpoint_id: Cake = NULL_CAKE,
+    ):
+        self.tracker = SegmentTracker(0)
+        if tstamp is None:
+            tstamp = nanotime_now()
+        self.append_buffer(
+            pack_entry(
+                Record(EntryType.CASK_HEADER, tstamp, prev_cask_id),
+                CaskHeaderEntry(self.caskade.caskade_id, checkpoint_id),
+            ),
+            mode="xb",
+        )
+
+    def append_buffer(
+        self, buffer: bytes, mode="ab", content_size=None
+    ) -> Optional[DataLocation]:
+        """
+        Appends buffer to the file
+        :return: data location if `content_size` is provided
+        """
+        with self.path.open(mode) as fp:
+            fp.write(buffer)
+        self.tracker.update(buffer)
+        if content_size is not None:
+            offset = self.tracker.current_offset - content_size
+            return DataLocation(self.guid, offset, content_size)
+
+    def read_file(self, chunk_size=CHUNK_SIZE):
+        prefix_buffer = b""
+        load_size = chunk_size
+        global_offset = 0
+        with self.path.open("rb") as ft:
+            while True:
+                buffer = ft.read(load_size)
+                if not (buffer):
+                    assert not (prefix_buffer)
+                    break
+                load_size = chunk_size
+                buffer = prefix_buffer + buffer
+                offset = 0
+                try:
+                    while True:
+                        rec, new_offset = Record_PACKER.unpack(buffer, offset)
+                        if rec.entry_type == EntryType.DATA:
+                            cake = rec.src
+                            rec.entry_type.entry_packer.size_packer.unpack(buffer)
+                        else:
+                            rec.entry_type
+                except NeedMoreBytes as e:
+                    if e.how_much is not None and e.how_much > CHUNK_SIZE:
+                        assert e.how_much < CHUNK_SIZE_2x
+                        load_size = e.how_much
+
+    def write_checkpoint(self, cpt: CheckPointType):
+        rec, entry = self.tracker.checkpoint(cpt)
+        self.tracker = self.tracker.next_tracker()
+        self.append_buffer(pack_entry(rec, entry))
+        return rec.src
+
+    def _deactivate(self):
+        assert self.type == CaskType.ACTIVE
+        prev_name = self.type.cask_path(self.caskade.dir, self.guid)
+        self.type = CaskType.CASK
+        now_name = self.type.cask_path(self.caskade.dir, self.guid)
+        prev_name.rename(now_name)
+        self.path = now_name
+        del self.tracker
+
+    def write_bytes(self, content: bytes, cake: Cake) -> DataLocation:
+        record = Record(EntryType.DATA, nanotime_now(), cake)
+        buffer = pack_entry(record, content)
+        entry_sz = len(buffer)
+        cp_type = self.tracker.will_it_spill(
+            self.caskade.config, record.tstamp, entry_sz
+        )
+        content_size = len(content)
+        if cp_type is None:
+            return self.append_buffer(buffer, content_size=content_size)
+        elif cp_type == CheckPointType.ON_NEXT_CASK:
+            new_cask_id = Cake.new_guid(
+                CakeTypes.CASK, uniform_digest=self.guid.uniform_digest()
             )
-
-    def read_file(self):
-        ...
-
-    def keys(self) -> Set[Cake]:
-        ...
-
-    def write_bytes(self, content: bytes) -> Cake:
-        assert self.write_allowed
-        ...
+            cask_rec = Record(EntryType.NEXT_CASK, record.tstamp, new_cask_id)
+            self.append_buffer(Record_PACKER.pack(cask_rec))
+            checkpoint_id = self.write_checkpoint(cp_type)
+            self._deactivate()
+            self.caskade.active = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
+            self.caskade.active.create_file(
+                tstamp=record.tstamp,
+                prev_cask_id=self.guid,
+                checkpoint_id=checkpoint_id,
+            )
+            return self.caskade.active.append_buffer(buffer, content_size=content_size)
+        else:
+            self.write_checkpoint(cp_type)
+            return self.append_buffer(buffer, content_size=content_size)
 
     # def write_journal(self, src: Cake, value: Cake):
     #     assert self.write_allowed
@@ -274,25 +444,9 @@ class CaskFile:
     #     ...
 
 
-class DataLocation(NamedTuple):
-    file: "CaskFile"
-    offset: int
-    size: int
-
-
 # class GuidRef:
 #     guid: Cake
 #     data: Union[None, Journal, VirtualTree, DataLocation]
-
-CHUNK_SIZE: int = 2 ** 21  # 2Mb
-CHUNK_SIZE_2x = CHUNK_SIZE * 2
-MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
-
-SIZE_OF_CLOSE_CASK_SEQUENCE = (
-    Record_PACKER.size * 2 + EntryType.CHECK_POINT.entry_packer.size
-)
-
-MAX_CASK_SIZE_ADJUSTED = MAX_CASK_SIZE - SIZE_OF_CLOSE_CASK_SEQUENCE
 
 
 class CaskadeConfig(SmAttr):
@@ -306,39 +460,6 @@ class CaskadeConfig(SmAttr):
         assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
         assert CHUNK_SIZE_2x < self.checkpoint_size
         assert CHUNK_SIZE_2x < self.max_cask_size <= MAX_CASK_SIZE_ADJUSTED
-
-    def cask_strategy(
-        self,
-        writen_bytes_since_previous_checkpoint: int,
-        first_activity_after_last_checkpoint: Optional[nanotime],
-        current_size: int,
-        size_to_be_written: int,
-    ) -> Tuple[nanotime, bool, bool]:
-        """
-        Returns:
-            now - current time
-            new_checkpoint_now - is it time for checkpoint
-            new_cask_now - is it time for new cask
-        """
-        now = nanotime_now()
-        if current_size + size_to_be_written > self.max_cask_size:
-            return now, False, True  # new cask
-        if writen_bytes_since_previous_checkpoint > 0:
-            if (
-                self.checkpoint_ttl is not None
-                and first_activity_after_last_checkpoint is not None
-            ):
-                expires = self.checkpoint_ttl.expires(
-                    first_activity_after_last_checkpoint
-                )
-                if expires.nanoseconds() < now.nanoseconds():
-                    return now, True, False
-            if (
-                writen_bytes_since_previous_checkpoint + size_to_be_written
-                > self.checkpoint_size
-            ):
-                return now, True, False
-        return now, False, False
 
 
 class Caskade:
@@ -357,6 +478,7 @@ class Caskade:
         self.dir = Path(dir).absolute()
         self.casks = {}
         if not self.dir.exists():
+            self.data_locations = {}
             self.dir.mkdir(mode=0o0700, parents=True)
             self.caskade_id = Cake.new_guid(CakeTypes.CASK)
             if config is None:
@@ -378,8 +500,10 @@ class Caskade:
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         ...
 
-    def write_bytes(self, content: bytes, type: CakeType = CakeTypes.NO_CLASS) -> Cake:
-        ...
+    def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
+        cake = Cake.from_bytes(content, ct)
+        if cake not in self.data_locations:
+            self.active.write_bytes(content, cake)
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"
