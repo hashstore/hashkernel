@@ -71,10 +71,10 @@ _COMPONENTS_PACKERS = {
     Cake: Cake.__packer__,
     bytes: GREEDY_BYTES,
     int: INT_32,
+    nanotime: NANOTIME,
     CakeType: ProxyPacker(CakeType, INT_8, int, CakeTypes.map),
     CheckPointType: build_code_enum_packer(CheckPointType),
 }
-
 
 def build_entry_packer(cls: type) -> Packer:
     if cls == bytes:
@@ -153,6 +153,9 @@ class EntryType(CodeEnum):
         else:
             self.size = 0
 
+_COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
+
+
 
 class Record(NamedTuple):
     entry_type: EntryType
@@ -160,11 +163,7 @@ class Record(NamedTuple):
     src: Cake
 
 
-Record_PACKER = ProxyPacker(
-    Record,
-    TuplePacker(INT_8, NANOTIME, Cake.__packer__),
-    lambda rec: (rec.entry_type, rec.tstamp, rec.src),
-)
+Record_PACKER = build_named_tuple_packer(Record, lambda k: _COMPONENTS_PACKERS[k])
 
 
 def pack_entry(rec: Record, entry: Any):
@@ -200,21 +199,6 @@ class CaskType(CodeEnum):
 
     def cask_path(self, dir: Path, guid: Cake) -> Path:
         return dir / f"{guid.digest36()}.{self.name.lower()}"
-
-    @staticmethod
-    def split_file_name(path: Path) -> Optional[Tuple["CaskType", Cake]]:
-        """
-        Split name into cask's type and id
-
-        Returns:
-             ct - type of Cask
-             cask_id - guid
-        """
-        ext = path.suffix[1:]
-        if ext == "" or len(path.stem) < 32 or len(path.stem) > 50:
-            return None
-        cask_id = Cake.from_digest36(path.stem, CakeTypes.CASK)
-        return CaskType[ext.upper()], cask_id
 
 
 def find_cask_by_guid(
@@ -319,7 +303,7 @@ class CaskFile:
     @classmethod
     def by_file(cls, caskade: "Caskade", fpath: Path) -> Optional["CaskFile"]:
         try:
-            cask_type = CaskType(fpath.suffix.upper())
+            cask_type = CaskType(fpath.suffix[1:].upper())
             guid = Cake.from_digest36(fpath.stem, CakeTypes.CASK)
             return cls(caskade, guid, cask_type)
         except (KeyError, AttributeError) as e:
@@ -371,7 +355,7 @@ class CaskFile:
                 )
                 curr_pos = offset + data_size
             elif rec.entry_type is not None:
-                _, offset = rec.entry_type.unpack(fbytes, curr_pos)
+                _, offset = rec.entry_type.entry_packer.unpack(fbytes, curr_pos)
                 curr_pos = offset
 
     def write_checkpoint(self, cpt: CheckPointType):
@@ -460,8 +444,8 @@ class Caskade:
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.dir = Path(dir).absolute()
         self.casks = {}
+        self.data_locations = {}
         if not self.dir.exists():
-            self.data_locations = {}
             self.dir.mkdir(mode=0o0700, parents=True)
             self.caskade_id = Cake.new_guid(CakeTypes.CASK)
             if config is None:
@@ -479,6 +463,7 @@ class Caskade:
                 file = CaskFile.by_file(self, fpath)
                 if file is not None:
                     self.casks[file.guid] = file
+                    file.read_file()
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         ...
@@ -487,6 +472,7 @@ class Caskade:
         cake = Cake.from_bytes(content, ct)
         if cake not in self.data_locations:
             self.data_locations[cake] = self.active.write_bytes(content, cake)
+        return cake
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"

@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional, Tuple
 from nanotime import nanotime
 
 from hashkernel import OneBit, utf8_decode, utf8_encode
+from hashkernel.typings import is_NamedTuple
 
 
 class NeedMoreBytes(Exception):
@@ -286,11 +287,14 @@ class ProxyPacker(Packer):
 
 
 class TuplePacker(Packer):
-    cls = tuple
 
     def __init__(self, *packers: Packer, cls=tuple) -> None:
         self.packers = packers
         self.cls = cls
+        if is_NamedTuple(cls):
+            self.factory = lambda values: cls(*values)
+        else:
+            self.factory = lambda values: cls(values)
         try:
             self.size = sum(map(lambda p: p.size, packers))
         except TypeError:  # expected on `size==None`
@@ -313,7 +317,7 @@ class TuplePacker(Packer):
         for p in self.packers:
             v, offset = p.unpack(buffer, offset)
             values.append(v)
-        return self.cls(values), offset
+        return self.factory(values), offset
 
     def skip(self, buffer: bytes, offset: int) -> int:
         """
