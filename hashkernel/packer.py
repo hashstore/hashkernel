@@ -1,7 +1,6 @@
 import abc
 import struct
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
 
 from nanotime import nanotime
@@ -21,10 +20,6 @@ class NeedMoreBytes(Exception):
         return fragment_end
 
 
-class SkipMoreBytes(NeedMoreBytes):
-    ...
-
-
 class Packer(metaclass=abc.ABCMeta):
     cls: type
     size: Optional[int] = None
@@ -35,14 +30,6 @@ class Packer(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
-        raise NotImplementedError("subclasses must override")
-
-    @abc.abstractmethod
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
         raise NotImplementedError("subclasses must override")
 
 
@@ -133,10 +120,6 @@ class AdjustableSizePacker(Packer):
                 return sz, offset + i + 1
         raise ValueError("No end bit")
 
-    def skip(self, buffer: bytes, offset: int) -> int:
-        _, new_offset = self.unpack(buffer, offset)
-        return new_offset
-
 
 class SizedPacker(Packer):
     cls = bytes
@@ -156,14 +139,6 @@ class SizedPacker(Packer):
         size, data_offset = self.size_packer.unpack(buffer, offset)
         new_offset = NeedMoreBytes.check_buffer(len(buffer), data_offset + size)
         return buffer[data_offset:new_offset], new_offset
-
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        size, data_offset = self.size_packer.unpack(buffer, offset)
-        return SkipMoreBytes.check_buffer(len(buffer), data_offset + size)
 
 
 class GreedyBytesPacker(Packer):
@@ -186,13 +161,6 @@ class GreedyBytesPacker(Packer):
         new_offset = len(buffer)
         return buffer[offset:new_offset], new_offset
 
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        return len(buffer)
-
 
 class FixedSizePacker(Packer):
     cls = bytes
@@ -214,13 +182,6 @@ class FixedSizePacker(Packer):
         NeedMoreBytes.check_buffer(len(buffer), new_offset)
         return buffer[offset:new_offset], new_offset
 
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        return SkipMoreBytes.check_buffer(len(buffer), offset + self.size)
-
 
 class TypePacker(Packer):
     def __init__(self, cls: type, fmt: str) -> None:
@@ -241,13 +202,6 @@ class TypePacker(Packer):
         NeedMoreBytes.check_buffer(len(buffer), new_offset)
         unpacked_values = struct.unpack(self.fmt, buffer[offset:new_offset])
         return unpacked_values[0], new_offset
-
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        return SkipMoreBytes.check_buffer(len(buffer), offset + self.size)
 
 
 class ProxyPacker(Packer):
@@ -278,16 +232,8 @@ class ProxyPacker(Packer):
         v, new_offset = self.packer.unpack(buffer, offset)
         return self.to_cls(v), new_offset
 
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        return self.packer.skip(buffer, offset)
-
 
 class TuplePacker(Packer):
-
     def __init__(self, *packers: Packer, cls=tuple) -> None:
         self.packers = packers
         self.cls = cls
@@ -318,15 +264,6 @@ class TuplePacker(Packer):
             v, offset = p.unpack(buffer, offset)
             values.append(v)
         return self.factory(values), offset
-
-    def skip(self, buffer: bytes, offset: int) -> int:
-        """
-        Returns:
-              new offset in buffer
-        """
-        for p in self.packers:
-            offset = p.skip(buffer, offset)
-        return offset
 
 
 INT_8 = TypePacker(int, "B")
@@ -384,6 +321,17 @@ def unpack_greedily(
 
 
 def ensure_packer(o: Any) -> Packer:
+    """
+    >>> class A:
+    ...     def __init__(self,i): self.i = i
+    ...     def __int__(self): return i
+    ...
+    >>> A.__packer__ = ProxyPacker(A,INT_32,int)
+    >>> ensure_packer(A) == A.__packer__
+    True
+    >>> ensure_packer(A.__packer__) == A.__packer__
+    True
+    """
     if isinstance(o, Packer):
         return o
     elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
@@ -391,4 +339,3 @@ def ensure_packer(o: Any) -> Packer:
     raise AssertionError(f"Cannot extract packer out: {repr(o)}")
 
 
-# TODO: test  ensure_packer(), and all skip methods
