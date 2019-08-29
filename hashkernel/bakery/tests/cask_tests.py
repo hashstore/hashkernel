@@ -7,8 +7,16 @@ from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
 from hashkernel.bakery import NULL_CAKE
-from hashkernel.bakery.cask import CHUNK_SIZE, Caskade, CaskadeConfig, \
-    Record, EntryType, Record_PACKER, CheckpointEntry, CheckPointType
+from hashkernel.bakery.cask import (
+    CHUNK_SIZE,
+    Caskade,
+    CaskadeConfig,
+    CheckpointEntry,
+    CheckPointType,
+    EntryType,
+    Record,
+    Record_PACKER,
+)
 from hashkernel.tests import BytesGen
 from hashkernel.time import FEW_SECONDS_TTL
 
@@ -23,6 +31,7 @@ common_config = CaskadeConfig(
     max_cask_size=20 * CHUNK_SIZE,
 )
 
+
 def test_entries():
     r = Record(EntryType.DATA, nanotime(0), NULL_CAKE)
     pack = Record_PACKER.pack(r)
@@ -32,7 +41,7 @@ def test_entries():
     assert r.tstamp.nanoseconds() == r2.tstamp.nanoseconds()
     assert r.src == r2.src
     packer = EntryType.CHECK_POINT.entry_packer
-    o = CheckpointEntry(0,5,CheckPointType.ON_SIZE)
+    o = CheckpointEntry(0, 5, CheckPointType.ON_SIZE)
     pack = packer.pack(o)
     o2, offset = packer.unpack(pack, 0)
     assert len(pack) == offset

@@ -76,6 +76,7 @@ _COMPONENTS_PACKERS = {
     CheckPointType: build_code_enum_packer(CheckPointType),
 }
 
+
 def build_entry_packer(cls: type) -> Packer:
     if cls == bytes:
         return SIZED_BYTES
@@ -153,8 +154,8 @@ class EntryType(CodeEnum):
         else:
             self.size = 0
 
-_COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
 
+_COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
 
 
 class Record(NamedTuple):
