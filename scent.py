@@ -50,6 +50,7 @@ Tests to add:
 
 @runnable
 def execute_some_tests(*args):
+    # return run_tests(True, run_envs[1:], html=True)
     return run_tests(False, run_envs, html=True)
 
 

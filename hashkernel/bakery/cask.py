@@ -237,7 +237,7 @@ class SegmentTracker:
         if self.is_data:
             self.first_activity_after_last_checkpoint = nanotime_now()
             self.writen_bytes_since_previous_checkpoint += sz
-        self.is_data = False
+        self.is_data = True
 
     def will_it_spill(
         self, config: "CaskadeConfig", time: nanotime, size_to_be_written: int
@@ -276,7 +276,7 @@ class SegmentTracker:
             CheckpointEntry(self.start_offset, self.current_offset, cpt),
         )
 
-    def next_segment(self):
+    def next_tracker(self):
         return SegmentTracker(self.current_offset)
 
 
@@ -355,7 +355,7 @@ class CaskFile:
                     self.guid, offset, data_size
                 )
                 curr_pos = offset + data_size
-            elif rec.entry_type is not None:
+            elif rec.entry_type.entry_packer is not None:
                 _, offset = rec.entry_type.entry_packer.unpack(fbytes, curr_pos)
                 curr_pos = offset
 
@@ -382,6 +382,7 @@ class CaskFile:
             self.caskade.config, record.tstamp, entry_sz
         )
         content_size = len(content)
+        # print(f'{self.guid} {self.tracker.current_offset} {content_size} {cp_type}')
         if cp_type is None:
             return self.append_buffer(buffer, content_size=content_size)
         elif cp_type == CheckPointType.ON_NEXT_CASK:
