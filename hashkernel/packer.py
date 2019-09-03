@@ -337,5 +337,3 @@ def ensure_packer(o: Any) -> Packer:
     elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
         return o.__packer__
     raise AssertionError(f"Cannot extract packer out: {repr(o)}")
-
-

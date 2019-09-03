@@ -22,6 +22,7 @@ class BytesGen:
 def rand_bytes(seed, size):
     return BytesGen(seed).get_bytes(size)
 
+
 class StringableExample(Stringable):
     def __init__(self, s):
         self.s = s

@@ -27,10 +27,10 @@ log, out = LogTestOut.get(__name__)
 caskades = Path(out.child_dir("caskades"))
 
 common_config = CaskadeConfig(
-    origin= NULL_CAKE,
-    checkpoint_ttl = TTL(1),
-    checkpoint_size= 8 * CHUNK_SIZE,
-    max_cask_size= 11 * CHUNK_SIZE,
+    origin=NULL_CAKE,
+    checkpoint_ttl=TTL(1),
+    checkpoint_size=8 * CHUNK_SIZE,
+    max_cask_size=11 * CHUNK_SIZE,
 )
 
 
@@ -60,6 +60,7 @@ def test_config(name, config):
     assert new_ck.config == loaded_ck.config
     assert type(new_ck.config.checkpoint_ttl) == type(loaded_ck.config.checkpoint_ttl)
 
+
 ONE_AND_QUARTER = (CHUNK_SIZE * 5) // 4
 ABOUT_HALF = 1 + CHUNK_SIZE // 2
 TWOTHIRD_OF_CHUNK = (2 * CHUNK_SIZE) // 3
@@ -78,7 +79,13 @@ def test_3steps():
 
     def adjust_p(data_size):
         nonlocal p
-        p = p + data_size + Record_PACKER.size + len(SIZED_BYTES.size_packer.pack(data_size))
+        p = (
+            p
+            + data_size
+            + Record_PACKER.size
+            + len(SIZED_BYTES.size_packer.pack(data_size))
+        )
+
     adjust_p(ONE_AND_QUARTER)
     assert first_cask == caskade.active.guid
     assert caskade.active.tracker.current_offset == p
@@ -100,7 +107,7 @@ def test_3steps():
     assert caskade.active.tracker.current_offset == p
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     adjust_p(ONE_AND_QUARTER)
-    #cp1 by size
+    # cp1 by size
     p = p + cp_size
     assert caskade.active.tracker.current_offset == p
     assert first_cask == caskade.active.guid
@@ -109,9 +116,9 @@ def test_3steps():
     adjust_p(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == p
     sleep(20)
-    h2 =  caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
+    h2 = caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
     adjust_p(ABOUT_HALF)
-    #cp2 by time
+    # cp2 by time
     p = p + Record_PACKER.size + EntryType.CHECK_POINT.size
     assert caskade.active.tracker.current_offset == p
     assert first_cask == caskade.active.guid
@@ -123,7 +130,7 @@ def test_3steps():
     adjust_p(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == p
     a6 = caskade.write_bytes(rand_bytes(6, ONE_AND_QUARTER))
-    #new_cask
+    # new_cask
     assert first_cask != caskade.active.guid
     p = header_size
     adjust_p(ONE_AND_QUARTER)
