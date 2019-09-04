@@ -7,7 +7,7 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.bakery import NULL_CAKE
+from hashkernel.bakery import NULL_CAKE, CakeTypes, Cake
 from hashkernel.bakery.cask import (
     CHUNK_SIZE,
     Caskade,
@@ -140,8 +140,14 @@ def test_3steps():
     assert caskade.active.tracker.current_offset == p
 
     read_caskade = Caskade(caskades / "3steps")
-    rdp = read_caskade.data_locations[a0]
-    dp = caskade.data_locations[a0]
-    assert rdp == dp
-    assert rdp.offset == dp.offset
-    assert rdp.size == dp.size
+
+    assert read_caskade.data_locations.keys() == caskade.data_locations.keys()
+    for k in read_caskade.data_locations.keys():
+        rdp = read_caskade.data_locations[k]
+        dp = caskade.data_locations[k]
+        assert rdp.offset == dp.offset
+        assert rdp.size == dp.size
+        assert k == Cake.from_bytes(read_caskade[k], CakeTypes.NO_CLASS)
+        assert k == Cake.from_bytes(caskade[k], CakeTypes.NO_CLASS)
+
+

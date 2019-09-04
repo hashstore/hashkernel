@@ -64,6 +64,19 @@ class CheckPointType(CodeEnum):
     will be close for modification after that. 
     """,
     )
+    ON_CASKADE_PAUSE = (
+        5,
+        """
+    Caskade is paused.  
+    """,
+    )
+    ON_CASKADE_RESUME = (
+        6,
+        """
+    Caskade is resumed. `start` and `end` point to ON_CASKADE_PAUSE 
+    checkpoint data, that has to preceed this checkpoint
+    """,
+    )
 
 
 _COMPONENTS_PACKERS = {
@@ -393,7 +406,7 @@ class CaskFile:
             self.append_buffer(Record_PACKER.pack(cask_rec))
             checkpoint_id = self.write_checkpoint(cp_type)
             self._deactivate()
-            self.caskade.active = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
+            self.caskade._set_active (CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE))
             self.caskade.active.create_file(
                 tstamp=record.tstamp,
                 prev_cask_id=self.guid,
@@ -403,6 +416,11 @@ class CaskFile:
         else:
             self.write_checkpoint(cp_type)
             return self.append_buffer(buffer, content_size=content_size)
+
+    def fragment(self, start:int, size:int):
+        with self.path.open('rb') as fp:
+            fp.seek(start)
+            return fp.read(size)
 
     # def write_journal(self, src: Cake, value: Cake):
     #     assert self.write_allowed
@@ -435,7 +453,6 @@ class Caskade:
     """
 
     """
-
     dir: Path
     config: CaskadeConfig
     active: Optional[CaskFile]
@@ -456,19 +473,35 @@ class Caskade:
                 config.origin = self.caskade_id
                 self.config = config
             dump_jsonable(self._config_file(), self.config)
-            self.active = CaskFile(self, self.caskade_id, CaskType.ACTIVE)
+            self._set_active(CaskFile(self, self.caskade_id, CaskType.ACTIVE))
             self.active.create_file()
         else:
             assert self.dir.is_dir()
             self.config = load_jsonable(self._config_file(), CaskadeConfig)
+            self.caskade_id = self.config.origin
             for fpath in self.dir.iterdir():
                 file = CaskFile.by_file(self, fpath)
-                if file is not None:
+                if file is not None and self.is_file_belong(file):
                     self.casks[file.guid] = file
-                    file.read_file()
+            for k in sorted(self.casks.keys(),
+                            key=lambda k: -k.guid_header().time.nanoseconds()):
+                self.casks[k].read_file()
+
+    def _set_active(self, file:CaskFile):
+        self.active = file
+        self.casks[self.active.guid] = self.active
+
+    def is_file_belong(self, file:CaskFile):
+        return file.guid.uniform_digest() == self.caskade_id.uniform_digest()
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
-        ...
+        dp = self.data_locations[id]
+        file:CaskFile = self.casks[dp.cask_id]
+        buffer=file.fragment(dp.offset, dp.size)
+        if id.type == CakeTypes.BLOCKSTREAM:
+            return BlockStream(buffer)
+        return buffer
+
 
     def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
         cake = Cake.from_bytes(content, ct)
@@ -510,7 +543,6 @@ class Caskade:
     #
     # def write_path(self, src: Cake, path: str, value: Optional[Cake]):
     #     ...
-
 
 # class ActiveHistoryReconEntry(NamedTuple):
 #     content: Cake
