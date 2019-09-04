@@ -7,7 +7,7 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.bakery import NULL_CAKE, CakeTypes, Cake
+from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.bakery.cask import (
     CHUNK_SIZE,
     Caskade,
@@ -149,5 +149,3 @@ def test_3steps():
         assert rdp.size == dp.size
         assert k == Cake.from_bytes(read_caskade[k], CakeTypes.NO_CLASS)
         assert k == Cake.from_bytes(caskade[k], CakeTypes.NO_CLASS)
-
-

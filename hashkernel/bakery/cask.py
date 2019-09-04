@@ -16,7 +16,6 @@ from hashkernel.packer import (
     UTF8_GREEDY_STR,
     Packer,
     ProxyPacker,
-    TuplePacker,
     build_code_enum_packer,
 )
 from hashkernel.smattr import SmAttr, build_named_tuple_packer
@@ -29,6 +28,7 @@ Somewhat inspired by BitCask
 
 
 class CheckPointType(CodeEnum):
+
     MANUAL = (
         0,
         """
@@ -36,12 +36,14 @@ class CheckPointType(CodeEnum):
     since previous one. 
     """,
     )
+
     ON_SIZE = (
         1,
         """
     when secion from last checkpoint about ot maximum size set in config
     """,
     )
+
     ON_TIME = (
         2,
         """
@@ -49,6 +51,7 @@ class CheckPointType(CodeEnum):
     since previous one. 
     """,
     )
+
     ON_NEXT_CASK = (
         3,
         """ 
@@ -56,6 +59,7 @@ class CheckPointType(CodeEnum):
     `NextCaskEntry` entry. 
     """,
     )
+
     ON_CASKADE_CLOSE = (
         4,
         """
@@ -64,12 +68,14 @@ class CheckPointType(CodeEnum):
     will be close for modification after that. 
     """,
     )
+
     ON_CASKADE_PAUSE = (
         5,
         """
     Caskade is paused.  
     """,
     )
+
     ON_CASKADE_RESUME = (
         6,
         """
@@ -131,7 +137,7 @@ class EntryType(CodeEnum):
         1,
         CheckpointEntry,
         """ 
-        `start` and `end` - absolute positions in cask filen 
+        `start` and `end` - absolute positions in cask file 
         `src` - hash of section of data from previous checkpoint 
         `type` - reason why checkpoint happened
         """,
@@ -364,8 +370,8 @@ class CaskFile:
                 data_size, offset = rec.entry_type.entry_packer.size_packer.unpack(
                     fbytes, curr_pos
                 )
-                self.caskade.data_locations[rec.src] = DataLocation(
-                    self.guid, offset, data_size
+                self.caskade._add_data_location(
+                    rec.src, DataLocation(self.guid, offset, data_size)
                 )
                 curr_pos = offset + data_size
             elif rec.entry_type.entry_packer is not None:
@@ -402,11 +408,10 @@ class CaskFile:
             new_cask_id = Cake.new_guid(
                 CakeTypes.CASK, uniform_digest=self.guid.uniform_digest()
             )
-            cask_rec = Record(EntryType.NEXT_CASK, record.tstamp, new_cask_id)
-            self.append_buffer(Record_PACKER.pack(cask_rec))
-            checkpoint_id = self.write_checkpoint(cp_type)
-            self._deactivate()
-            self.caskade._set_active (CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE))
+            new_file = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
+            checkpoint_id = self._do_end_cask_sequence(
+                cp_type, record.tstamp, new_cask_id, new_file
+            )
             self.caskade.active.create_file(
                 tstamp=record.tstamp,
                 prev_cask_id=self.guid,
@@ -417,10 +422,38 @@ class CaskFile:
             self.write_checkpoint(cp_type)
             return self.append_buffer(buffer, content_size=content_size)
 
-    def fragment(self, start:int, size:int):
-        with self.path.open('rb') as fp:
+    def _do_end_cask_sequence(
+        self,
+        cp_type: CheckPointType,
+        tstamp: nanotime = None,
+        next_cask_id=NULL_CAKE,
+        new_file=None,
+    ) -> Cake:
+        """
+
+        :param cp_type:
+        :param record:
+        :param next_cask_id:
+        :param new_file:
+        :return:
+        """
+        if tstamp is None:
+            tstamp = nanotime_now()
+        assert cp_type in (CheckPointType.ON_NEXT_CASK, CheckPointType.ON_CASKADE_CLOSE)
+        assert next_cask_id != NULL_CAKE or cp_type == CheckPointType.ON_CASKADE_CLOSE
+        cask_rec = Record(EntryType.NEXT_CASK, tstamp, next_cask_id)
+        self.append_buffer(Record_PACKER.pack(cask_rec))
+        checkpoint_id = self.write_checkpoint(cp_type)
+        self._deactivate()
+        self.caskade._set_active(new_file)
+        return checkpoint_id
+
+    def fragment(self, start: int, size: int):
+        with self.path.open("rb") as fp:
             fp.seek(start)
-            return fp.read(size)
+            buff = fp.read(size)
+            assert size == len(buff)
+            return buff
 
     # def write_journal(self, src: Cake, value: Cake):
     #     assert self.write_allowed
@@ -453,6 +486,7 @@ class Caskade:
     """
 
     """
+
     dir: Path
     config: CaskadeConfig
     active: Optional[CaskFile]
@@ -483,66 +517,58 @@ class Caskade:
                 file = CaskFile.by_file(self, fpath)
                 if file is not None and self.is_file_belong(file):
                     self.casks[file.guid] = file
-            for k in sorted(self.casks.keys(),
-                            key=lambda k: -k.guid_header().time.nanoseconds()):
+            for k in sorted(
+                self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds()
+            ):
                 self.casks[k].read_file()
 
-    def _set_active(self, file:CaskFile):
+    def _set_active(self, file: CaskFile):
         self.active = file
         self.casks[self.active.guid] = self.active
 
-    def is_file_belong(self, file:CaskFile):
+    def is_file_belong(self, file: CaskFile):
         return file.guid.uniform_digest() == self.caskade_id.uniform_digest()
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         dp = self.data_locations[id]
-        file:CaskFile = self.casks[dp.cask_id]
-        buffer=file.fragment(dp.offset, dp.size)
+        file: CaskFile = self.casks[dp.cask_id]
+        buffer = file.fragment(dp.offset, dp.size)
         if id.type == CakeTypes.BLOCKSTREAM:
             return BlockStream(buffer)
         return buffer
 
+    def __contains__(self, id: Cake) -> bool:
+        return id in self.data_locations
 
     def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
         cake = Cake.from_bytes(content, ct)
-        if cake not in self.data_locations:
-            self.data_locations[cake] = self.active.write_bytes(content, cake)
+        if cake not in self:
+            dp = self.active.write_bytes(content, cake)
+            self._add_data_location(cake, dp, content)
         return cake
+
+    def close(self):
+        self.active._do_end_cask_sequence(CheckPointType.ON_CASKADE_CLOSE)
 
     def _config_file(self) -> Path:
         return self.dir / ".hs_caskade"
 
     def _add_data_location(
-        self, cake: Cake, location: DataLocation, written_data: Optional[bytes]
+        self, cake: Cake, dp: DataLocation, written_data: Optional[bytes] = None
     ):
         """
         Add data location, and when new data being written update cache.
+
+        TODO: caching of `written_data` if appropriate/available
         """
-        ...
-
-    def _do_checkpoint(self,):
-        ...
-
-    def _do_next_cask(self, cp_type: CheckPointType):
-        ...
-
-    def _do_end_cask_sequence(
-        self, cp_type: CheckPointType, next_cask: Cake = NULL_CAKE
-    ):
-        assert cp_type in (CheckPointType.ON_NEXT_CASK, CheckPointType.ON_CASKADE_CLOSE)
-        assert cp_type == CheckPointType.ON_CASKADE_CLOSE and next_cask == NULL_CAKE
-        now = nanotime_now()
-        Record(EntryType.CHECK_POINT, now)
-
-    def _do_close(self):
-        self.casks[self.active.guid] = self.active
-        self.active = None
+        self.data_locations[cake] = dp
 
     # def write_journal(self, src: Cake, value: Cake):
     #     ...
     #
     # def write_path(self, src: Cake, path: str, value: Optional[Cake]):
     #     ...
+
 
 # class ActiveHistoryReconEntry(NamedTuple):
 #     content: Cake
