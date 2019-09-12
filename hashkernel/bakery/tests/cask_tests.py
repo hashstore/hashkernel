@@ -17,7 +17,7 @@ from hashkernel.bakery.cask import (
     EntryType,
     Record,
     Record_PACKER,
-)
+    AccessError)
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -149,3 +149,20 @@ def test_3steps():
         assert rdp.size == dp.size
         assert k == Cake.from_bytes(read_caskade[k], CakeTypes.NO_CLASS)
         assert k == Cake.from_bytes(caskade[k], CakeTypes.NO_CLASS)
+
+    caskade.pause()
+
+    write_caskade = Caskade(caskades / "3steps")
+    assert write_caskade.check_points[-1].type == CheckPointType.ON_CASKADE_PAUSE
+    write_caskade.resume()
+    assert write_caskade.check_points[-1].type == CheckPointType.ON_CASKADE_RESUME
+    a7 = write_caskade.write_bytes(rand_bytes(7, ONE_AND_QUARTER))
+    a1_again = write_caskade.write_bytes(rand_bytes(1, ONE_AND_QUARTER))
+    assert a1 == a1_again
+    write_caskade.close()
+    with pytest.raises(AccessError):
+        write_caskade.write_bytes(rand_bytes(8, ONE_AND_QUARTER))
+
+
+
+
