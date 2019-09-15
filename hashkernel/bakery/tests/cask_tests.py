@@ -9,8 +9,9 @@ from nanotime import nanotime
 
 from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.bakery.cask import (
-    CHUNK_SIZE,
     CHECK_POINT_SIZE,
+    CHUNK_SIZE,
+    AccessError,
     Caskade,
     CaskadeConfig,
     CheckpointEntry,
@@ -18,11 +19,10 @@ from hashkernel.bakery.cask import (
     EntryType,
     Record,
     Record_PACKER,
-    AccessError)
+)
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
-
 
 log, out = LogTestOut.get(__name__)
 
@@ -70,7 +70,10 @@ TINY = 1025
 TWO_K = 2048
 
 HEADER_SIZE = Record_PACKER.size + EntryType.CASK_HEADER.entry_packer.size
-END_SEQ_SIZE = Record_PACKER.size * 2 + EntryType.CHECK_POINT.size + EntryType.NEXT_CASK.size
+END_SEQ_SIZE = (
+    Record_PACKER.size * 2 + EntryType.CHECK_POINT.size + EntryType.NEXT_CASK.size
+)
+
 
 class SizePredictor:
     def __init__(self):
@@ -80,10 +83,12 @@ class SizePredictor:
         self.pos = self.pos + size
 
     def add_data(self, data_size):
-        self.add(data_size
+        self.add(
+            data_size
             + Record_PACKER.size
             + len(SIZED_BYTES.size_packer.pack(data_size))
         )
+
 
 def test_recover_no_checkpoints():
     caskade = Caskade(caskades / "recover_no_cp", config=common_config)
@@ -186,9 +191,10 @@ def test_3steps():
     assert a1 == a1_again
     assert caskade.active.tracker.current_offset == sp.pos
     idx = 0
+
     def logit(s):
         nonlocal idx
-        (dir / f"{idx:03d}_{s}").write_bytes(b'')
+        (dir / f"{idx:03d}_{s}").write_bytes(b"")
         print(s)
         idx += 1
 
@@ -219,7 +225,6 @@ def test_3steps():
     assert caskade.check_points == write_caskade.check_points
     assert write_caskade.check_points[-1].type == CheckPointType.ON_CASKADE_PAUSE
     # logit("write_caskade")
-
 
     write_caskade.resume()
     # logit("resume")
@@ -252,6 +257,3 @@ def test_3steps():
 
     with pytest.raises(AccessError):
         write_caskade.recover(0)
-
-
-

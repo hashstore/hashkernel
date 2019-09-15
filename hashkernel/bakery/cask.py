@@ -1,13 +1,11 @@
-from pathlib import Path
-from typing import Any, Dict, NamedTuple, Optional, Sequence, Tuple, \
-    Union, List
-
 import time
+from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
+
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
-from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, \
-    CakeTypes
+from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.files import FileBytes
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
@@ -28,6 +26,7 @@ from hashkernel.time import TTL, nanotime_now
 """
 Somewhat inspired by BitCask
 """
+
 
 class AccessError(Exception):
     pass
@@ -339,8 +338,6 @@ class SegmentTracker:
         return SegmentTracker(self.current_offset)
 
 
-
-
 class CaskFile:
     """
     cask type: in append mode, shadow
@@ -388,8 +385,9 @@ class CaskFile:
             ),
             mode="xb",
         )
-        self.caskade.check_points.append(CheckPoint(self.guid, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER))
-
+        self.caskade.check_points.append(
+            CheckPoint(self.guid, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER)
+        )
 
     def append_buffer(
         self, buffer: bytes, mode="ab", content_size=None
@@ -405,7 +403,9 @@ class CaskFile:
             offset = self.tracker.current_offset - content_size
             return DataLocation(self.guid, offset, content_size)
 
-    def read_file(self, curr_pos=0, validate_data=False, check_points=None, tracker=None ):
+    def read_file(
+        self, curr_pos=0, validate_data=False, check_points=None, tracker=None
+    ):
         """
 
         """
@@ -417,22 +417,29 @@ class CaskFile:
             entry_packer = rec.entry_type.entry_packer
             check_point_to_add = None
             if rec.entry_type == EntryType.DATA:
-                data_size, offset = entry_packer.size_packer.unpack(
-                    fbytes, new_pos
-                )
+                data_size, offset = entry_packer.size_packer.unpack(fbytes, new_pos)
                 self.caskade._add_data_location(
                     rec.src, DataLocation(self.guid, offset, data_size)
                 )
                 new_pos = offset + data_size
 
                 if validate_data:
-                    reconstructed = Cake.from_bytes(fbytes[offset:new_pos],type=rec.src.type)
+                    reconstructed = Cake.from_bytes(
+                        fbytes[offset:new_pos], type=rec.src.type
+                    )
                     if reconstructed != rec.src:
                         raise DataValidationError(str(rec.src))
             elif rec.entry_type == EntryType.CASK_HEADER:
-                header_entry, new_pos = rec.entry_type.entry_packer.unpack(fbytes, new_pos)
-                check_point_to_add = CheckPoint(self.guid, header_entry.checkpoint_id, 0, 0,
-                                                CheckPointType.ON_CASK_HEADER)
+                header_entry, new_pos = rec.entry_type.entry_packer.unpack(
+                    fbytes, new_pos
+                )
+                check_point_to_add = CheckPoint(
+                    self.guid,
+                    header_entry.checkpoint_id,
+                    0,
+                    0,
+                    CheckPointType.ON_CASK_HEADER,
+                )
             elif rec.entry_type == EntryType.CHECK_POINT:
                 cp_entry, new_pos = entry_packer.unpack(fbytes, new_pos)
                 check_point_to_add = CheckPoint(self.guid, rec.src, *cp_entry)
@@ -443,10 +450,9 @@ class CaskFile:
                 check_points.insert(cp_index, check_point_to_add)
                 cp_index += 1
 
-            if self.tracker is not None:
-                self.tracker.update(fbytes[curr_pos:new_pos])
+            if tracker is not None:
+                tracker.update(fbytes[curr_pos:new_pos])
             curr_pos = new_pos
-
 
     def write_checkpoint(self, cpt: CheckPointType):
         rec, entry = self.tracker.checkpoint(cpt)
@@ -492,7 +498,6 @@ class CaskFile:
         else:
             self.write_checkpoint(cp_type)
             return self.append_buffer(buffer, content_size=content_size)
-
 
     def _do_end_cask_sequence(
         self,
@@ -637,23 +642,31 @@ class Caskade:
         self.active = None
 
     def resume(self):
-        last_cp:CheckPoint = self.check_points[-1]
+        last_cp: CheckPoint = self.check_points[-1]
         if last_cp.type == CheckPointType.ON_CASKADE_PAUSE:
             active_candidate: CaskFile = self.casks[last_cp.cask_id]
             if last_cp.end + CHECK_POINT_SIZE == len(active_candidate):
                 active_candidate.tracker = SegmentTracker(last_cp.end)
-                active_candidate.tracker.update(active_candidate.fragment(last_cp.end, CHECK_POINT_SIZE))
+                active_candidate.tracker.update(
+                    active_candidate.fragment(last_cp.end, CHECK_POINT_SIZE)
+                )
                 self.active = active_candidate
                 self.active.write_checkpoint(CheckPointType.ON_CASKADE_RESUME)
             else:
-                raise ValueError(f"{CheckPointType.ON_CASKADE_RESUME} is not last record")
+                raise ValueError(
+                    f"{CheckPointType.ON_CASKADE_RESUME} is not last record"
+                )
         else:
-            raise ValueError(f"{str(last_cp.type)} != {str(CheckPointType.ON_CASKADE_RESUME)}")
+            raise ValueError(
+                f"{str(last_cp.type)} != {str(CheckPointType.ON_CASKADE_RESUME)}"
+            )
 
     def recover(self, quiet_time=None):
-        last_cp:CheckPoint = self.check_points[-1]
-        if last_cp.type in {CheckPointType.ON_NEXT_CASK,
-                                CheckPointType.ON_CASKADE_CLOSE}:
+        last_cp: CheckPoint = self.check_points[-1]
+        if last_cp.type in {
+            CheckPointType.ON_NEXT_CASK,
+            CheckPointType.ON_CASKADE_CLOSE,
+        }:
             raise AccessError(f"Cask already closed: {last_cp.cask_id}")
         active_candidate: CaskFile = self.casks[last_cp.cask_id]
         size = len(active_candidate)
@@ -662,10 +675,11 @@ class Caskade:
             if size != len(active_candidate):
                 raise NotQuietError()
         active_candidate.tracker = SegmentTracker(last_cp.end)
-        active_candidate.read_file(last_cp.end, validate_data=True, tracker=active_candidate.tracker)
+        active_candidate.read_file(
+            last_cp.end, validate_data=True, tracker=active_candidate.tracker
+        )
         self.active = active_candidate
         self.active.write_checkpoint(CheckPointType.ON_CASKADE_RECOVER)
-
 
     def close(self):
         self.assert_write()
@@ -683,7 +697,6 @@ class Caskade:
         TODO: caching of `written_data` if appropriate/available
         """
         self.data_locations[cake] = dp
-
 
     # def write_journal(self, src: Cake, value: Cake):
     #     ...
