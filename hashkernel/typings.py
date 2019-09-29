@@ -150,3 +150,35 @@ def is_NamedTuple(cls):
         if types is not None:
             return all(hasattr(cls, k) for k in types)
     return False
+
+
+class OnlyAnnotatedProperties:
+    """
+    >>> class A(OnlyAnnotatedProperties):
+    ...     a:bool
+    ...     b:int = 5
+    ...
+    >>> a=A(a=True)
+    >>> a.a
+    True
+    >>> a.b
+    5
+    >>> A(x=5)
+    Traceback (most recent call last):
+    ...
+    KeyError: 'x'
+    >>> A(a=5)
+    Traceback (most recent call last):
+    ...
+    ValueError: Wrong type 5 for a
+    """
+
+    def __init__(self, **kwargs):
+        ann = get_attr_hints(type(self))
+        for k, v in kwargs.items():
+            if k not in ann:
+                raise KeyError(k)
+            if isinstance(v, ann[k]):
+                setattr(self, k, v)
+            else:
+                raise ValueError(f"Wrong type {v} for {k}")

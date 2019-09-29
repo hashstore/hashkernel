@@ -1,5 +1,16 @@
 from inspect import getfullargspec
-from typing import Any, Callable, ClassVar, Dict, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 from hashkernel.packer import SIZED_BYTES, UTF8_STR, Packer, ProxyPacker, TuplePacker
 
@@ -22,11 +33,23 @@ from . import (
     utf8_decode,
 )
 from .docs import DocStringTemplate, GroupOfVariables, VariableDocEntry
-from .typings import get_args, get_attr_hints, is_dict, is_list, is_optional, is_tuple
+from .typings import (
+    OnlyAnnotatedProperties,
+    get_args,
+    get_attr_hints,
+    is_dict,
+    is_list,
+    is_optional,
+    is_tuple,
+)
 
 ATTRIBUTES = "Attributes"
 RETURNS = "Returns"
 ARGS = "Args"
+
+
+class MoldConfig(OnlyAnnotatedProperties):
+    omit_optional_null: bool = False
 
 
 class ValueRequired(Exception):
@@ -183,6 +206,9 @@ class AttrEntry(EnsureIt, Stringable):
             def_s = f"={v}"
         return f"{self.name}:{self.typing}{def_s}"
 
+    def is_optional(self):
+        return isinstance(self.typing, OptionalTyping)
+
 
 def typing_factory(o):
     """
@@ -251,6 +277,7 @@ class Mold(Jsonable):
         self.keys: List[str] = []
         self.cls: Optional[type] = None
         self.attrs: Dict[str, AttrEntry] = {}
+        self.config: MoldConfig = MoldConfig()
         if o is not None:
             if isinstance(o, list):
                 for ae in map(AttrEntry.ensure_it, o):
@@ -261,6 +288,8 @@ class Mold(Jsonable):
                 self.add_hints(get_attr_hints(o))
                 if isinstance(o, type):
                     self.cls = o
+                    if hasattr(self.cls, "__mold_config__"):
+                        self.config = self.cls.__mold_config__
                     self.set_defaults(self.get_defaults_from_cls(self.cls))
                     docstring = o.__doc__
                     dst = DocStringTemplate(docstring, {ATTRIBUTES})
@@ -337,26 +366,44 @@ class Mold(Jsonable):
 
     def build_val_dict(self, json_values):
         self.check_overlaps(json_values)
-        return self.mold_it(json_values, Conversion.TO_OBJECT)
+        return self.mold_dict(json_values, Conversion.TO_OBJECT)
 
-    def mold_it(
-        self, in_data: Union[List[Any], Dict[str, Any], DictLike], direction: Conversion
+    def mold_dict(
+        self,
+        in_data: Union[Tuple[Any], List[Any], Dict[str, Any], DictLike],
+        direction: Conversion,
     ) -> Dict[str, Any]:
-        return dict(zip(self.keys, self.mold_to_list(in_data, direction)))
+        if isinstance(in_data, (tuple, list)):
+            self.assert_row(in_data)
+            in_data = dict(zip(self.keys, in_data))
+        out_data = {}
+        for k in self.keys:
+            if k in in_data:
+                v = self.attrs[k].convert(in_data[k], direction)
+            else:
+                v = self.attrs[k].convert(None, direction)
+            if (
+                v is not None
+                or not (self.config.omit_optional_null)
+                or direction != Conversion.TO_JSON
+                or not (self.attrs[k].is_optional())
+            ):
+                out_data[k] = v
+        return out_data
 
-    def mold_to_list(
-        self, in_data: Union[List[Any], Dict[str, Any], DictLike], direction: Conversion
-    ) -> List[Any]:
-        if not (isinstance(in_data, list)):
-            in_data = [in_data[k] if k in in_data else None for k in (self.keys)]
-        if len(self.keys) != len(in_data):
-            raise AttributeError(
-                f"arrays has to match in size:" f" {self.keys} {in_data}"
-            )
-        return [
+    def dict_to_row(self, dct: Union[Dict[str, Any], DictLike]):
+        return tuple(dct[k] if k in dct else None for k in self.keys)
+
+    def mold_row(self, in_data: Sequence[Any], direction: Conversion) -> Tuple[Any]:
+        self.assert_row(in_data)
+        return tuple(
             self.attrs[self.keys[i]].convert(in_data[i], direction)
             for i in range(len(self.keys))
-        ]
+        )
+
+    def assert_row(self, in_data):
+        if len(self.keys) != len(in_data):
+            raise AttributeError(f"arrays has to match in size: {self.keys} {in_data}")
 
     def set_attrs(self, values, target):
         for k, v in self.build_val_dict(values).items():
@@ -369,7 +416,7 @@ class Mold(Jsonable):
         return {k: getattr(from_obj, k) for k in self.keys if hasattr(from_obj, k)}
 
     def wrap_input(self, v):
-        v_dct = self.mold_it(v, Conversion.TO_OBJECT)
+        v_dct = self.mold_dict(v, Conversion.TO_OBJECT)
         if self.cls is not None:
             return self.cls(v_dct)
         return v_dct
@@ -379,7 +426,7 @@ class Mold(Jsonable):
             result = {SINGLE_RETURN_VALUE: v}
         else:
             result = DictLike(v)
-        return self.mold_it(result, Conversion.TO_JSON)
+        return self.mold_dict(result, Conversion.TO_JSON)
 
     def is_single_return(self) -> bool:
         return self.keys == [SINGLE_RETURN_VALUE]
@@ -529,7 +576,6 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     ...     aa: List[A2]
     ...     dt: Dict[datetime, A]
     ...
-
     >>> B.__mold__.attrs #doctest: +NORMALIZE_WHITESPACE
     {'x': AttrEntry('x:Required[hashkernel.tests:StringableExample]'),
     'aa': AttrEntry('aa:List[hashkernel.smattr:A2]'),
@@ -544,11 +590,17 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     >>> a2 = A2({"x":747, "z":date(2018,6,30)})
     >>> str(a2)
     '{"x": 747, "z": "2018-06-30"}'
-    >>> a2m = A2({"x":777})
+    >>> a2m = A2({"x":777}) #dict input
     >>> str(a2m)
     '{"x": 777, "z": null}'
-    >>> a2m = A2(x=777)
-    >>> str(a2m)
+    >>> class A2z(SmAttr):
+    ...     __mold_config__ = MoldConfig(omit_optional_null = True)
+    ...     x:int
+    ...     z:Optional[date]
+    ...
+    >>> str(A2z({"x":777})) #null should be omited
+    '{"x": 777}'
+    >>> str(A2(x=777)) #kwargs input
     '{"x": 777, "z": null}'
     >>> A2()
     Traceback (most recent call last):
@@ -593,6 +645,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     '{"a": 1.03e-05, "x": 5, "z": false}'
     """
 
+    __mold_config__: ClassVar[MoldConfig]
     __mold__: ClassVar[Mold]
     __serialization_mold__: ClassVar[Mold]
     __packer__: ClassVar[Packer]
@@ -614,7 +667,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         elif isinstance(_vals_, dict):
             vals_dict = _vals_
         elif hasattr(_vals_, "__iter__"):
-            vals_dict = mold.mold_it(list(_vals_), Conversion.TO_OBJECT)
+            vals_dict = mold.mold_dict(list(_vals_), Conversion.TO_OBJECT)
         else:
             raise AssertionError(f"cannot construct from: {_vals_}")
         vals_dict.update(kwargs)
@@ -624,17 +677,13 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
             self.__validate__()
 
     def __to_json__(self) -> Dict[str, Any]:
-        return self.__serialization_mold__.mold_it(DictLike(self), Conversion.TO_JSON)
+        return self.__serialization_mold__.mold_dict(DictLike(self), Conversion.TO_JSON)
 
     def __to_dict__(self) -> Dict[str, Any]:
         return self.__serialization_mold__.pull_attrs(self)
 
     def __to_tuple__(self) -> tuple:
-        return tuple(
-            self.__serialization_mold__.mold_to_list(
-                DictLike(self), Conversion.TO_OBJECT
-            )
-        )
+        return tuple(getattr(self, k) for k in self.__serialization_mold__.keys)
 
 
 class JsonWrap(SmAttr):

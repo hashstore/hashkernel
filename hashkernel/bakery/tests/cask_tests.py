@@ -11,6 +11,8 @@ from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.bakery.cask import (
     CHECK_POINT_SIZE,
     CHUNK_SIZE,
+    END_SEQ_SIZE,
+    HEADER_SIZE,
     AccessError,
     Caskade,
     CaskadeConfig,
@@ -68,11 +70,6 @@ ABOUT_HALF = 1 + CHUNK_SIZE // 2
 TWOTHIRD_OF_CHUNK = (2 * CHUNK_SIZE) // 3
 TINY = 1025
 TWO_K = 2048
-
-HEADER_SIZE = Record_PACKER.size + EntryType.CASK_HEADER.entry_packer.size
-END_SEQ_SIZE = (
-    Record_PACKER.size * 2 + EntryType.CHECK_POINT.size + EntryType.NEXT_CASK.size
-)
 
 
 class SizePredictor:

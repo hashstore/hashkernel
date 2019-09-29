@@ -73,7 +73,7 @@ class Executible(SmAttr):
         ctx = ExecContext(
             exec=self,
             invocation=QuestionMsg(
-                ref=self.ref, data=self.in_mold.mold_it(input, Conversion.TO_JSON)
+                ref=self.ref, data=self.in_mold.mold_dict(input, Conversion.TO_JSON)
             ),
         )
         yield ctx.invocation
@@ -110,9 +110,9 @@ class Function(Executible):
         return self.ref.get_instance()(*args, **kwargs)
 
     def run(self, ctx: ExecContext):
-        input = self.in_mold.mold_it(ctx.invocation.data, Conversion.TO_OBJECT)
+        input = self.in_mold.mold_dict(ctx.invocation.data, Conversion.TO_OBJECT)
         output = self.ref.get_instance()(**input)
         ctx.final_state = ResponseMsg(
             previous=ctx.invocation.cake(),
-            data=self.out_mold.mold_it(output, Conversion.TO_JSON),
+            data=self.out_mold.mold_dict(output, Conversion.TO_JSON),
         )

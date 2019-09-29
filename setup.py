@@ -4,7 +4,8 @@ from setuptools import find_packages, setup
 
 cmdclass_dict = {}
 
-# MANIFEST.in ensures that requirements are included in `sdist`
+# MANIFEST.in ensures that readme and version included into sdist
+
 install_requires = [
     "nanotime",
     "croniter",

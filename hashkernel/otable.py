@@ -116,9 +116,11 @@ class OTable(metaclass=Template):
                 self.add_row(json_decode(l))
 
     def add_row(self, row=None):
-        if not (isinstance(row, (list, dict))):
-            row = DictLike(row)
-        row = self.mold.mold_to_list(row, Conversion.TO_OBJECT)
+        if not isinstance(row, (list, tuple)):
+            if not isinstance(row, dict):
+                row = DictLike(row)
+            row = self.mold.dict_to_row(row)
+        row = self.mold.mold_row(row, Conversion.TO_OBJECT)
         row_id = len(self.data)
         self.data.append(row)
         return row_id
@@ -178,7 +180,7 @@ class OTable(metaclass=Template):
         def gen():
             yield "#" + json_encode({"columns": self.mold.keys})
             for row in self.data:
-                yield json_encode(self.mold.mold_to_list(row, Conversion.TO_JSON))
+                yield json_encode(self.mold.mold_row(row, Conversion.TO_JSON))
             yield ""
 
         return "\n".join(gen())

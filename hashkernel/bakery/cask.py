@@ -19,12 +19,13 @@ from hashkernel.packer import (
     ProxyPacker,
     build_code_enum_packer,
 )
-from hashkernel.smattr import SmAttr, build_named_tuple_packer
+from hashkernel.smattr import MoldConfig, SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
 
 
 """
 Somewhat inspired by BitCask
+
 """
 
 
@@ -154,11 +155,26 @@ class CaskHeaderEntry(NamedTuple):
     checkpoint_id: Cake
 
 
+class LinkEntry(NamedTuple):
+    dest: Cake
+
+
+class DerivedEntry(NamedTuple):
+    filter: Cake
+    data: Cake
+
+
+class TagEntry(NamedTuple):
+    tag: str
+
+
 class EntryType(CodeEnum):
     """
-    >>> [ (e,e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
+    >>> [ (e, e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
     [(<EntryType.DATA: 0>, None), (<EntryType.CHECK_POINT: 1>, 9),
-    (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.CASK_HEADER: 3>, 66)]
+    (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.CASK_HEADER: 3>, 66),
+    (<EntryType.PERMALINK: 4>, 33), (<EntryType.DERIVED: 5>, 66),
+    (<EntryType.TAG: 6>, None)]
 
     """
 
@@ -195,8 +211,36 @@ class EntryType(CodeEnum):
         """
         first entry in any cask, `src` has cask_id of previous cask 
         or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
-        copied from previous's cask last checkpoint `src` or NULL_CAKE 
+        copied from `src` last checkpoint of previous cask or NULL_CAKE 
         and caskade_id points to caskade_id of series of cask.  
+        """,
+    )
+
+    PERMALINK = (
+        4,
+        LinkEntry,
+        """
+        `src` - points to data Cake
+        `dest` - permanent guid  
+        """,
+    )
+
+    DERIVED = (
+        5,
+        DerivedEntry,
+        """
+        `src` - points to data Cake
+        `filter` - filter points to logic that used to derive `src`
+        `data` points to derived data  
+        """,
+    )
+
+    TAG = (
+        6,
+        TagEntry,
+        """
+        `src` - points to Cake
+        `tag` - tag content
         """,
     )
 
@@ -211,6 +255,17 @@ class EntryType(CodeEnum):
             self.size = 0
 
 
+class Tag(SmAttr):
+    """
+    >>> str(Tag(name="abc"))
+    '{"name": "abc"}'
+    """
+
+    __mold_config__ = MoldConfig(omit_optional_null=True)
+    name: str
+    value: Optional[float]
+
+
 _COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
 
 
@@ -222,23 +277,29 @@ class Record(NamedTuple):
 
 Record_PACKER = build_named_tuple_packer(Record, lambda k: _COMPONENTS_PACKERS[k])
 
-CHECK_POINT_SIZE = Record_PACKER.size + EntryType.CHECK_POINT.size
-
 
 def pack_entry(rec: Record, entry: Any):
     packer = rec.entry_type.entry_packer
     return Record_PACKER.pack(rec) + packer.pack(entry)
 
 
+def size_of_entry(et: EntryType) -> int:
+    return Record_PACKER.size + et.size
+
+
+def size_of_double_entry(et1: EntryType, et2: EntryType) -> int:
+    return Record_PACKER.size * 2 + et1.size + et2.size
+
+
+HEADER_SIZE = size_of_entry(EntryType.CASK_HEADER)
+CHECK_POINT_SIZE = size_of_entry(EntryType.CHECK_POINT)
+END_SEQ_SIZE = size_of_double_entry(EntryType.NEXT_CASK, EntryType.CHECK_POINT)
+
+
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
 CHUNK_SIZE_2x = CHUNK_SIZE * 2
 MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
-
-SIZE_OF_CLOSE_CASK_SEQUENCE = (
-    Record_PACKER.size * 2 + EntryType.CHECK_POINT.entry_packer.size
-)
-
-MAX_CASK_SIZE_ADJUSTED = MAX_CASK_SIZE - SIZE_OF_CLOSE_CASK_SEQUENCE
+MAX_CASK_SIZE_ADJUSTED = MAX_CASK_SIZE - END_SEQ_SIZE
 
 
 class CaskType(CodeEnum):
@@ -573,6 +634,9 @@ class Caskade:
     casks: Dict[Cake, CaskFile]
     data_locations: Dict[Cake, DataLocation]
     check_points: List[CheckPoint]
+    permalinks: Dict[Cake, Cake]
+    tags: Dict[Cake, Tag]
+    derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
     # guids: Dict[Cake, GuidRef]
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
@@ -611,6 +675,10 @@ class Caskade:
 
     def is_file_belong(self, file: CaskFile):
         return file.guid.uniform_digest() == self.caskade_id.uniform_digest()
+
+    def checkpoint(self):
+        self.assert_write()
+        self.active.write_checkpoint(CheckPointType.MANUAL)
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
         dp = self.data_locations[id]
