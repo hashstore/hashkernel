@@ -21,6 +21,9 @@ from hashkernel.bakery.cask import (
     EntryType,
     Record,
     Record_PACKER,
+    Tag,
+    size_of_dynamic_entry,
+    size_of_entry,
 )
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
@@ -151,11 +154,26 @@ def test_3steps():
     a3 = caskade.write_bytes(rand_bytes(3, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
-    a4 = caskade.write_bytes(rand_bytes(4, ONE_AND_QUARTER))
+    a4_bytes = rand_bytes(4, ONE_AND_QUARTER)
+    a4 = caskade.write_bytes(a4_bytes)
     sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
+
+    a4_permalink = Cake.new_guid()
+    caskade.set_permalink(a4, a4_permalink)
+    sp.add(size_of_entry(EntryType.PERMALINK))
+
+    a4_derived = Cake.from_bytes(a4_bytes[:100])
+    caskade.save_derived(a4, a4_permalink, a4_derived)
+    sp.add(size_of_entry(EntryType.DERIVED))
+
+    a4_tag = Tag(name="Hello")
+    caskade.tag(a4, a4_tag)
+    sp.add(size_of_dynamic_entry(EntryType.TAG, a4_tag))
+
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
+
     # cp1 by size
     sp.add(CHECK_POINT_SIZE)
     assert caskade.active.tracker.current_offset == sp.pos
@@ -187,13 +205,13 @@ def test_3steps():
     a1_again = caskade.write_bytes(rand_bytes(1, ONE_AND_QUARTER))
     assert a1 == a1_again
     assert caskade.active.tracker.current_offset == sp.pos
-    idx = 0
-
-    def logit(s):
-        nonlocal idx
-        (dir / f"{idx:03d}_{s}").write_bytes(b"")
-        print(s)
-        idx += 1
+    # idx = 0
+    #
+    # def logit(s):
+    #     nonlocal idx
+    #     (dir / f"{idx:03d}_{s}").write_bytes(b"")
+    #     print(s)
+    #     idx += 1
 
     # logit("read_caskade")
     read_caskade = Caskade(dir)
@@ -208,6 +226,10 @@ def test_3steps():
         assert k == Cake.from_bytes(read_caskade[k], CakeTypes.NO_CLASS)
         assert k == Cake.from_bytes(caskade[k], CakeTypes.NO_CLASS)
         # logit(str(k)[:8])
+
+    assert read_caskade.permalinks[a4_permalink] == a4
+    assert read_caskade.tags[a4] == [a4_tag]
+    assert read_caskade.derived[a4][a4_permalink] == a4_derived
 
     # logit("all_matched")
 

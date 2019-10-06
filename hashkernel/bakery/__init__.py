@@ -124,7 +124,7 @@ class CakeTypeRegistar(type):
                     cls.register(ch)
                     idx += 1
 
-    def map(cls, k):
+    def resolve(cls, k):
         if isinstance(k, str):
             if len(k) == 1:
                 k = B62.index[k]
@@ -137,7 +137,7 @@ class CakeTypeRegistar(type):
         raise KeyError(k)
 
     def __getitem__(cls, k):
-        return cls.map(k)
+        return cls.resolve(k)
 
     def extend(cls, ctr: "CakeTypeRegistar"):
         for ct in ctr.cake_types():
@@ -177,7 +177,7 @@ class CakeTypes(metaclass=CakeTypeRegistar):
     BLOCKSTREAM = CakeType({CakeProperties.IS_HASH})
 
 
-CAKE_TYPE_PACKER = ProxyPacker(CakeType, INT_8, int, CakeTypes.map)
+CAKE_TYPE_PACKER = ProxyPacker(CakeType, INT_8, int, CakeTypes.resolve)
 
 
 class MsgTypes(metaclass=CakeTypeRegistar):

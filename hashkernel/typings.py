@@ -18,16 +18,18 @@ def is_typing(tt, t, args):
 
 def is_tuple(t, args=None):
     """
-    >>> n = None
-    >>> o = typing.Optional[int]
-    >>> l = typing.List[int]
-    >>> d = typing.Dict[int,str]
-    >>> t3 = typing.Tuple[int,str,float]
-    >>> t1 = typing.Tuple[int]
-    >>> x=is_tuple
-    >>> x(n), x(o), x(l), x(d),  x(t3), x(t1)
-    (False, False, False, False, True, True)
-    >>>
+    >>> is_tuple(None)
+    False
+    >>> is_tuple(typing.Optional[int])
+    False
+    >>> is_tuple(typing.List[int])
+    False
+    >>> is_tuple(typing.Dict[int,str])
+    False
+    >>> is_tuple(typing.Tuple[int,str,float])
+    True
+    >>> is_tuple(typing.Tuple[int])
+    True
     """
     return is_typing(typing.Tuple, t, args)
 
@@ -170,7 +172,12 @@ class OnlyAnnotatedProperties:
     >>> A(a=5)
     Traceback (most recent call last):
     ...
-    ValueError: Wrong type 5 for a
+    ValueError: Wrong type (value=5) for attribute: a
+    >>> A()
+    Traceback (most recent call last):
+    ...
+    ValueError: Required attribute: a
+
     """
 
     def __init__(self, **kwargs):
@@ -178,7 +185,11 @@ class OnlyAnnotatedProperties:
         for k, v in kwargs.items():
             if k not in ann:
                 raise KeyError(k)
-            if isinstance(v, ann[k]):
-                setattr(self, k, v)
+            setattr(self, k, v)
+        for k in ann:
+            if hasattr(self, k):
+                v = getattr(self, k)
+                if not isinstance(v, ann[k]):
+                    raise ValueError(f"Wrong type (value={repr(v)}) for attribute: {k}")
             else:
-                raise ValueError(f"Wrong type {v} for {k}")
+                raise ValueError(f"Required attribute: {k}")

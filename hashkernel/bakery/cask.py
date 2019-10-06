@@ -1,16 +1,23 @@
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
-from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
+from hashkernel.bakery import (
+    CAKE_TYPE_PACKER,
+    NULL_CAKE,
+    BlockStream,
+    Cake,
+    CakeType,
+    CakeTypes,
+)
 from hashkernel.files import FileBytes
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
     GREEDY_BYTES,
-    INT_8,
     INT_32,
     NANOTIME,
     SIZED_BYTES,
@@ -121,7 +128,7 @@ _COMPONENTS_PACKERS = {
     bytes: GREEDY_BYTES,
     int: INT_32,
     nanotime: NANOTIME,
-    CakeType: ProxyPacker(CakeType, INT_8, int, CakeTypes.map),
+    CakeType: CAKE_TYPE_PACKER,
     CheckPointType: build_code_enum_packer(CheckPointType),
 }
 
@@ -129,11 +136,10 @@ _COMPONENTS_PACKERS = {
 def build_entry_packer(cls: type) -> Packer:
     if cls == bytes:
         return SIZED_BYTES
-    return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
-
-
-class DataEntry(NamedTuple):
-    data: bytes
+    elif issubclass(cls, SmAttr):
+        return ProxyPacker(cls, SIZED_BYTES)
+    else:
+        return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
 
 
 class CheckpointEntry(NamedTuple):
@@ -161,11 +167,19 @@ class LinkEntry(NamedTuple):
 
 class DerivedEntry(NamedTuple):
     filter: Cake
-    data: Cake
+    derived: Cake
 
 
-class TagEntry(NamedTuple):
-    tag: str
+class Tag(SmAttr):
+    """
+    >>> str(Tag(name="abc"))
+    '{"name": "abc"}'
+    """
+
+    __mold_config__ = MoldConfig(omit_optional_null=True)
+    name: str
+    value: Optional[float]
+    link: Optional[Cake]
 
 
 class EntryType(CodeEnum):
@@ -237,10 +251,9 @@ class EntryType(CodeEnum):
 
     TAG = (
         6,
-        TagEntry,
+        Tag,
         """
         `src` - points to Cake
-        `tag` - tag content
         """,
     )
 
@@ -255,15 +268,6 @@ class EntryType(CodeEnum):
             self.size = 0
 
 
-class Tag(SmAttr):
-    """
-    >>> str(Tag(name="abc"))
-    '{"name": "abc"}'
-    """
-
-    __mold_config__ = MoldConfig(omit_optional_null=True)
-    name: str
-    value: Optional[float]
 
 
 _COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
@@ -285,6 +289,11 @@ def pack_entry(rec: Record, entry: Any):
 
 def size_of_entry(et: EntryType) -> int:
     return Record_PACKER.size + et.size
+
+
+def size_of_dynamic_entry(et: EntryType, entry: Any) -> int:
+    pack = et.entry_packer.pack(entry)
+    return Record_PACKER.size + len(pack)
 
 
 def size_of_double_entry(et1: EntryType, et2: EntryType) -> int:
@@ -446,6 +455,7 @@ class CaskFile:
             ),
             mode="xb",
         )
+        # add virtual checkpoint from cask header
         self.caskade.check_points.append(
             CheckPoint(self.guid, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER)
         )
@@ -482,6 +492,7 @@ class CaskFile:
                 self.caskade._add_data_location(
                     rec.src, DataLocation(self.guid, offset, data_size)
                 )
+                # skip over actual data
                 new_pos = offset + data_size
 
                 if validate_data:
@@ -490,22 +501,36 @@ class CaskFile:
                     )
                     if reconstructed != rec.src:
                         raise DataValidationError(str(rec.src))
-            elif rec.entry_type == EntryType.CASK_HEADER:
-                header_entry, new_pos = rec.entry_type.entry_packer.unpack(
-                    fbytes, new_pos
-                )
-                check_point_to_add = CheckPoint(
-                    self.guid,
-                    header_entry.checkpoint_id,
-                    0,
-                    0,
-                    CheckPointType.ON_CASK_HEADER,
-                )
-            elif rec.entry_type == EntryType.CHECK_POINT:
-                cp_entry, new_pos = entry_packer.unpack(fbytes, new_pos)
-                check_point_to_add = CheckPoint(self.guid, rec.src, *cp_entry)
+
             elif entry_packer is not None:
-                _, new_pos = rec.entry_type.entry_packer.unpack(fbytes, new_pos)
+                entry, new_pos = entry_packer.unpack(fbytes, new_pos)
+
+                if rec.entry_type == EntryType.CASK_HEADER:
+                    head_entry: CaskHeaderEntry = entry
+                    # add virtual checkpoint from cask header
+                    check_point_to_add = CheckPoint(
+                        self.guid,
+                        head_entry.checkpoint_id,
+                        0,
+                        0,
+                        CheckPointType.ON_CASK_HEADER,
+                    )
+                elif rec.entry_type == EntryType.PERMALINK:
+                    link_entry: LinkEntry = entry
+                    self.caskade.permalinks[link_entry.dest] = rec.src
+                elif rec.entry_type == EntryType.TAG:
+                    tag: Tag = entry
+                    self.caskade.tags[rec.src].append(tag)
+                elif rec.entry_type == EntryType.DERIVED:
+                    derived_entry: DerivedEntry = entry
+                    self.caskade.derived[rec.src][
+                        derived_entry.filter
+                    ] = derived_entry.derived
+                elif rec.entry_type == EntryType.CHECK_POINT:
+                    cp_entry: CheckPointType = entry
+                    check_point_to_add = CheckPoint(self.guid, rec.src, *cp_entry)
+                else:
+                    raise AssertionError(f"What entry_type is it {rec.entry_type}")
 
             if check_point_to_add is not None and check_points is not None:
                 check_points.insert(cp_index, check_point_to_add)
@@ -532,14 +557,24 @@ class CaskFile:
         self.tracker = None
 
     def write_bytes(self, content: bytes, cake: Cake) -> DataLocation:
-        record = Record(EntryType.DATA, nanotime_now(), cake)
-        buffer = pack_entry(record, content)
-        entry_sz = len(buffer)
-        cp_type = self.tracker.will_it_spill(
-            self.caskade.config, record.tstamp, entry_sz
+        return self.write_entry(
+            EntryType.DATA, cake, content, content_size=(len(content))
         )
-        content_size = len(content)
-        # print(f'{self.guid} {self.tracker.current_offset} {content_size} {cp_type}')
+
+    def write_entry(
+        self,
+        et: EntryType,
+        src: Cake,
+        entry: Any,
+        tstamp: nanotime=None,
+        content_size=None,
+    ) -> Optional[DataLocation]:
+        if tstamp is None:
+            tstamp = nanotime_now()
+        rec = Record(et, tstamp, src)
+        buffer = pack_entry(rec, entry)
+        entry_sz = len(buffer)
+        cp_type = self.tracker.will_it_spill(self.caskade.config, tstamp, entry_sz)
         if cp_type is None:
             return self.append_buffer(buffer, content_size=content_size)
         elif cp_type == CheckPointType.ON_NEXT_CASK:
@@ -548,12 +583,10 @@ class CaskFile:
             )
             new_file = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
             checkpoint_id = self._do_end_cask_sequence(
-                cp_type, record.tstamp, new_cask_id, new_file
+                cp_type, tstamp, new_cask_id, new_file
             )
             self.caskade.active.create_file(
-                tstamp=record.tstamp,
-                prev_cask_id=self.guid,
-                checkpoint_id=checkpoint_id,
+                tstamp=tstamp, prev_cask_id=self.guid, checkpoint_id=checkpoint_id
             )
             return self.caskade.active.append_buffer(buffer, content_size=content_size)
         else:
@@ -635,7 +668,7 @@ class Caskade:
     data_locations: Dict[Cake, DataLocation]
     check_points: List[CheckPoint]
     permalinks: Dict[Cake, Cake]
-    tags: Dict[Cake, Tag]
+    tags: Dict[Cake, List[Tag]]
     derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
     # guids: Dict[Cake, GuidRef]
 
@@ -643,6 +676,9 @@ class Caskade:
         self.dir = Path(dir).absolute()
         self.casks = {}
         self.data_locations = {}
+        self.permalinks = {}
+        self.derived = defaultdict(dict)
+        self.tags = defaultdict(list)
         self.check_points = []
         if not self.dir.exists():
             self.dir.mkdir(mode=0o0700, parents=True)
@@ -702,6 +738,33 @@ class Caskade:
             dp = self.active.write_bytes(content, cake)
             self._add_data_location(cake, dp, content)
         return cake
+
+    def set_permalink(self, data: Cake, link: Cake) -> bool:
+        """
+        Ensures permalink.
+
+        Returns:
+              `True` if writen, `False` if exists and already pointing
+              to right data.
+        """
+        assert not (data.is_guid)
+        assert link.is_guid
+        if link not in self.permalinks or self.permalinks[link] != data:
+            self.assert_write()
+            self.active.write_entry(EntryType.PERMALINK, data, LinkEntry(dest=link))
+            self.permalinks[link] = data
+            return True
+        return False
+
+    def save_derived(self, src: Cake, filter: Cake, derived: Cake):
+        self.assert_write()
+        self.active.write_entry(EntryType.DERIVED, src, DerivedEntry(filter, derived))
+        self.derived[src][filter] = derived
+
+    def tag(self, src: Cake, tag: Tag):
+        self.assert_write()
+        self.active.write_entry(EntryType.TAG, src, tag)
+        self.tags[src].append(tag)
 
     def pause(self):
         self.assert_write()
