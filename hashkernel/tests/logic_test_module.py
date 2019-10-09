@@ -16,7 +16,7 @@ class Worker(NamedTuple):
 
 
 def fn2() -> Worker:
-    e = Worker("Guido", 5, Cake.new_portal())
+    e = Worker("Guido", 5, Cake.new_guid())
     print(e)
     return e
 

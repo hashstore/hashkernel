@@ -81,11 +81,11 @@ class AdjustableSizePacker(Packer):
     ...
     ValueError: Size is too big: 3000000
     """
+    max_size: int
 
     cls = int
 
     def __init__(self, max_size: int):
-
         self.max_size = max_size
 
     def pack(self, v: int) -> bytes:

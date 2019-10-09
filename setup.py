@@ -2,7 +2,7 @@ import platform
 
 from setuptools import find_packages, setup
 
-cmdclass_dict = {}
+cmdclass_dict = {} #type:ignore
 
 # MANIFEST.in ensures that readme and version included into sdist
 
@@ -16,15 +16,18 @@ install_requires = [
 ]
 
 dev_requires = [
-    "hs-build-tools",
+    "hs_build_tools",
+    "shiv",
     "sniffer",
     "coverage",
     "mypy",
     "wheel",
     "twine",
-    "pytest",
     "black",
     "isort",
+    "pytest",
+    "pytest-mypy",
+    "pytest-cov",
 ]
 
 makes_sniffer_scan_faster = {
@@ -72,7 +75,6 @@ setup(
     license="Apache 2.0",
     packages=find_packages(exclude=("*.tests",)),
     package_data={"": ["file_types.json"]},
-    cmdclass=cmdclass_dict,
     entry_points={"console_scripts": ["hk=hashkernel.cli:main"]},
     install_requires=install_requires,
     extras_require={"dev": dev_requires},

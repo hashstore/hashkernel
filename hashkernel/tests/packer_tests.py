@@ -53,7 +53,7 @@ def test_1():
     "packer, max_capacity",
     [(p.ADJSIZE_PACKER_3, 2 ** 21), (p.ADJSIZE_PACKER_4, 2 ** 28)],
 )
-def test_adjsize_packers(packer: p.Packer, max_capacity: int):
+def test_adjsize_packers(packer: p.AdjustableSizePacker, max_capacity: int):
 
     oks = [0, 1, max_capacity - 1, *(r.randrange(max_capacity) for _ in range(100))]
     for i in oks:

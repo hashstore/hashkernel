@@ -16,9 +16,6 @@ def py_files(filename):
 run_envs = ["hk36", "hk37"]
 
 
-mypy_modules = ["hashkernel.zzzz"]
-
-
 def os_system_in_env(e, cmd):
     return os.system(cmd if e == "current" else f". activate {e}; {cmd}")
 
@@ -28,18 +25,13 @@ def run_tests(include_slow, envs, html=False):
     cmd = f"python -m coverage run -p -m pytest {args}"
     env_states = [0 == os_system_in_env(e, cmd) for e in envs]
     print(dict(zip(envs, env_states)))
-    modules = " ".join(f"-m {m}" for m in mypy_modules)
-    mypy = 0 == os_system_in_env(
-        envs[0],
-        f"python -m mypy {modules} --ignore-missing-imports --no-strict-optional",
-    )
     cleanup_cmds = ["python -m coverage combine", "python -m coverage report -m"]
     if html:
         cleanup_cmds.append("python -m coverage html")
     for c in cleanup_cmds:
         os_system_in_env(envs[0], c)
     os.unlink(".coverage")
-    return all(env_states) and mypy
+    return all(env_states)
 
 
 """
