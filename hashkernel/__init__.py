@@ -232,19 +232,22 @@ def mix_in(
     return mixed_in_methods
 
 
+EnsureItT = TypeVar("EnsureItT", bound="EnsureIt")
+
+
 class EnsureIt:
     @classmethod
     def __factory__(cls):
         return cls
 
     @classmethod
-    def ensure_it(cls, o):
+    def ensure_it(cls: Type[EnsureItT], o: Any) -> EnsureItT:
         if isinstance(o, cls):
             return o
         return cls.__factory__()(o)
 
     @classmethod
-    def ensure_it_or_none(cls, o):
+    def ensure_it_or_none(cls: Type[EnsureItT], o: Any) -> Optional[EnsureItT]:
         if o is None:
             return o
         return cls.ensure_it(o)
@@ -277,6 +280,9 @@ class Integerable(EnsureIt):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({int(self)})"
+
+    def __int__(self) -> int:
+        pass
 
 
 class StrKeyMixin:
@@ -552,6 +558,16 @@ class CodeEnum(Stringable, enum.Enum):
     'some important help message'
     >>> CodeEnumExample.find_by_code(1)
     <CodeEnumExample.B: 1>
+    >>> CodeEnumExample(1)
+    <CodeEnumExample.B: 1>
+    >>> CodeEnumExample("B")
+    <CodeEnumExample.B: 1>
+    >>> CodeEnumExample["B"]
+    <CodeEnumExample.B: 1>
+    >>> CodeEnumExample[1]
+    Traceback (most recent call last):
+    ...
+    KeyError: 1
     """
 
     def __init__(self, code: int, doc: str = "") -> None:

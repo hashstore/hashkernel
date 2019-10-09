@@ -5,6 +5,7 @@ def all_prod_modules():
     import hashkernel
     import hashkernel.auto_wire
     import hashkernel.base_x
+    import hashkernel.cli
     import hashkernel.docs
     import hashkernel.executible
     import hashkernel.file_types
@@ -51,6 +52,7 @@ import hashkernel.bakery.msg_server
 import hashkernel.bakery.path
 import hashkernel.bakery.rack
 import hashkernel.base_x
+import hashkernel.cli
 import hashkernel.docs
 import hashkernel.executible
 import hashkernel.file_types

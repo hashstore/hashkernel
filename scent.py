@@ -30,7 +30,8 @@ def run_tests(include_slow, envs, html=False):
     print(dict(zip(envs, env_states)))
     modules = " ".join(f"-m {m}" for m in mypy_modules)
     mypy = 0 == os_system_in_env(
-        envs[0], f"python -m mypy {modules} --ignore-missing-imports"
+        envs[0],
+        f"python -m mypy {modules} --ignore-missing-imports --no-strict-optional",
     )
     cleanup_cmds = ["python -m coverage combine", "python -m coverage report -m"]
     if html:

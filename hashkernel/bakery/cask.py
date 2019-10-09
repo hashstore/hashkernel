@@ -1,7 +1,7 @@
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
 from nanotime import nanotime
 
@@ -268,8 +268,6 @@ class EntryType(CodeEnum):
             self.size = 0
 
 
-
-
 _COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
 
 
@@ -331,7 +329,7 @@ class CaskType(CodeEnum):
 
 
 def find_cask_by_guid(
-    dir: Path, guid: Cake, types: Sequence[CaskType] = CaskType
+    dir: Path, guid: Cake, types: Iterable[CaskType] = CaskType
 ) -> Optional[Path]:
     for ct in types:
         path = ct.cask_path(dir, guid)
@@ -433,7 +431,7 @@ class CaskFile:
     @classmethod
     def by_file(cls, caskade: "Caskade", fpath: Path) -> Optional["CaskFile"]:
         try:
-            cask_type = CaskType(fpath.suffix[1:].upper())
+            cask_type = CaskType[fpath.suffix[1:].upper()]
             guid = Cake.from_digest36(fpath.stem, CakeTypes.CASK)
             return cls(caskade, guid, cask_type)
         except (KeyError, AttributeError) as e:
@@ -473,6 +471,7 @@ class CaskFile:
         if content_size is not None:
             offset = self.tracker.current_offset - content_size
             return DataLocation(self.guid, offset, content_size)
+        return None
 
     def read_file(
         self, curr_pos=0, validate_data=False, check_points=None, tracker=None
@@ -566,7 +565,7 @@ class CaskFile:
         et: EntryType,
         src: Cake,
         entry: Any,
-        tstamp: nanotime=None,
+        tstamp: nanotime = None,
         content_size=None,
     ) -> Optional[DataLocation]:
         if tstamp is None:

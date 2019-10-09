@@ -127,7 +127,7 @@ class TTL(Integerable):
     idx: int
     extra: int
 
-    def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None) -> int:
+    def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None):
         idx = 31
         extra = 0
         if isinstance(ttl, nanotime):

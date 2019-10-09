@@ -370,7 +370,7 @@ class Mold(Jsonable):
 
     def mold_dict(
         self,
-        in_data: Union[Tuple[Any], List[Any], Dict[str, Any], DictLike],
+        in_data: Union[Tuple[Any, ...], List[Any], Dict[str, Any], DictLike],
         direction: Conversion,
     ) -> Dict[str, Any]:
         if isinstance(in_data, (tuple, list)):
@@ -391,10 +391,12 @@ class Mold(Jsonable):
                 out_data[k] = v
         return out_data
 
-    def dict_to_row(self, dct: Union[Dict[str, Any], DictLike]):
+    def dict_to_row(self, dct: Union[Dict[str, Any], DictLike]) -> Tuple[Any, ...]:
         return tuple(dct[k] if k in dct else None for k in self.keys)
 
-    def mold_row(self, in_data: Sequence[Any], direction: Conversion) -> Tuple[Any]:
+    def mold_row(
+        self, in_data: Sequence[Any], direction: Conversion
+    ) -> Tuple[Any, ...]:
         self.assert_row(in_data)
         return tuple(
             self.attrs[self.keys[i]].convert(in_data[i], direction)
@@ -674,7 +676,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         values = {k: v for k, v in vals_dict.items() if v is not None}
         mold.set_attrs(values, self)
         if hasattr(self, "__validate__"):
-            self.__validate__()
+            self.__validate__()  # type: ignore
 
     def __to_json__(self) -> Dict[str, Any]:
         return self.__serialization_mold__.mold_dict(DictLike(self), Conversion.TO_JSON)

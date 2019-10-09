@@ -89,8 +89,8 @@ class CakeType:
         self.name = name
         self.cake_types = cake_types
 
-    def update_gref(self, gref: Union[type, GlobalRef]):
-        gref = GlobalRef.ensure_it(gref)
+    def update_gref(self, gref_or_type: Union[type, GlobalRef]):
+        gref = GlobalRef.ensure_it(gref_or_type)
         if self.gref is None:
             self.gref = gref
         else:
@@ -370,9 +370,10 @@ class Cake(Stringable, EnsureIt, Primitive):
     @staticmethod
     def new_guid(
         type: CakeType = CakeTypes.TIMESTAMP,
-        ttl: Union[nanotime, timedelta, None] = None,
+        ttl: Union[TTL, nanotime, timedelta, None] = None,
         uniform_digest: bytes = None,
     ) -> "Cake":
+        ttl = TTL.ensure_it_or_none(ttl)
         if uniform_digest is None:
             uniform_digest = os.urandom(UNIFORM_DIGEST_SIZEOF)
         else:

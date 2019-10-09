@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Generator, Optional, Tuple
+from typing import Optional, Tuple, Union
 
 
 def outside_of_range(start: int, stop: Optional[int] = None):
@@ -71,7 +71,7 @@ class FileBytes:
         """
         return position >> BUFFER_BITS, position & BUFFER_MASK
 
-    def __getitem__(self, item) -> bytes:
+    def __getitem__(self, item) -> Union[int, bytes]:
         if isinstance(item, int):
             if item < 0:
                 item += self._len
