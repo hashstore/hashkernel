@@ -75,6 +75,7 @@ setup(
     license="Apache 2.0",
     packages=find_packages(exclude=("*.tests",)),
     package_data={"": ["file_types.json"]},
+    cmdclass=cmdclass_dict,
     entry_points={"console_scripts": ["hk=hashkernel.cli:main"]},
     install_requires=install_requires,
     extras_require={"dev": dev_requires},
