@@ -16,7 +16,7 @@ install_requires = [
 ]
 
 dev_requires = [
-    "hs_build_tools",
+    "hs-build-tools",
     "shiv",
     "sniffer",
     "coverage",
