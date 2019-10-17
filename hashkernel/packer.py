@@ -1,11 +1,12 @@
 import abc
 import struct
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from nanotime import nanotime
 
-from hashkernel import OneBit, utf8_decode, utf8_encode
+from hashkernel import Jsonable, OneBit, utf8_decode, utf8_encode
+from hashkernel.plugins import query_plugins
 from hashkernel.typings import is_NamedTuple
 
 
@@ -31,6 +32,11 @@ class Packer(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
         raise NotImplementedError("subclasses must override")
+
+    def unpack_whole_buffer(self, buffer: bytes) -> Any:
+        obj, offset = self.unpack(buffer, 0)
+        assert len(buffer) == offset
+        return obj
 
 
 MARK_BIT = OneBit(7)
@@ -81,6 +87,7 @@ class AdjustableSizePacker(Packer):
     ...
     ValueError: Size is too big: 3000000
     """
+
     max_size: int
 
     cls = int
@@ -316,8 +323,7 @@ def unpack_greedily(
     b'abc'
     """
     new_buffer, new_offset = FixedSizePacker(size).unpack(buffer, offset)
-    result, _ = greedy_packer.unpack(new_buffer, 0)
-    return result, new_offset
+    return greedy_packer.unpack_whole_buffer(new_buffer), new_offset
 
 
 def ensure_packer(o: Any) -> Packer:
@@ -337,3 +343,62 @@ def ensure_packer(o: Any) -> Packer:
     elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
         return o.__packer__
     raise AssertionError(f"Cannot extract packer out: {repr(o)}")
+
+
+PackerFactory = Callable[[type], Packer]
+
+
+class PackerLibrary:
+
+    factories: List[Tuple[type, PackerFactory]]
+    cache: Dict[type, Packer]
+
+    def __init__(self):
+        self.factories = []
+        self.cache = {}
+
+    def __getitem__(self, key: type) -> Optional[Packer]:
+        return self.get_packer_by_type(key)
+
+    def get_packer_by_type(self, key: type) -> Optional[Packer]:
+        packer = None
+        if key in self.cache:
+            packer = self.cache[key]
+        else:
+            for i in range(len(self.factories)):
+                if issubclass(key, self.factories[i][0]):
+                    packer = self.factories[i][1](key)
+                    break
+            self.cache[key] = packer
+        return packer
+
+    def register_packer(self, key: type, packer_factory: PackerFactory):
+        self.cache = {}
+        for i in range(len(self.factories)):
+            i_type = self.factories[i][0]
+            assert i_type != key, "Conflict: Registering {key} twice"
+            if issubclass(key, i_type):
+                self.factories.insert(i, (key, packer_factory))
+                return
+        self.factories.append((key, packer_factory))
+
+
+class PackerDefinitions:
+    typed_packers: List[Tuple[type, PackerFactory]]
+
+    def __init__(self, *pack_defs: Tuple[type, PackerFactory]):
+        self.typed_packers = [*pack_defs]
+
+    def register_all(self, lib: PackerLibrary):
+        for t in self.typed_packers:
+            lib.register_packer(*t)
+
+
+RECIPE_PACKERS = PackerLibrary()
+
+PackerDefinitions((Jsonable, lambda t: ProxyPacker(t, GREEDY_BYTES))).register_all(
+    RECIPE_PACKERS
+)
+
+for pdefs in query_plugins(PackerDefinitions, "hashkernel.packer"):
+    pdefs.register_all(RECIPE_PACKERS)

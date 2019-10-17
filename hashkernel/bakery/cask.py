@@ -22,7 +22,8 @@ from hashkernel.packer import (
     NANOTIME,
     SIZED_BYTES,
     UTF8_GREEDY_STR,
-    Packer,
+    PackerDefinitions,
+    PackerLibrary,
     ProxyPacker,
     build_code_enum_packer,
 )
@@ -122,24 +123,28 @@ class CheckPointType(CodeEnum):
     )
 
 
-_COMPONENTS_PACKERS = {
-    str: UTF8_GREEDY_STR,
-    Cake: Cake.__packer__,
-    bytes: GREEDY_BYTES,
-    int: INT_32,
-    nanotime: NANOTIME,
-    CakeType: CAKE_TYPE_PACKER,
-    CheckPointType: build_code_enum_packer(CheckPointType),
-}
+_COMPONENTS_PACKERS = PackerLibrary()
 
+PackerDefinitions(
+    (str, lambda _: UTF8_GREEDY_STR),
+    (Cake, lambda _: Cake.__packer__),
+    (bytes, lambda _: GREEDY_BYTES),
+    (int, lambda _: INT_32),
+    (nanotime, lambda _: NANOTIME),
+    (CakeType, lambda _: CAKE_TYPE_PACKER),
+    (CodeEnum, build_code_enum_packer),
+).register_all(_COMPONENTS_PACKERS)
 
-def build_entry_packer(cls: type) -> Packer:
-    if cls == bytes:
-        return SIZED_BYTES
-    elif issubclass(cls, SmAttr):
-        return ProxyPacker(cls, SIZED_BYTES)
-    else:
-        return build_named_tuple_packer(cls, lambda cls: _COMPONENTS_PACKERS[cls])
+_ENTRY_PACKERS = PackerLibrary()
+
+PackerDefinitions(
+    (bytes, lambda _: SIZED_BYTES),
+    (SmAttr, lambda t: ProxyPacker(t, SIZED_BYTES)),
+    (
+        tuple,
+        lambda t: build_named_tuple_packer(t, _COMPONENTS_PACKERS.get_packer_by_type),
+    ),
+).register_all(_ENTRY_PACKERS)
 
 
 class CheckpointEntry(NamedTuple):
@@ -262,13 +267,10 @@ class EntryType(CodeEnum):
         self.entry_cls = entry_cls
         self.entry_packer = None
         if self.entry_cls is not None:
-            self.entry_packer = build_entry_packer(self.entry_cls)
+            self.entry_packer = _ENTRY_PACKERS[self.entry_cls]
             self.size = self.entry_packer.size
         else:
             self.size = 0
-
-
-_COMPONENTS_PACKERS[EntryType] = build_code_enum_packer(EntryType)
 
 
 class Record(NamedTuple):
@@ -277,7 +279,7 @@ class Record(NamedTuple):
     src: Cake
 
 
-Record_PACKER = build_named_tuple_packer(Record, lambda k: _COMPONENTS_PACKERS[k])
+Record_PACKER = _ENTRY_PACKERS[Record]
 
 
 def pack_entry(rec: Record, entry: Any):

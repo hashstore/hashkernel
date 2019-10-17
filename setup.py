@@ -2,7 +2,7 @@ import platform
 
 from setuptools import find_packages, setup
 
-cmdclass_dict = {} #type:ignore
+cmdclass_dict = {}  # type:ignore
 
 # MANIFEST.in ensures that readme and version included into sdist
 
