@@ -678,7 +678,7 @@ class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
         elif hasattr(_vals_, "__iter__"):
             vals_dict = mold.mold_dict(list(_vals_), Conversion.TO_OBJECT)
         else:
-            raise AssertionError(f"cannot construct from: {_vals_}")
+            raise AssertionError(f"cannot construct from: {_vals_!r}")
         vals_dict.update(kwargs)
         values = {k: v for k, v in vals_dict.items() if v is not None}
         mold.set_attrs(values, self)

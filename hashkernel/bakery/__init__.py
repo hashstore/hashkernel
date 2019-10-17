@@ -327,7 +327,7 @@ class Cake(Stringable, EnsureIt, Primitive):
         if s is None:
             assert (
                 digest is not None and type is not None
-            ), f"both digest={digest} and type={type} required"
+            ), f"both digest={digest!r} and type={type!r} required"
             self.digest = digest
             self.type = type
         elif isinstance(s, bytes):
@@ -339,7 +339,7 @@ class Cake(Stringable, EnsureIt, Primitive):
             self.type = CakeTypes[s[-1:]]
         CakeProperties.set_properties(self, *self.type.modifiers)
         if len(self.digest) != Hasher.SIZEOF:
-            raise AttributeError(f"invalid cake digest: {s} {digest.hex()} {type} ")
+            raise AttributeError(f"invalid cake digest: {s!r} {digest.hex()} {type} ")
 
     def guid_header(self) -> GuidHeader:
         assert self.is_guid
