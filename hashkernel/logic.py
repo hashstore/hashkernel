@@ -4,7 +4,8 @@ from typing import Callable, List, Optional, Union
 from hashkernel.auto_wire import AutoWire, AutoWireRoot, wire_names
 from hashkernel.executible import Function
 from hashkernel.log_box import LogBox
-from hashkernel.smattr import AttrEntry, SmAttr
+from hashkernel.mold import AttrEntry
+from hashkernel.smattr import SmAttr
 from hashkernel.time import CronExp, TimeZone
 
 
@@ -28,7 +29,7 @@ class MoldVar(AutoWire):
 class TaskVar(MoldVar):
     def _initialize(self):
         super(TaskVar, self)._initialize()
-        self.attr_entry: Union[AttrEntry, None] = None
+        self.attr_entry: Optional[AttrEntry] = None
 
 
 class EdgeMold(AutoWire):

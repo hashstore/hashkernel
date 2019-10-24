@@ -2,9 +2,10 @@ import inspect
 import traceback
 from typing import Any, Dict, Generator, Optional
 
-from hashkernel import Conversion, GlobalRef, exception_message, to_json
+from hashkernel import GlobalRef, exception_message
 from hashkernel.bakery import QuestionMsg, ResponseChain, ResponseMsg
-from hashkernel.smattr import Mold, SmAttr, extract_molds_from_function
+from hashkernel.mold import Conversion, extract_molds_from_function
+from hashkernel.smattr import Mold, SmAttr
 
 EDGE_CLS_NAMES = {"Input", "Output"}
 IN_OUT = "in_out"

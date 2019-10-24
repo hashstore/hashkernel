@@ -357,6 +357,9 @@ class PackerLibrary:
         self.factories = []
         self.cache = {}
 
+    def __contains__(self, item):
+        return self[item] is not None
+
     def __getitem__(self, key: type) -> Optional[Packer]:
         return self.get_packer_by_type(key)
 
@@ -392,13 +395,3 @@ class PackerDefinitions:
     def register_all(self, lib: PackerLibrary):
         for t in self.typed_packers:
             lib.register_packer(*t)
-
-
-RECIPE_PACKERS = PackerLibrary()
-
-PackerDefinitions((Jsonable, lambda t: ProxyPacker(t, GREEDY_BYTES))).register_all(
-    RECIPE_PACKERS
-)
-
-for pdefs in query_plugins(PackerDefinitions, "hashkernel.packer"):
-    pdefs.register_all(RECIPE_PACKERS)

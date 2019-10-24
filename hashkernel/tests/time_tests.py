@@ -3,7 +3,7 @@ from logging import getLogger
 
 import pytest
 
-from hashkernel import ClassRef, Conversion, GlobalRef
+from hashkernel.mold import ClassRef, Conversion
 from hashkernel.time import _TIMEDELTAS, TTL
 
 SECOND = datetime.timedelta(seconds=1)

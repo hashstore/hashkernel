@@ -1,6 +1,6 @@
 from typing import Iterable, List, Optional, Union
 
-from hashkernel.smattr import SINGLE_RETURN_VALUE
+from hashkernel.mold import SINGLE_RETURN_VALUE
 
 
 class AutoWireRoot(type):

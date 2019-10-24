@@ -1,15 +1,36 @@
 from typing import Any, Dict, List, Optional, Union
 
 from hashkernel import (
-    Conversion,
+    _GLOBAL_REF,
     DictLike,
-    Template,
+    GlobalRef,
     ensure_string,
     json_decode,
     json_encode,
     not_zero_len,
 )
-from hashkernel.smattr import Mold, SmAttr
+from hashkernel.mold import ClassRef, Conversion, Mold
+from hashkernel.smattr import SmAttr
+
+
+class Template(type):
+    def __init__(cls, name, bases, dct):
+        if _GLOBAL_REF not in dct:
+            cls.__cache__ = {}
+
+    def __getitem__(cls, item):
+        item_cref = ClassRef.ensure_it(item)
+        k = str(item_cref)
+        if k in cls.__cache__:
+            return cls.__cache__[k]
+        global_ref = GlobalRef(cls, str(item_cref))
+
+        class Klass(cls):
+            __item_cref__ = item_cref
+            __global_ref__ = global_ref
+
+        cls.__cache__[k] = Klass
+        return Klass
 
 
 class ORow:
@@ -49,7 +70,7 @@ class OTable(metaclass=Template):
     >>> t.add_row([None,None,None,None,None])
     Traceback (most recent call last):
     ...
-    hashkernel.smattr.ValueRequired: no default for Required[int]
+    hashkernel.mold.ValueRequired: no default for Required[int]
     error in i:Required[int]
     >>> str(t)
     '#{"columns": ["i", "s", "d", "z", "y"]}\\n[5, "abc", null, [], {}]\\n[7, "xyz", "2018-08-10T00:00:00", [], {}]\\n'

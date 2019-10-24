@@ -38,14 +38,26 @@ Somewhat inspired by BitCask
 
 
 class AccessError(Exception):
+    """
+    file closed to modification
+    """
+
     pass
 
 
 class NotQuietError(Exception):
+    """
+    Cask changed during quiet period
+    """
+
     pass
 
 
 class DataValidationError(Exception):
+    """
+    Hash does not match
+    """
+
     pass
 
 
@@ -718,12 +730,15 @@ class Caskade:
         self.active.write_checkpoint(CheckPointType.MANUAL)
 
     def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
-        dp = self.data_locations[id]
-        file: CaskFile = self.casks[dp.cask_id]
-        buffer = file.fragment(dp.offset, dp.size)
+        buffer = self.read_bytes(id)
         if id.type == CakeTypes.BLOCKSTREAM:
             return BlockStream(buffer)
         return buffer
+
+    def read_bytes(self, id: Cake) -> bytes:
+        dp = self.data_locations[id]
+        file: CaskFile = self.casks[dp.cask_id]
+        return file.fragment(dp.offset, dp.size)
 
     def __contains__(self, id: Cake) -> bool:
         return id in self.data_locations
