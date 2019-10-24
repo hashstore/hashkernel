@@ -71,15 +71,15 @@ class Flator(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def is_applied(self, cls: type) -> bool:
-        ...
+        raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
     def inflate(self, k: str) -> Any:
-        ...
+        raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
     def deflate(self, k: Any) -> str:
-        ...
+        raise NotImplementedError("subclasses must override")
 
 
 class ClassRef(Stringable, StrKeyMixin, EnsureIt):
