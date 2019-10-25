@@ -31,8 +31,7 @@ from hashkernel.typings import (
     is_dict,
     is_list,
     is_optional,
-    is_tuple,
-)
+    is_tuple,)
 
 
 class Conversion(IntEnum):
@@ -74,11 +73,11 @@ class Flator(metaclass=abc.ABCMeta):
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    def inflate(self, k: str) -> Any:
+    def inflate(self, k: str, cls:type) -> Any:
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    def deflate(self, k: Any) -> str:
+    def deflate(self, data: Any) -> str:
         raise NotImplementedError("subclasses must override")
 
 
@@ -143,7 +142,7 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             ):
                 if direction.to_object():
                     if isinstance(v, str):
-                        return flator.inflate(v)
+                        return flator.inflate(v, self.cls)
                 else:
                     if isinstance(v, self.cls):
                         return flator.deflate(v)
@@ -554,18 +553,20 @@ class Mold(Jsonable):
         """
         return {k: getattr(from_obj, k) for k in self.keys if hasattr(from_obj, k)}
 
-    def wrap_input(self, v):
-        v_dct = self.mold_dict(v, Conversion.TO_OBJECT)
-        if self.cls is not None:
-            return self.cls(v_dct)
-        return v_dct
+    def deflate(self, v:Dict[str, Any], flator:Flator ):
+        return self.mold_dict(v, Conversion.DEFLATE, flator)
 
-    def output_json(self, v):
+    def inflate(self, v:Dict[str, Any], flator:Flator ):
+        return self.mold_dict(v, Conversion.INFLATE, flator)
+
+    def wrap_result(self, v):
         if self.is_single_return():
-            result = {SINGLE_RETURN_VALUE: v}
+            return {SINGLE_RETURN_VALUE: v}
+        elif isinstance(v, tuple):
+            return dict(zip(self.keys, v))
         else:
-            result = DictLike(v)
-        return self.mold_dict(result, Conversion.TO_JSON)
+            dict_like = DictLike(v)
+            return { k:dict_like[k] for k in self.keys}
 
     def is_single_return(self) -> bool:
         return self.keys == [SINGLE_RETURN_VALUE]
@@ -573,75 +574,84 @@ class Mold(Jsonable):
     def is_empty(self) -> bool:
         return len(self.keys) == 0
 
+class FunctionMold:
+    in_mold: Mold
+    out_mold: Mold
+    dst: DocStringTemplate
 
-def extract_molds_from_function(
-    fn: Callable[..., Any]
-) -> Tuple[Mold, Mold, DocStringTemplate]:
-    """
-    Args:
-        fn: function inspected
+    def __init__(self, fn: Callable[..., Any]):
 
-    Returns:
-        in_mold: `Mold` of function input
-        out_mold: `Mold` of function output
-        dst: template
-
-    >>> def a(i:int)->None:
-    ...     pass
-    ...
-    >>> in_a, out_a,_ = extract_molds_from_function(a)
-    >>> out_a.is_empty()
-    True
-    >>> out_a.is_single_return()
-    False
-    >>>
-    >>> def b(i:int)->str:
-    ...     return f'i={i}'
-    ...
-    >>> in_b, out_b,_ = extract_molds_from_function(b)
-    >>> out_b.is_empty()
-    False
-    >>> out_b.is_single_return()
-    True
-    >>> def c(i:int)->Optional[Tuple[str,int]]:
-    ...     return f'i={i}', i
-    ...
-    >>> in_b, out_b, dst = extract_molds_from_function(c)
-    >>> print(dst.doc()) #doctest: +NORMALIZE_WHITESPACE
+        """
         Args:
-            i: Required[int]
+            fn: function inspected
+
         Returns:
-            v0: Required[str]
-            v1: Required[int]
-    >>>
-    """
-    dst = DocStringTemplate(fn.__doc__, {ARGS, RETURNS})
+            in_mold: `Mold` of function input
+            out_mold: `Mold` of function output
+            dst: template
 
-    annotations = dict(get_attr_hints(fn))
-    return_type = annotations["return"]
-    del annotations["return"]
-    in_mold = Mold(annotations)
-    in_mold.set_defaults(in_mold.get_defaults_from_fn(fn))
-    out_mold = Mold()
+        >>> def a(i:int)->None:
+        ...     pass
+        ...
+        >>> amold = FunctionMold(a)
+        >>> amold.out_mold.is_empty()
+        True
+        >>> amold.out_mold.is_single_return()
+        False
+        >>>
+        >>> def b(i:int)->str:
+        ...     return f'i={i}'
+        ...
+        >>> bmold = FunctionMold(b)
+        >>> bmold.out_mold.is_empty()
+        False
+        >>> bmold.out_mold.is_single_return()
+        True
+        >>> def c(i:int)->Optional[Tuple[str,int]]:
+        ...     return f'i={i}', i
+        ...
+        >>> cmold = FunctionMold(c)
+        >>> print(cmold.dst.doc()) #doctest: +NORMALIZE_WHITESPACE
+            Args:
+                i: Required[int]
+            Returns:
+                v0: Required[str]
+                v1: Required[int]
+        >>>
+        """
+        self.fn = fn
+        self.dst = DocStringTemplate(fn.__doc__, {ARGS, RETURNS})
 
-    if return_type != type(None):
-        optional = is_optional(return_type)
-        if optional:
-            return_type = get_args(return_type)[0]
-        if is_tuple(return_type):
-            args = get_args(return_type)
-            keys = [f"v{i}" for i in range(len(args))]
-            if RETURNS in dst.var_groups:
-                for i, k in enumerate(dst.var_groups[RETURNS].keys()):
-                    keys[i] = k
-            out_mold.add_hints(dict(zip(keys, args)))
-        else:
-            out_hints = get_attr_hints(return_type)
-            if not (is_primitive(return_type)) and len(out_hints) > 0:
-                out_mold.add_hints(out_hints)
+        annotations = dict(get_attr_hints(fn))
+        return_type = annotations["return"]
+        del annotations["return"]
+        self.in_mold = Mold(annotations)
+        self.in_mold.set_defaults(self.in_mold.get_defaults_from_fn(fn))
+        self.out_mold = Mold()
+
+        if return_type != type(None):
+            optional = is_optional(return_type)
+            if optional:
+                return_type = get_args(return_type)[0]
+            if is_tuple(return_type):
+                args = get_args(return_type)
+                keys = [f"v{i}" for i in range(len(args))]
+                if RETURNS in self.dst.var_groups:
+                    for i, k in enumerate(self.dst.var_groups[RETURNS].keys()):
+                        keys[i] = k
+                self.out_mold.add_hints(dict(zip(keys, args)))
             else:
-                ae = AttrEntry(SINGLE_RETURN_VALUE, return_type)
-                out_mold.add_entry(ae)
-    in_mold.syncup_dst_and_attrs(dst, ARGS)
-    out_mold.syncup_dst_and_attrs(dst, RETURNS)
-    return in_mold, out_mold, dst
+                out_hints = get_attr_hints(return_type)
+                if not (is_primitive(return_type)) and len(out_hints) > 0:
+                    self.out_mold.add_hints(out_hints)
+                else:
+                    ae = AttrEntry(SINGLE_RETURN_VALUE, return_type)
+                    self.out_mold.add_entry(ae)
+        self.in_mold.syncup_dst_and_attrs(self.dst, ARGS)
+        self.out_mold.syncup_dst_and_attrs(self.dst, RETURNS)
+
+    def __call__(self, kwargs):
+        return self.out_mold.wrap_result(self.fn(**kwargs))
+
+
+

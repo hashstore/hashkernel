@@ -18,7 +18,7 @@ from typing import (
     Type,
     TypeVar,
     Union,
-)
+    Mapping)
 
 
 from hashkernel.typings import is_from_typing_module
@@ -86,34 +86,8 @@ def quict(**kwargs):
     return r
 
 
-class DictLike:
-    """
-    Allow query object public attributes like dictionary
 
-    >>> class X:
-    ...     pass
-    ...
-    >>> x=X()
-    >>> x.q = 5
-    >>> dl = DictLike(x)
-    >>> list(dl)
-    ['q']
-    >>> dl['q']
-    5
 
-    """
-
-    def __init__(self, o):
-        self.o = o
-
-    def __contains__(self, item):
-        return hasattr(self.o, item)
-
-    def __getitem__(self, item):
-        return getattr(self.o, item)
-
-    def __iter__(self):
-        return iter(k for k in dir(self.o) if k[:1] != "_")
 
 
 def identity(v):
@@ -639,3 +613,38 @@ def delegate_factory(cls: type, delegate_attrs: Iterable[str]) -> Callable[[Any]
         return cls(o)
 
     return cls_factory
+
+
+class DictLike(Mapping[str,Any]):
+    """
+    Allow query object public attributes like dictionary
+
+    >>> class X:
+    ...     pass
+    ...
+    >>> x=X()
+    >>> x.q = 5
+    >>> dl = DictLike(x)
+    >>> list(dl)
+    ['q']
+    >>> dl['q']
+    5
+
+    """
+
+    def __init__(self, o):
+        self.o = o
+        self.members=list(k for k in dir(o) if k[:1] != "_")
+
+    def __contains__(self, item):
+        return hasattr(self.o, item)
+
+    def __getitem__(self, item):
+        return getattr(self.o, item)
+
+    def __iter__(self):
+        return iter(self.members)
+
+    def __len__(self):
+        return len(self.members)
+

@@ -4,7 +4,7 @@ from typing import Any, Dict, Generator, Optional
 
 from hashkernel import GlobalRef, exception_message
 from hashkernel.bakery import QuestionMsg, ResponseChain, ResponseMsg
-from hashkernel.mold import Conversion, extract_molds_from_function
+from hashkernel.mold import Conversion, FunctionMold
 from hashkernel.smattr import Mold, SmAttr
 
 EDGE_CLS_NAMES = {"Input", "Output"}
@@ -102,9 +102,9 @@ class Function(Executible):
     @classmethod
     def parse(cls, fn):
         ref = GlobalRef(fn)
-        in_mold, out_mold, dst = extract_molds_from_function(fn)
-        inst = cls(ref=ref, in_mold=in_mold, out_mold=out_mold)
-        inst.__doc__ = dst.doc()
+        fn_mold = FunctionMold(fn)
+        inst = cls(ref=ref, in_mold=fn_mold.in_mold, out_mold=fn_mold.out_mold)
+        inst.__doc__ = fn_mold.dst.doc()
         return inst
 
     def __call__(self, *args, **kwargs):
