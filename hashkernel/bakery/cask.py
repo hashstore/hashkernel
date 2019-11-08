@@ -15,7 +15,7 @@ from hashkernel.bakery import (
     CakeTypes,
 )
 from hashkernel.files import FileBytes
-from hashkernel.hashing import Hasher
+from hashkernel.hashing import Hasher, Signer
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_32,
@@ -312,8 +312,11 @@ def size_of_double_entry(et1: EntryType, et2: EntryType) -> int:
     return Record_PACKER.size * 2 + et1.size + et2.size
 
 
+def check_point_size(config: "CaskadeConfig"):
+    return config.signature_size() + size_of_entry(EntryType.CHECK_POINT)
+
+
 HEADER_SIZE = size_of_entry(EntryType.CASK_HEADER)
-CHECK_POINT_SIZE = size_of_entry(EntryType.CHECK_POINT)
 END_SEQ_SIZE = size_of_double_entry(EntryType.NEXT_CASK, EntryType.CHECK_POINT)
 
 
@@ -488,7 +491,12 @@ class CaskFile:
         return None
 
     def read_file(
-        self, curr_pos=0, validate_data=False, check_points=None, tracker=None
+        self,
+        curr_pos=0,
+        validate_data=False,
+        validate_signatures=False,
+        check_point_collector=None,
+        tracker=None,
     ):
         """
 
@@ -542,11 +550,20 @@ class CaskFile:
                 elif rec.entry_type == EntryType.CHECK_POINT:
                     cp_entry: CheckPointType = entry
                     check_point_to_add = CheckPoint(self.guid, rec.src, *cp_entry)
+                    signature_size = self.caskade.config.signature_size()
+                    if validate_signatures:
+                        if not self.caskade.config.validate(
+                            fbytes[curr_pos:new_pos],
+                            fbytes[new_pos : new_pos + signature_size],
+                        ):
+                            raise ValueError("Cannot validate")
+                    new_pos += signature_size
+
                 else:
                     raise AssertionError(f"What entry_type is it {rec.entry_type}")
 
-            if check_point_to_add is not None and check_points is not None:
-                check_points.insert(cp_index, check_point_to_add)
+            if check_point_to_add is not None and check_point_collector is not None:
+                check_point_collector.insert(cp_index, check_point_to_add)
                 cp_index += 1
 
             if tracker is not None:
@@ -556,7 +573,10 @@ class CaskFile:
     def write_checkpoint(self, cpt: CheckPointType):
         rec, entry = self.tracker.checkpoint(cpt)
         self.tracker = self.tracker.next_tracker()
-        self.append_buffer(pack_entry(rec, entry))
+        cp_buffer = pack_entry(rec, entry)
+        if self.caskade.config.signature_size():
+            cp_buffer += self.caskade.config.signer.sign(cp_buffer)
+        self.append_buffer(cp_buffer)
         self.caskade.check_points.append(CheckPoint(self.guid, rec.src, *entry))
         return rec.src
 
@@ -662,11 +682,15 @@ class CaskadeConfig(SmAttr):
     checkpoint_size: int = 128 * CHUNK_SIZE
     auto_chunk_cutoff: int = CHUNK_SIZE_2x
     max_cask_size: int = MAX_CASK_SIZE_ADJUSTED
+    signer: Optional[Signer] = None
 
     def __validate__(self):
         assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
         assert CHUNK_SIZE_2x < self.checkpoint_size
         assert CHUNK_SIZE_2x < self.max_cask_size <= MAX_CASK_SIZE_ADJUSTED
+
+    def signature_size(self):
+        return 0 if self.signer is None else self.signer.signature_size()
 
 
 class Caskade:
@@ -715,7 +739,7 @@ class Caskade:
             for k in sorted(
                 self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds()
             ):
-                self.casks[k].read_file(check_points=self.check_points)
+                self.casks[k].read_file(check_point_collector=self.check_points)
 
     def _set_active(self, file: CaskFile):
         self.active = file
@@ -792,10 +816,12 @@ class Caskade:
         last_cp: CheckPoint = self.check_points[-1]
         if last_cp.type == CheckPointType.ON_CASKADE_PAUSE:
             active_candidate: CaskFile = self.casks[last_cp.cask_id]
-            if last_cp.end + CHECK_POINT_SIZE == len(active_candidate):
+            if last_cp.end + check_point_size(self.config) == len(active_candidate):
                 active_candidate.tracker = SegmentTracker(last_cp.end)
                 active_candidate.tracker.update(
-                    active_candidate.fragment(last_cp.end, CHECK_POINT_SIZE)
+                    active_candidate.fragment(
+                        last_cp.end, check_point_size(self.config)
+                    )
                 )
                 self.active = active_candidate
                 self.active.write_checkpoint(CheckPointType.ON_CASKADE_RESUME)

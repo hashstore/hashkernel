@@ -39,15 +39,6 @@ class _AnnotationsProcessor(type):
             cls.__serialization_mold__ = cls.__mold__
 
 
-def combine_vars(
-    vars: Optional[Dict[str, Any]], kwargs: Dict[str, Any]
-) -> Dict[str, Any]:
-    if vars is None:
-        vars = {}
-    vars.update(kwargs)
-    return vars
-
-
 class SmAttr(Jsonable, metaclass=_AnnotationsProcessor):
     """
     Mixin - supports annotations:

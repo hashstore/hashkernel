@@ -1,11 +1,11 @@
 from datetime import datetime
 from logging import getLogger
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from hs_build_tools.pytest import assert_text
 
 from hashkernel import Jsonable
-from hashkernel.mold import Mold, Flator, FunctionMold
+from hashkernel.mold import Flator, FunctionMold, Mold
 from hashkernel.smattr import SmAttr
 
 log = getLogger(__name__)
@@ -66,17 +66,22 @@ def pack_wolves(i: int, s: str = "xyz") -> Tuple[int, str]:
     """
     return i, s
 
+
 class PackId(SmAttr):
-    nw:int
-    name:str
+    nw: int
+    name: str
+
 
 def pack_wolves2(i: int, s: str = "xyz") -> PackId:
-    return PackId( (i,s) )
+    return PackId((i, s))
 
 
 def test_extract_molds_from_function():
     fn_mold = FunctionMold(pack_wolves)
-    assert str(fn_mold.out_mold) == '["num_of_wolves:Required[int]", "pack_name:Required[str]"]'
+    assert (
+        str(fn_mold.out_mold)
+        == '["num_of_wolves:Required[int]", "pack_name:Required[str]"]'
+    )
     assert_text(
         fn_mold.dst.doc(),
         """ Greeting protocol
@@ -91,12 +96,15 @@ def test_extract_molds_from_function():
     
     """,
     )
-    assert fn_mold({"i": 5}) == {'num_of_wolves': 5, 'pack_name': 'xyz'}
-    assert fn_mold({"i": 7, "s":"A-pack"}) == {'num_of_wolves': 7, 'pack_name': 'A-pack'}
+    assert fn_mold({"i": 5}) == {"num_of_wolves": 5, "pack_name": "xyz"}
+    assert fn_mold({"i": 7, "s": "A-pack"}) == {
+        "num_of_wolves": 7,
+        "pack_name": "A-pack",
+    }
 
     fn_mold2 = FunctionMold(pack_wolves2)
-    assert fn_mold2({"i": 5}) == {'nw': 5, 'name': 'xyz'}
-    assert fn_mold2({"i": 7, "s":"A-pack"}) == {'nw': 7, 'name': 'A-pack'}
+    assert fn_mold2({"i": 5}) == {"nw": 5, "name": "xyz"}
+    assert fn_mold2({"i": 7, "s": "A-pack"}) == {"nw": 7, "name": "A-pack"}
 
 
 class JsonableMemoryFlator(Flator):
@@ -106,7 +114,7 @@ class JsonableMemoryFlator(Flator):
     def is_applied(self, cls: type):
         return issubclass(cls, Jsonable)
 
-    def inflate(self, k: str, cls:type):
+    def inflate(self, k: str, cls: type):
         return cls(self.store[int(k)])
 
     def deflate(self, data: Any):
@@ -120,12 +128,15 @@ class JsonableMemoryFlator(Flator):
 
 def test_flator():
     jmf = JsonableMemoryFlator()
+
     class X(SmAttr):
-        a:int
-        x:str
-        q:bool
-    def fn(z:X, t:int)->bool:
+        a: int
+        x: str
+        q: bool
+
+    def fn(z: X, t: int) -> bool:
         return True
+
     fn_mold = FunctionMold(fn)
     orig = {"z": X(a=5, x="s", q=False), "t": 6}
     deflated = fn_mold.in_mold.deflate(orig, jmf)
@@ -134,10 +145,4 @@ def test_flator():
     back = fn_mold.in_mold.inflate(deflated, jmf)
     assert orig == back
     result = fn_mold(orig)
-    assert result == {'_': True}
-
-
-
-
-
-
+    assert result == {"_": True}

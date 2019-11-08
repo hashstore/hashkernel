@@ -75,7 +75,9 @@ class CakeRack(Jsonable):
     def cake(self) -> Cake:
         if self._cake is None:
             self._cake = Cake(
-                None, digest=Hasher(bytes(self)).digest(), type=CakeTypes.FOLDER
+                None,
+                digest=Hasher().update(bytes(self)).digest(),
+                type=CakeTypes.FOLDER,
             )
         return self._cake
 

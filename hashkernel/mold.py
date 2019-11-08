@@ -31,13 +31,14 @@ from hashkernel.typings import (
     is_dict,
     is_list,
     is_optional,
-    is_tuple,)
+    is_tuple,
+)
 
 
 class Conversion(IntEnum):
     """
     >>> def flator_object(c):
-    ...     return (c.need_flator(), c.to_object())
+    ...     return (c.needs_flator(), c.produces_object())
     ...
     >>> flator_object(Conversion.DEFLATE)
     (True, False)
@@ -55,10 +56,10 @@ class Conversion(IntEnum):
     TO_OBJECT = 1
     INFLATE = 2
 
-    def need_flator(self):
+    def needs_flator(self):
         return abs(self.value) == 2
 
-    def to_object(self):
+    def produces_object(self):
         return self.value > 0
 
 
@@ -73,7 +74,7 @@ class Flator(metaclass=abc.ABCMeta):
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    def inflate(self, k: str, cls:type) -> Any:
+    def inflate(self, k: str, cls: type) -> Any:
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
@@ -125,6 +126,8 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             self._from_json = lazy_factory(self.cls, lambda v: dt_parse(v))
         elif hasattr(self.cls, "__args__") or not (isinstance(self.cls, type)):
             self._from_json = identity
+        elif issubclass(self.cls, EnsureIt):
+            self._from_json = self.cls.ensure_it_or_none
         else:
             self._from_json = lazy_factory(self.cls, self.cls)
 
@@ -136,17 +139,17 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
     ) -> Any:
         try:
             if (
-                direction.need_flator()
+                direction.needs_flator()
                 and flator is not None
                 and flator.is_applied(self.cls)
             ):
-                if direction.to_object():
+                if direction.produces_object():
                     if isinstance(v, str):
                         return flator.inflate(v, self.cls)
                 else:
                     if isinstance(v, self.cls):
                         return flator.deflate(v)
-            if direction.to_object():
+            if direction.produces_object():
                 return self._from_json(v)
             else:
                 return to_json(v)
@@ -308,7 +311,7 @@ class AttrEntry(EnsureIt, Stringable):
         self, v: Any, direction: Conversion, flator: Optional[Flator] = None
     ) -> Any:
         try:
-            if direction.to_object():
+            if direction.produces_object():
                 if v is None:
                     if self.default is not None:
                         return self.default
@@ -518,7 +521,7 @@ class Mold(Jsonable):
             if (
                 v is not None
                 or not (self.config.omit_optional_null)
-                or direction.to_object()
+                or direction.produces_object()
                 or not (self.attrs[k].is_optional())
             ):
                 out_data[k] = v
@@ -553,10 +556,10 @@ class Mold(Jsonable):
         """
         return {k: getattr(from_obj, k) for k in self.keys if hasattr(from_obj, k)}
 
-    def deflate(self, v:Dict[str, Any], flator:Flator ):
+    def deflate(self, v: Dict[str, Any], flator: Flator):
         return self.mold_dict(v, Conversion.DEFLATE, flator)
 
-    def inflate(self, v:Dict[str, Any], flator:Flator ):
+    def inflate(self, v: Dict[str, Any], flator: Flator):
         return self.mold_dict(v, Conversion.INFLATE, flator)
 
     def wrap_result(self, v):
@@ -565,14 +568,14 @@ class Mold(Jsonable):
         elif isinstance(v, tuple):
             return dict(zip(self.keys, v))
         else:
-            dict_like = DictLike(v)
-            return { k:dict_like[k] for k in self.keys}
+            return {k: getattr(v, k) for k in self.keys}
 
     def is_single_return(self) -> bool:
         return self.keys == [SINGLE_RETURN_VALUE]
 
     def is_empty(self) -> bool:
         return len(self.keys) == 0
+
 
 class FunctionMold:
     in_mold: Mold
@@ -652,6 +655,3 @@ class FunctionMold:
 
     def __call__(self, kwargs):
         return self.out_mold.wrap_result(self.fn(**kwargs))
-
-
-

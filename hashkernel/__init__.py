@@ -11,15 +11,16 @@ from typing import (
     IO,
     Any,
     Callable,
+    ClassVar,
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Type,
     TypeVar,
     Union,
-    Mapping)
-
+)
 
 from hashkernel.typings import is_from_typing_module
 
@@ -84,10 +85,6 @@ def quict(**kwargs):
     r = {}
     r.update(**kwargs)
     return r
-
-
-
-
 
 
 def identity(v):
@@ -241,6 +238,34 @@ class Stringable(Str2Bytes):
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({repr(str(self))})"
+
+
+class StrigableFactory(EnsureIt, Stringable):
+    """
+    Allow string to be converted into new instance.
+
+    Name of the classes has to be registered with subclass.
+    """
+
+    subcls_mapping: ClassVar[Dict[type, Dict[str, type]]] = {}
+    inverse_mapping: ClassVar[Dict[type, str]] = {}
+
+    def __str__(self):
+        cls = type(self)
+        return cls.inverse_mapping[cls]
+
+    @classmethod
+    def register(cls, name, subcls):
+        if subcls in cls.inverse_mapping:
+            raise ValueError(f"cannot register class twice: {subcls} {name}")
+        if cls not in cls.subcls_mapping:
+            cls.subcls_mapping[cls] = {}
+        cls.subcls_mapping[cls][name] = subcls
+        cls.inverse_mapping[subcls] = name
+
+    @classmethod
+    def __factory__(cls):
+        return lambda s: cls.subcls_mapping[cls][s]()
 
 
 class Integerable(EnsureIt):
@@ -615,7 +640,7 @@ def delegate_factory(cls: type, delegate_attrs: Iterable[str]) -> Callable[[Any]
     return cls_factory
 
 
-class DictLike(Mapping[str,Any]):
+class DictLike(Mapping[str, Any]):
     """
     Allow query object public attributes like dictionary
 
@@ -634,7 +659,7 @@ class DictLike(Mapping[str,Any]):
 
     def __init__(self, o):
         self.o = o
-        self.members=list(k for k in dir(o) if k[:1] != "_")
+        self.members = list(k for k in dir(o) if k[:1] != "_")
 
     def __contains__(self, item):
         return hasattr(self.o, item)
@@ -647,4 +672,3 @@ class DictLike(Mapping[str,Any]):
 
     def __len__(self):
         return len(self.members)
-

@@ -101,6 +101,8 @@ class Function(Executible):
 
     @classmethod
     def parse(cls, fn):
+        if isinstance(fn, dict):
+            return Function(fn)
         ref = GlobalRef(fn)
         fn_mold = FunctionMold(fn)
         inst = cls(ref=ref, in_mold=fn_mold.in_mold, out_mold=fn_mold.out_mold)

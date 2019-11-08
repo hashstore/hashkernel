@@ -9,7 +9,6 @@ from nanotime import nanotime
 
 from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.bakery.cask import (
-    CHECK_POINT_SIZE,
     CHUNK_SIZE,
     END_SEQ_SIZE,
     HEADER_SIZE,
@@ -22,9 +21,11 @@ from hashkernel.bakery.cask import (
     Record,
     Record_PACKER,
     Tag,
+    check_point_size,
     size_of_dynamic_entry,
     size_of_entry,
 )
+from hashkernel.hashing import HasherSigner
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -38,6 +39,14 @@ common_config = CaskadeConfig(
     checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
+)
+
+common_singer = CaskadeConfig(
+    origin=NULL_CAKE,
+    checkpoint_ttl=TTL(1),
+    checkpoint_size=8 * CHUNK_SIZE,
+    max_cask_size=11 * CHUNK_SIZE,
+    signer=HasherSigner(),
 )
 
 
@@ -58,13 +67,15 @@ def test_entries():
 
 
 @pytest.mark.parametrize(
-    "name, config", [("config_none", None), ("common", common_config)]
+    "name, config",
+    [("config_none", None), ("common", common_config), ("singer", common_singer)],
 )
 def test_config(name, config):
     new_ck = Caskade(caskades / name, config=config)
     loaded_ck = Caskade(new_ck.dir)
 
     assert new_ck.config == loaded_ck.config
+    assert new_ck.config.signature_size() == loaded_ck.config.signature_size()
     assert type(new_ck.config.checkpoint_ttl) == type(loaded_ck.config.checkpoint_ttl)
 
 
@@ -114,7 +125,7 @@ def test_recover_no_checkpoints():
 
     write_caskade = Caskade(caskades / "recover_no_cp")
     write_caskade.recover()
-    sp.add(CHECK_POINT_SIZE)
+    sp.add(check_point_size(write_caskade.config))
     assert write_caskade.active.tracker.current_offset == sp.pos
     a2 = write_caskade.write_bytes(rand_bytes(2, TWO_K))
     sp.add_data(TWO_K)
@@ -129,6 +140,10 @@ def test_recover_no_checkpoints():
     assert len(write_caskade.casks[last_cask]) == sp.pos
 
 
+# @pytest.mark.parametrize(
+#     "name, config",
+#     [("config_none", None), ("common", common_config), ("singer", common_singer)],
+# )
 @pytest.mark.slow
 def test_3steps():
     dir = caskades / "3steps"
@@ -175,7 +190,7 @@ def test_3steps():
     sp.add_data(ONE_AND_QUARTER)
 
     # cp1 by size
-    sp.add(CHECK_POINT_SIZE)
+    sp.add(check_point_size(caskade.config))
     assert caskade.active.tracker.current_offset == sp.pos
     assert first_cask == caskade.active.guid
 
@@ -186,7 +201,7 @@ def test_3steps():
     h2 = caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
     # cp2 by time
-    sp.add(CHECK_POINT_SIZE)
+    sp.add(check_point_size(caskade.config))
     assert caskade.active.tracker.current_offset == sp.pos
     assert first_cask == caskade.active.guid
 
@@ -236,7 +251,7 @@ def test_3steps():
     caskade.pause()
     # logit("pause")
 
-    sp.add(CHECK_POINT_SIZE)
+    sp.add(check_point_size(caskade.config))
 
     write_caskade = Caskade(dir)
     assert write_caskade.check_points[0].type == CheckPointType.ON_CASK_HEADER
@@ -247,7 +262,7 @@ def test_3steps():
 
     write_caskade.resume()
     # logit("resume")
-    sp.add(CHECK_POINT_SIZE)
+    sp.add(check_point_size(write_caskade.config))
     assert write_caskade.active.tracker.current_offset == sp.pos
 
     assert write_caskade.check_points[-1].type == CheckPointType.ON_CASKADE_RESUME

@@ -2,9 +2,16 @@ import abc
 import base64
 import os
 from hashlib import sha1, sha256
+from pathlib import Path
 from typing import IO, Callable, Optional
 
-from hashkernel import EnsureIt, Stringable, ensure_bytes, ensure_string
+from hashkernel import (
+    EnsureIt,
+    StrigableFactory,
+    Stringable,
+    ensure_bytes,
+    ensure_string,
+)
 from hashkernel.base_x import base_x
 
 B36 = base_x(36)
@@ -16,7 +23,7 @@ class Hasher:
     """
     >>> Hasher().digest()
     b"\\xe3\\xb0\\xc4B\\x98\\xfc\\x1c\\x14\\x9a\\xfb\\xf4\\xc8\\x99o\\xb9$'\\xaeA\\xe4d\\x9b\\x93L\\xa4\\x95\\x99\\x1bxR\\xb8U"
-    >>> Hasher(b"Hello").digest()
+    >>> Hasher().update(b"Hello").digest()
     b'\\x18_\\x8d\\xb3"q\\xfe%\\xf5a\\xa6\\xfc\\x93\\x8b.&C\\x06\\xec0N\\xdaQ\\x80\\x07\\xd1vH&8\\x19i'
     >>> Hasher.SIZEOF
     32
@@ -24,15 +31,9 @@ class Hasher:
 
     SIZEOF = len(ALGO().digest())
 
-    def __init__(
-        self,
-        data: Optional[bytes] = None,
-        on_update: Optional[Callable[[bytes], None]] = None,
-    ) -> None:
+    def __init__(self, on_update: Optional[Callable[[bytes], None]] = None) -> None:
         self.sha = ALGO()
         self.on_update = on_update
-        if data is not None:
-            self.update(data)
 
     def update(self, b: bytes) -> "Hasher":
         self.sha.update(b)
@@ -186,3 +187,82 @@ class InetAddress(Stringable, EnsureIt):
 
     def __str__(self):
         return self.k
+
+
+class Signer(StrigableFactory):
+    def signature_size(self) -> int:
+        ...
+
+    # def init(self):
+    #     """
+    #     Init call is required to enavle sign and
+    #     validate functionality
+    #     """
+    #     ...
+
+    def sign(self, buffer: bytes) -> bytes:
+        ...
+
+    def validate(self, buffer: bytes, signature: bytes) -> bool:
+        ...
+
+
+class HasherSigner(Signer):
+    """
+    primitive signer that assumes that both party
+    share same secret
+
+    >>> signer = HasherSigner()
+    >>> signer.signature_size()
+    32
+    >>> signer.sign(b'abc')
+    Traceback (most recent call last):
+    ...
+    ValueError: secret is not initialized
+    >>> signer.validate(b'abc', b'xyz')
+    Traceback (most recent call last):
+    ...
+    ValueError: secret is not initialized
+    >>>
+
+    For example that allow validate password without sending
+    it over insecure line
+
+    >>> server_challenge = os.urandom(16)
+
+    Server sends some random challenge to client. Client sign that
+    gibberish and send it back.
+
+    >>> signer.init(b'password')
+    HasherSigner('HASHER')
+    >>> signature = signer.sign(server_challenge)
+
+
+    Server validates signature
+
+    >>> server_signer = HasherSigner().init(b'password')
+    >>> server_signer.validate(server_challenge, signature)
+    True
+
+
+    """
+
+    secret: Optional[bytes] = None
+
+    def signature_size(self):
+        return Hasher.SIZEOF
+
+    def init(self, secret) -> "HasherSigner":
+        self.secret = secret
+        return self
+
+    def sign(self, buffer: bytes) -> bytes:
+        if self.secret is None:
+            raise ValueError("secret is not initialized")
+        return Hasher().update(buffer).update(self.secret).digest()
+
+    def validate(self, buffer: bytes, signature: bytes) -> bool:
+        return self.sign(buffer) == signature
+
+
+Signer.register("HASHER", HasherSigner)
