@@ -3,6 +3,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
+import os
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
@@ -15,7 +16,7 @@ from hashkernel.bakery import (
     CakeTypes,
 )
 from hashkernel.files import FileBytes
-from hashkernel.hashing import Hasher, Signer
+from hashkernel.hashing import Hasher, Signer, HasherSigner
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_32,
@@ -23,7 +24,6 @@ from hashkernel.packer import (
     SIZED_BYTES,
     UTF8_GREEDY_STR,
     PackerDefinitions,
-    PackerLibrary,
     ProxyPacker,
     build_code_enum_packer,
 )
@@ -135,9 +135,7 @@ class CheckPointType(CodeEnum):
     )
 
 
-_COMPONENTS_PACKERS = PackerLibrary()
-
-PackerDefinitions(
+_COMPONENTS_PACKERS = PackerDefinitions(
     (str, lambda _: UTF8_GREEDY_STR),
     (Cake, lambda _: Cake.__packer__),
     (bytes, lambda _: GREEDY_BYTES),
@@ -145,18 +143,16 @@ PackerDefinitions(
     (nanotime, lambda _: NANOTIME),
     (CakeType, lambda _: CAKE_TYPE_PACKER),
     (CodeEnum, build_code_enum_packer),
-).register_all(_COMPONENTS_PACKERS)
+).register_all()
 
-_ENTRY_PACKERS = PackerLibrary()
-
-PackerDefinitions(
+_ENTRY_PACKERS = PackerDefinitions(
     (bytes, lambda _: SIZED_BYTES),
     (SmAttr, lambda t: ProxyPacker(t, SIZED_BYTES)),
     (
         tuple,
         lambda t: build_named_tuple_packer(t, _COMPONENTS_PACKERS.get_packer_by_type),
     ),
-).register_all(_ENTRY_PACKERS)
+).register_all()
 
 
 class CheckpointEntry(NamedTuple):
@@ -675,6 +671,32 @@ class CaskFile:
 #     guid: Cake
 #     data: Union[None, Journal, VirtualTree, DataLocation]
 
+class CaskSigner(Signer):
+
+    def init_dir(self, etc_dir:Path):
+        raise AssertionError("need to be implemented")
+
+    def load_from_dir(self, etc_dir:Path):
+        raise AssertionError("need to be implemented")
+
+
+class CaskHashSigner(CaskSigner, HasherSigner):
+
+    def _key_file(self, etc_dir:Path) -> Path:
+        return etc_dir / "key.bin"
+
+    def init_dir(self, etc_dir:Path):
+        key = os.urandom(16)
+        self._key_file(etc_dir).write_bytes(key)
+        self._key_file(etc_dir).chmod(0o0600)
+        HasherSigner.init(self, key)
+
+    def load_from_dir(self, etc_dir:Path):
+        key = self._key_file(etc_dir).read_bytes()
+        HasherSigner.init(self, key)
+
+
+CaskSigner.register("HashSigner", CaskHashSigner)
 
 class CaskadeConfig(SmAttr):
     origin: Cake
@@ -682,7 +704,7 @@ class CaskadeConfig(SmAttr):
     checkpoint_size: int = 128 * CHUNK_SIZE
     auto_chunk_cutoff: int = CHUNK_SIZE_2x
     max_cask_size: int = MAX_CASK_SIZE_ADJUSTED
-    signer: Optional[Signer] = None
+    signer: Optional[CaskSigner] = None
 
     def __validate__(self):
         assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
@@ -725,12 +747,17 @@ class Caskade:
             else:
                 config.origin = self.caskade_id
                 self.config = config
+            self._etc_dir().mkdir(mode=0o0700, parents=True)
+            if self.config.signer is not None:
+                self.config.signer.init_dir(self._etc_dir())
             dump_jsonable(self._config_file(), self.config)
             self._set_active(CaskFile(self, self.caskade_id, CaskType.ACTIVE))
             self.active.create_file()
         else:
             assert self.dir.is_dir()
             self.config = load_jsonable(self._config_file(), CaskadeConfig)
+            if self.config.signer is not None:
+                self.config.signer.load_from_dir(self._etc_dir())
             self.caskade_id = self.config.origin
             for fpath in self.dir.iterdir():
                 file = CaskFile.by_file(self, fpath)
@@ -859,7 +886,10 @@ class Caskade:
         self.active._do_end_cask_sequence(CheckPointType.ON_CASKADE_CLOSE)
 
     def _config_file(self) -> Path:
-        return self.dir / ".hs_caskade"
+        return self._etc_dir() / "config.json"
+
+    def _etc_dir(self) -> Path:
+        return self.dir / ".hs_etc"
 
     def _add_data_location(
         self, cake: Cake, dp: DataLocation, written_data: Optional[bytes] = None

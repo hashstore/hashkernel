@@ -191,20 +191,13 @@ class InetAddress(Stringable, EnsureIt):
 
 class Signer(StrigableFactory):
     def signature_size(self) -> int:
-        ...
-
-    # def init(self):
-    #     """
-    #     Init call is required to enavle sign and
-    #     validate functionality
-    #     """
-    #     ...
+        raise AssertionError("need to be implemented")
 
     def sign(self, buffer: bytes) -> bytes:
-        ...
+        raise AssertionError("need to be implemented")
 
     def validate(self, buffer: bytes, signature: bytes) -> bool:
-        ...
+        raise AssertionError("need to be implemented")
 
 
 class HasherSigner(Signer):

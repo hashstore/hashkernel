@@ -392,6 +392,9 @@ class PackerDefinitions:
     def __init__(self, *pack_defs: Tuple[type, PackerFactory]):
         self.typed_packers = [*pack_defs]
 
-    def register_all(self, lib: PackerLibrary):
+    def register_all(self, lib: PackerLibrary=None)-> PackerLibrary:
+        if lib is None:
+            lib = PackerLibrary()
         for t in self.typed_packers:
             lib.register_packer(*t)
+        return lib

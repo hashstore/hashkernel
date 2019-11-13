@@ -24,8 +24,7 @@ from hashkernel.bakery.cask import (
     check_point_size,
     size_of_dynamic_entry,
     size_of_entry,
-)
-from hashkernel.hashing import HasherSigner
+    CaskHashSigner)
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -46,7 +45,7 @@ common_singer = CaskadeConfig(
     checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
-    signer=HasherSigner(),
+    signer=CaskHashSigner(),
 )
 
 
@@ -140,14 +139,14 @@ def test_recover_no_checkpoints():
     assert len(write_caskade.casks[last_cask]) == sp.pos
 
 
-# @pytest.mark.parametrize(
-#     "name, config",
-#     [("config_none", None), ("common", common_config), ("singer", common_singer)],
-# )
 @pytest.mark.slow
-def test_3steps():
-    dir = caskades / "3steps"
-    caskade = Caskade(dir, config=common_config)
+@pytest.mark.parametrize(
+    "name, config",
+    [("common", common_config), ("singer", common_singer)],
+)
+def test_3steps(name, config):
+    dir = caskades / f"3steps_{name}"
+    caskade = Caskade(dir, config=config)
     first_cask = caskade.active.guid
     assert caskade.active.tracker.current_offset == HEADER_SIZE
     a0 = caskade.write_bytes(rand_bytes(0, ONE_AND_QUARTER))
