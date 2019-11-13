@@ -1,9 +1,9 @@
+import os
 import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
 
-import os
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, dump_jsonable, load_jsonable
@@ -16,7 +16,7 @@ from hashkernel.bakery import (
     CakeTypes,
 )
 from hashkernel.files import FileBytes
-from hashkernel.hashing import Hasher, Signer, HasherSigner
+from hashkernel.hashing import Hasher, HasherSigner, Signer
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_32,
@@ -671,32 +671,32 @@ class CaskFile:
 #     guid: Cake
 #     data: Union[None, Journal, VirtualTree, DataLocation]
 
-class CaskSigner(Signer):
 
-    def init_dir(self, etc_dir:Path):
+class CaskSigner(Signer):
+    def init_dir(self, etc_dir: Path):
         raise AssertionError("need to be implemented")
 
-    def load_from_dir(self, etc_dir:Path):
+    def load_from_dir(self, etc_dir: Path):
         raise AssertionError("need to be implemented")
 
 
 class CaskHashSigner(CaskSigner, HasherSigner):
-
-    def _key_file(self, etc_dir:Path) -> Path:
+    def _key_file(self, etc_dir: Path) -> Path:
         return etc_dir / "key.bin"
 
-    def init_dir(self, etc_dir:Path):
+    def init_dir(self, etc_dir: Path):
         key = os.urandom(16)
         self._key_file(etc_dir).write_bytes(key)
         self._key_file(etc_dir).chmod(0o0600)
         HasherSigner.init(self, key)
 
-    def load_from_dir(self, etc_dir:Path):
+    def load_from_dir(self, etc_dir: Path):
         key = self._key_file(etc_dir).read_bytes()
         HasherSigner.init(self, key)
 
 
 CaskSigner.register("HashSigner", CaskHashSigner)
+
 
 class CaskadeConfig(SmAttr):
     origin: Cake

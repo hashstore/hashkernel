@@ -15,6 +15,7 @@ from hashkernel.bakery.cask import (
     AccessError,
     Caskade,
     CaskadeConfig,
+    CaskHashSigner,
     CheckpointEntry,
     CheckPointType,
     EntryType,
@@ -24,7 +25,7 @@ from hashkernel.bakery.cask import (
     check_point_size,
     size_of_dynamic_entry,
     size_of_entry,
-    CaskHashSigner)
+)
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -141,8 +142,7 @@ def test_recover_no_checkpoints():
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "name, config",
-    [("common", common_config), ("singer", common_singer)],
+    "name, config", [("common", common_config), ("singer", common_singer)]
 )
 def test_3steps(name, config):
     dir = caskades / f"3steps_{name}"
