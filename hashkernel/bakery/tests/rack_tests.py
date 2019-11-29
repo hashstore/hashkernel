@@ -4,16 +4,7 @@ from io import BytesIO
 
 from hashkernel import to_json, utf8_reader
 from hashkernel.bakery import Cake, CakeTypes
-from hashkernel.bakery.rack import CakeRack, PatchAction
-
-
-def test_PatchAction():
-    assert PatchAction.update == PatchAction["update"]
-    assert PatchAction.delete == PatchAction["delete"]
-    assert PatchAction.delete == PatchAction.ensure_it("delete")
-    assert PatchAction.update == PatchAction.ensure_it_or_none("update")
-    assert PatchAction.ensure_it_or_none(None) is None
-    assert str(PatchAction.update) == "update"
+from hashkernel.bakery.rack import CakeRack
 
 
 def test_Bundle():

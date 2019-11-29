@@ -6,7 +6,7 @@ from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
 from hashkernel.bakery import Cake
-from hashkernel.file_types import file_types, guess_name
+from hashkernel.files.types import file_types, guess_name
 from hashkernel.smattr import SmAttr
 
 

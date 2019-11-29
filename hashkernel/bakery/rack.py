@@ -8,21 +8,6 @@ from hashkernel.hashing import Hasher
 from hashkernel.smattr import SmAttr
 
 
-class PatchAction(Jsonable, enum.Enum):
-    update = +1
-    delete = -1
-
-    @classmethod
-    def __factory__(cls):
-        return lambda s: cls[s]
-
-    def __str__(self):
-        return self.name
-
-    def __to_json__(self):
-        return str(self)
-
-
 class RackRow(SmAttr):
     name: str
     cake: Optional[Cake]
@@ -113,69 +98,6 @@ class CakeRack(Jsonable):
             names, cakes = json.load(o)
         self.store.update(zip(names, map(Cake.ensure_it_or_none, cakes)))
         return self
-
-    def merge(
-        self, previous: "CakeRack"
-    ) -> Iterable[Tuple[PatchAction, str, Optional[Cake]]]:
-        """
-        >>> o1 = Cake.from_bytes(b'The quick brown fox jumps over')
-        >>> o2v1 = Cake.from_bytes(b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.')
-        >>> o2v2 = Cake.from_bytes(b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. v2')
-        >>> o3 = CakeRack().cake()
-        >>> r1 = CakeRack()
-        >>> r1['o1']=o1
-        >>> r1['o2']=o2v1
-        >>> r1['o3']=None
-        >>> r2 = CakeRack()
-        >>> r2['o1']=o1
-        >>> r2['o2']=o2v2
-        >>> r2['o3']=o3
-        >>> list(r2.merge(r1))
-        [(<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ50'))]
-        >>> list(r1.merge(r2))
-        [(<PatchAction.update: 1>, 'o2', Cake('zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT0'))]
-        >>> r1['o1'] = None
-        >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
-        [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', Cake('l01natqrQGg1ueJkFIc9mUYt18gcJjdsPLSLyzGgjY70')),
-        (<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ50'))]
-        >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
-        [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o2', Cake('zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT0'))]
-        >>> del r1["o2"]
-        >>> list(r2.merge(r1)) #doctest: +NORMALIZE_WHITESPACE
-        [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', Cake('l01natqrQGg1ueJkFIc9mUYt18gcJjdsPLSLyzGgjY70')),
-        (<PatchAction.update: 1>, 'o2', Cake('NlXF0MZtHOZ3EE0Z2zPz80I9YG7vbN7KAbm1qJv3EZ50'))]
-        >>> list(r1.merge(r2)) #doctest: +NORMALIZE_WHITESPACE
-        [(<PatchAction.delete: -1>, 'o1', None),
-        (<PatchAction.update: 1>, 'o1', None),
-        (<PatchAction.delete: -1>, 'o2', None)]
-        """
-        for k in sorted(list(set(self.keys() + previous.keys()))):
-            if k not in self and k in previous:
-                yield PatchAction.delete, k, None
-            else:
-                v = self[k]
-                neuron = self.is_neuron(k)
-                if k in self and k not in previous:
-                    yield PatchAction.update, k, v
-                else:
-                    prev_v = previous[k]
-                    prev_neuron = previous.is_neuron(k)
-                    if v != prev_v:
-                        if neuron == True and prev_neuron == True:
-                            continue
-                        if prev_neuron == neuron:
-                            yield PatchAction.update, k, v
-                        else:
-                            yield PatchAction.delete, k, None
-                            yield PatchAction.update, k, v
-
-    def is_neuron(self, k) -> Optional[bool]:
-        v = self.store[k]
-        return v is None or v.is_folder
 
     def __iter__(self) -> Iterable[str]:
         return iter(self.keys())

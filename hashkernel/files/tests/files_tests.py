@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from hs_build_tools import LogTestOut
 
-from hashkernel.files import FileBytes
+from hashkernel.files.buffer import FileBytes
 from hashkernel.packer import (
     BE_INT_64,
     DOUBLE,

@@ -15,7 +15,7 @@ from hashkernel.bakery import (
     CakeType,
     CakeTypes,
 )
-from hashkernel.files import FileBytes
+from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import Hasher, HasherSigner, Signer
 from hashkernel.packer import (
     GREEDY_BYTES,

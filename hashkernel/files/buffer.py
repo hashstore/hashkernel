@@ -1,39 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Tuple, Union
-
-
-def outside_of_range(start: int, stop: Optional[int] = None):
-    """
-    Create predicate that checks if input is outside of its boundaries
-
-    >>> check = outside_of_range(5)
-    >>> check(0)
-    True
-    >>> check(4)
-    True
-    >>> check(5)
-    False
-    >>> check(10)
-    False
-    >>> check = outside_of_range(5, 10)
-    >>> check(0)
-    True
-    >>> check(4)
-    True
-    >>> check(5)
-    False
-    >>> check(10)
-    False
-    >>> check(11)
-    True
-    """
-
-    def check(i: int):
-        return i < start or (stop is not None and stop < i)
-
-    return check
-
+from typing import Tuple, Union
 
 BUFFER_BITS = 14
 BUFFER_LEN = 1 << BUFFER_BITS  # 16k
