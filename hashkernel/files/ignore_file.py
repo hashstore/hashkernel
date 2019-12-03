@@ -18,6 +18,8 @@ class PathMatch:
     """
     >>> abc_txt = PathMatch('a/b/c','*.txt')
     >>> ab_log = PathMatch('a/b','*.log')
+    >>> repr(ab_log) == repr(PathMatch('a/b','*.log'))
+    True
     >>> abc_txt.match('a/b/c/d.txt')
     True
     >>> ab_log.match('a/b/c/d.log')
@@ -32,8 +34,8 @@ class PathMatch:
     True
     >>> PathMatch('a/b/','c/*/').match('q/b/c/d')
     False
-    >>> list(sorted([abc_txt, ab_log, abc_txt]))
-    [PathMatch('a/b', '*.log'), PathMatch('a/b/c', '*.txt'), PathMatch('a/b/c', '*.txt')]
+    >>> sorted([abc_txt, ab_log, abc_txt]) == [ab_log, abc_txt, abc_txt]
+    True
 
     """
 
