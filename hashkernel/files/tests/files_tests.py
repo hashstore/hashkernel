@@ -4,6 +4,7 @@ import pytest
 from hs_build_tools import LogTestOut
 
 from hashkernel.files.buffer import FileBytes
+from hashkernel.files.tests import seed_file
 from hashkernel.packer import (
     BE_INT_64,
     DOUBLE,
@@ -14,24 +15,15 @@ from hashkernel.packer import (
     INT_64,
     NeedMoreBytes,
 )
-from hashkernel.tests import BytesGen
 
 log, out = LogTestOut.get(__name__)
-
-
-def ensure_file(seed, sz):
-    file_bytes = Path(out.child_dir("file_bytes"))
-    file = file_bytes / f"{seed}_{sz}.dat"
-    if not file.exists():
-        bg = BytesGen(seed)
-        file.open("wb").write(bg.get_bytes(sz))
-    return file
+file_bytes_dir = Path(out.child_dir("file_bytes"))
 
 
 @pytest.mark.slow
 def test_file_bytes():
     SZ = (1 << 20) + 25
-    file = ensure_file(0, SZ)
+    file = seed_file(file_bytes_dir, 0, SZ)
     file_bytes = FileBytes(file, 2)
     assert len(file_bytes) == SZ
     assert file_bytes[0] == 0x0C5
@@ -67,7 +59,7 @@ def test_file_bytes():
 
 def test_file_bytes_with_type_packer():
     SZ = 0x1000A  # 64k + 10
-    file = ensure_file(0, SZ)
+    file = seed_file(file_bytes_dir, 0, SZ)
     file_bytes = FileBytes(file, 2)
     assert len(file_bytes) == SZ
     assert file_bytes[0] == 0x0C5

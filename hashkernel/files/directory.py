@@ -22,7 +22,7 @@ class DirEntry(NamedTuple):
     extra: Optional[Any]
 
     def __str__(self):
-        return f"{self.name},{self.size},{self.mod.isoformat()}\n"
+        return f"{self.name},{self.type.name},{self.size},{self.mod.isoformat()}\n"
 
 
 class File(NamedTuple):
@@ -75,7 +75,7 @@ class DirContent(NamedTuple):
             return datetime.utcfromtimestamp(0)
 
     def entry(self) -> DirEntry:
-        return DirEntry(self.path.name, self.size(), self.mod(), EntryType.FILE, self)
+        return DirEntry(self.path.name, self.size(), self.mod(), EntryType.DIR, self)
 
 
 async def process_dir(
@@ -85,9 +85,9 @@ async def process_dir(
     files, dir_paths = await asyncio.get_event_loop().run_in_executor(
         None, read_dir, path, ignore_rules
     )
-    entries = [f.entry() for f in files] + [
-        await process_dir(p, ignore_rules, callback) for p in dir_paths
-    ]
+    entries = [f.entry() for f in files]
+    entries.extend([await process_dir(p, ignore_rules, callback) for p in dir_paths])
+    entries.sort(key=lambda e: e.name)
     content = DirContent(path, entries)
     if callback is not None:
         callback(content)

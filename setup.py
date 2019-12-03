@@ -28,6 +28,7 @@ dev_requires = [
     "pytest",
     "pytest-mypy",
     "pytest-cov",
+    "pytest-asyncio",
 ]
 
 makes_sniffer_scan_faster = {

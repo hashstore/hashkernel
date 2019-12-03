@@ -16,16 +16,25 @@ log = logging.getLogger(__name__)
 @total_ordering
 class PathMatch:
     """
-    >>> PathMatch('a/b/c','*.txt').match('a/b/c/d.txt')
+    >>> abc_txt = PathMatch('a/b/c','*.txt')
+    >>> ab_log = PathMatch('a/b','*.log')
+    >>> abc_txt.match('a/b/c/d.txt')
     True
-    >>> PathMatch('a/b','*.log').match('a/b/c/d.log')
+    >>> ab_log.match('a/b/c/d.log')
     True
+    >>> ab_log == abc_txt
+    False
     >>> PathMatch('a/b/','c/*.txt').match('a/b/c/d.txt')
     True
     >>> PathMatch('a/b/','c/*.txt').match('a/b/c2/d.txt')
     False
     >>> PathMatch('a/b/','c/*/').match('a/b/c/d')
     True
+    >>> PathMatch('a/b/','c/*/').match('q/b/c/d')
+    False
+    >>> list(sorted([abc_txt, ab_log, abc_txt]))
+    [PathMatch('a/b', '*.log'), PathMatch('a/b/c', '*.txt'), PathMatch('a/b/c', '*.txt')]
+
     """
 
     def __init__(self, cur_dir, pattern):
@@ -36,14 +45,14 @@ class PathMatch:
         path = ensure_path(path)
         if self.root in path.parents:
             rel_path = path.relative_to(self.root)
-            try:
-                return rel_path.match(self.pattern)
-            except:
-                reraise_with_msg(f"{self.pattern} {rel_path}")
+            return rel_path.match(self.pattern)
         return False
 
     def __key__(self):
         return (self.pattern, self.root)
+
+    def __repr__(self):
+        return f"PathMatch({str(self.root)!r}, {self.pattern!r})"
 
     def __lt__(self, other):
         return self.__key__() < other.__key__()
@@ -59,6 +68,30 @@ class PathMatch:
 
 
 class PathMatchSet:
+    """
+    >>> pms = PathMatchSet()
+    >>> pms.match('a/b/c/d.txt')
+    False
+    >>> pms.add(PathMatch('a/b/c', '*.txt'))
+    True
+    >>> pms.match('a/b/c/d.log')
+    False
+    >>> pms.add(PathMatch('a/b', '*.log'))
+    True
+    >>> pms.add(PathMatch('a/b/c', '*.txt'))
+    False
+    >>> pms.add(PathMatch('a/b/c/q/f', '*.txt'))
+    False
+    >>> pms.add(PathMatch('r/b/c/q/f', '*.txt'))
+    True
+    >>> pms.match('a/b/c/d.log')
+    True
+    >>> pms.match('a/b/c/d.txt')
+    True
+    >>>
+
+    """
+
     def __init__(self):
         self.match_by_pattern = defaultdict(set)
         self.all_matches = set()
@@ -73,7 +106,8 @@ class PathMatchSet:
             return True
         return False
 
-    def match(self, path: Path):
+    def match(self, path):
+        path = ensure_path(path)
         return any(pm.match(path) for pm in self.all_matches)
 
 
@@ -91,7 +125,7 @@ class IgnoreRuleSet:
         added = 0
         for pm in args:
             if isinstance(pm, PathMatch):
-                assert self.root in pm.root.parents
+                assert self.root == pm.root or self.root in pm.root.parents
                 if self.ignore_files.add(pm):
                     added += 1
             else:
@@ -105,7 +139,6 @@ class IgnoreRuleSet:
             if self.spec_to_parse.add(PathMatch(self.root, pm)):
                 added += 1
         return added
-
 
     def parse_specs(self, listdir: List[Path]) -> int:
         """ Returns number of specs parsed """
@@ -141,6 +174,8 @@ class IgnoreFilePolicy:
         return rule_set
 
 
+INCLUSIVE_POLICY = IgnoreFilePolicy(ignore_files=(), spec_to_parse=())
+
 DEFAULT_IGNORE_POLICY = IgnoreFilePolicy(
     ignore_files=(
         ".svn",
@@ -149,8 +184,7 @@ DEFAULT_IGNORE_POLICY = IgnoreFilePolicy(
         ".vol",
         ".hotfiles.btree",
         ".ssh",
-        ".shamo*",
-        ".cake*",
+        ".hs_*",
         ".backup*",
         ".Spotlight*",
         "._*",
