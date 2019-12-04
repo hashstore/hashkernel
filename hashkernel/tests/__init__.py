@@ -1,5 +1,5 @@
 from random import Random
-from time import clock
+from time import perf_counter
 
 from hashkernel import Stringable
 
@@ -8,7 +8,7 @@ class BytesGen:
     def __init__(self, seed=None):
         self.random = Random()
         if seed is None:
-            self.random.seed(clock(), version=2)
+            self.random.seed(perf_counter(), version=2)
         else:
             self.random.seed(seed, version=2)
 

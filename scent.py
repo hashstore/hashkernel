@@ -13,7 +13,7 @@ def py_files(filename):
     )
 
 
-run_envs = ["hk36", "hk37"]
+run_envs = ["hk36", "hk37", "hk38"]
 
 
 def os_system_in_env(e, cmd):
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         if len(sys.argv) > 2:
             envs = sys.argv[2:]
     if cmd == "test":
-        if not (run_tests(True, envs, html=True)):
+        if not (run_tests(False, envs, html=True)):
             raise SystemExit(-1)
     elif cmd == "cleanup_envs":
         for env in envs:
