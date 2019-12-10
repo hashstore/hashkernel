@@ -19,13 +19,13 @@ class DirEntry(NamedTuple):
     type: EntryType
     xtra: Optional[Any]
 
-
     def __to_json__(self):
-        return { "name":self.name,
-                 "type":self.type.name,
-                 "size":self.size,
-                 "mod":self.mod.isoformat(),
-                 "xtra":to_json(self.xtra),
+        return {
+            "name": self.name,
+            "type": self.type.name,
+            "size": self.size,
+            "mod": self.mod.isoformat(),
+            "xtra": to_json(self.xtra),
         }
 
 
@@ -89,9 +89,7 @@ class DirContent(NamedTuple):
         return DirEntry(self.path.name, self.size(), self.mod(), EntryType.DIR, self)
 
     def __to_json__(self):
-        return {
-            "entries": [ to_json(e) for e in self.entries]
-        }
+        return {"entries": [to_json(e) for e in self.entries]}
 
 
 async def run_io(*args):
@@ -116,7 +114,9 @@ async def process_dir(
         process_dir(p, ignore_rules, callback, file_extra_factory) for p in dirs
     ]
     if file_extra_factory is not None:
-        child_entries = [f.entry(await run_io(file_extra_factory, f.path)) for f in files]
+        child_entries = [
+            f.entry(await run_io(file_extra_factory, f.path)) for f in files
+        ]
     else:
         child_entries = [f.entry() for f in files]
     child_entries += [await f for f in dir_futures]
@@ -126,5 +126,3 @@ async def process_dir(
     if callback is not None:
         callback(content)
     return content.entry()
-
-

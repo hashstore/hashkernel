@@ -375,7 +375,7 @@ def to_json(v: Any) -> Any:
         return v
     if v is None:
         return v
-    raise NotImplementedError(f'No conversion defined for: {v!r}')
+    raise NotImplementedError(f"No conversion defined for: {v!r}")
 
 
 def load_jsonable(path: Union[Path, str], cls: type) -> Any:
