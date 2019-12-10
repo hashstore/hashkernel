@@ -1,12 +1,10 @@
 import asyncio
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, NamedTuple, Optional, Tuple
+from typing import Any, Callable, List, NamedTuple, Optional, Tuple, Union
 
-from hashkernel import CodeEnum
-from hashkernel.files import PathFilter, any_path
-from hashkernel.files.ignore_file import DEFAULT_IGNORE_POLICY, IgnoreRuleSet
+from hashkernel import CodeEnum, to_json
+from hashkernel.files.ignore_file import IgnoreRuleSet
 
 
 class EntryType(CodeEnum):
@@ -19,43 +17,51 @@ class DirEntry(NamedTuple):
     size: int
     mod: datetime
     type: EntryType
-    extra: Optional[Any]
+    xtra: Optional[Any]
 
-    def __str__(self):
-        return f"{self.name},{self.type.name},{self.size},{self.mod.isoformat()}\n"
+
+    def __to_json__(self):
+        return { "name":self.name,
+                 "type":self.type.name,
+                 "size":self.size,
+                 "mod":self.mod.isoformat(),
+                 "xtra":to_json(self.xtra),
+        }
 
 
 class File(NamedTuple):
     path: Path
     size: int
     mod: datetime
+    type: EntryType
 
     @staticmethod
-    def from_path(path: Path) -> "File":
+    def from_path(path: Path, et: EntryType) -> "File":
         stat = path.stat()
         dt = datetime.utcfromtimestamp(stat.st_mtime)
-        return File(path, stat.st_size, dt)
+        return File(path, stat.st_size, dt, et)
 
-    def entry(self):
-        return DirEntry(self.path.name, self.size, self.mod, EntryType.FILE, None)
+    def entry(self, xtra: Any = None):
+        return DirEntry(self.path.name, self.size, self.mod, self.type, xtra)
 
 
-def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[Path]]:
+def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[File]]:
     """
     Returns:
         files - files in directory
-        dir_pathes - `Path` object pointing to immediate child direcories
+        dirs - `Path` object pointing to immediate child direcories
     """
     files = []
-    dir_pathes = []
+    dirs = []
     listdir = list(path.iterdir())
     ignore_rules.parse_specs(listdir)
     for child in filter(ignore_rules.path_filter, listdir):
-        if child.is_dir():
-            dir_pathes.append(child)
-        elif child.is_file:
-            files.append(File.from_path(child))
-    return files, dir_pathes
+        symlink_to_be_ignored = child.is_symlink() and ignore_rules.ignore_symlinks
+        if child.is_dir() and not symlink_to_be_ignored:
+            dirs.append(File.from_path(child, EntryType.DIR))
+        elif child.is_file and not symlink_to_be_ignored:
+            files.append(File.from_path(child, EntryType.FILE))
+    return files, dirs
 
 
 OnNewDirContent = Callable[[Any], None]
@@ -64,47 +70,61 @@ OnNewDirContent = Callable[[Any], None]
 class DirContent(NamedTuple):
     path: Path
     entries: List[DirEntry]
+    dir_entry: Optional[DirEntry]
 
     def size(self):
         return sum(e.size for e in self.entries)
 
     def mod(self):
-        if len(self.entries):
-            return max(e.mod for e in self.entries)
-        else:
-            return datetime.utcfromtimestamp(0)
+        dt = (
+            max(e.mod for e in self.entries)
+            if len(self.entries)
+            else datetime.utcfromtimestamp(0)
+        )
+        if self.dir_entry is not None:
+            dt = max(self.dir_entry.mod, dt)
+        return dt
 
     def entry(self) -> DirEntry:
         return DirEntry(self.path.name, self.size(), self.mod(), EntryType.DIR, self)
 
+    def __to_json__(self):
+        return {
+            "entries": [ to_json(e) for e in self.entries]
+        }
+
+
+async def run_io(*args):
+    return await asyncio.get_event_loop().run_in_executor(None, *args)
+
 
 async def process_dir(
-    path: Path, ignore_rules: IgnoreRuleSet, callback: OnNewDirContent = None
+    dir: Union[Path, File],
+    ignore_rules: IgnoreRuleSet,
+    callback: OnNewDirContent = None,
+    file_extra_factory: Callable[[Path], Any] = None,
 ) -> DirEntry:
+    if isinstance(dir, File):
+        dir_entry = dir.entry()
+        path = dir.path
+    else:
+        dir_entry = None
+        path = dir
     assert path.is_dir()
-    files, dir_paths = await asyncio.get_event_loop().run_in_executor(
-        None, read_dir, path, ignore_rules
-    )
-    entries = [f.entry() for f in files]
-    entries.extend([await process_dir(p, ignore_rules, callback) for p in dir_paths])
-    entries.sort(key=lambda e: e.name)
-    content = DirContent(path, entries)
+    files, dirs = await run_io(read_dir, path, ignore_rules)
+    dir_futures = [
+        process_dir(p, ignore_rules, callback, file_extra_factory) for p in dirs
+    ]
+    if file_extra_factory is not None:
+        child_entries = [f.entry(await run_io(file_extra_factory, f.path)) for f in files]
+    else:
+        child_entries = [f.entry() for f in files]
+    child_entries += [await f for f in dir_futures]
+    child_entries.sort(key=lambda e: e.name)
+
+    content = DirContent(path, child_entries, dir_entry)
     if callback is not None:
         callback(content)
     return content.entry()
 
 
-async def main():
-    def print_dc(dc: DirContent):
-        print(dc.path)
-        print("".join(map(str, dc.entries)))
-        print()
-
-    path = Path(sys.argv[1]).absolute()
-    print(await process_dir(path, DEFAULT_IGNORE_POLICY.apply(path), callback=print_dc))
-
-
-if __name__ == "__main__":
-
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())

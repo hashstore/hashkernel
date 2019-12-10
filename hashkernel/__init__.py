@@ -373,7 +373,9 @@ def to_json(v: Any) -> Any:
         return int(v)
     if isinstance(v, (int, bool, float, str, dict, list, tuple)):
         return v
-    raise NotImplementedError()
+    if v is None:
+        return v
+    raise NotImplementedError(f'No conversion defined for: {v!r}')
 
 
 def load_jsonable(path: Union[Path, str], cls: type) -> Any:

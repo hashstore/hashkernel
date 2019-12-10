@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import timedelta
 from functools import total_ordering
 from io import BytesIO
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import (
     IO,
     Any,
@@ -29,6 +29,7 @@ from nanotime import nanotime
 
 from hashkernel import CodeEnum, EnsureIt, GlobalRef, OneBit, Primitive, Stringable
 from hashkernel.base_x import base_x
+from hashkernel.files import ensure_path
 from hashkernel.hashing import Hasher
 from hashkernel.packer import (
     INT_8,
@@ -364,8 +365,8 @@ class Cake(Stringable, EnsureIt, Primitive):
         return Cake.from_stream(BytesIO(s), type)
 
     @staticmethod
-    def from_file(file: str, type) -> "Cake":
-        return Cake.from_stream(open(file, "rb"), type)
+    def from_file(file: Union[str, Path], type=CakeTypes.NO_CLASS) -> "Cake":
+        return Cake.from_stream(ensure_path(file).open("rb"), type)
 
     @staticmethod
     def new_guid(

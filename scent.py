@@ -55,7 +55,7 @@ if __name__ == "__main__":
         if len(sys.argv) > 2:
             envs = sys.argv[2:]
     if cmd == "test":
-        if not (run_tests(False, envs, html=True)):
+        if not (run_tests(True, envs, html=True)):
             raise SystemExit(-1)
     elif cmd == "cleanup_envs":
         for env in envs:

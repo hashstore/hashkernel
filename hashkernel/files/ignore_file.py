@@ -117,6 +117,7 @@ class IgnoreRuleSet:
     root: Path
     ignore_files: PathMatchSet
     spec_to_parse: PathMatchSet
+    ignore_symlinks: bool = True
 
     def __init__(self, path: Path):
         self.root = path
