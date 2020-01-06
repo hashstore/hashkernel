@@ -76,7 +76,8 @@ async def main():
                     file_extra_factory=Cake.from_file,
                 )
             )
-        )
+        ),
+        file=sys.stderr,
     )
 
 

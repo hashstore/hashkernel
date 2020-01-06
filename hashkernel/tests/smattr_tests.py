@@ -3,8 +3,10 @@ from logging import getLogger
 from typing import Dict, List, Optional
 
 from hs_build_tools.pytest import assert_text
+from pytest import raises
 
 from hashkernel import GlobalRef, exception_message, to_json
+from hashkernel.mold import MoldConfig
 from hashkernel.smattr import JsonWrap, SmAttr
 
 log = getLogger(__name__)
@@ -50,6 +52,29 @@ def test_docstring():
 class Abc(SmAttr):
     name: str
     val: int
+
+
+class Xyz(SmAttr):
+    x: str
+    y: Dict[str, int]
+    z: Optional[bool]
+
+
+class Combo(Abc, Xyz):
+    __mold_config__ = MoldConfig(omit_optional_null=True)
+
+
+def test_combo():
+    assert (
+        str(Combo.__mold__)
+        == '["x:Required[str]", "y:Dict[str,int]", "z:Optional[bool]", "name:Required[str]", "val:Required[int]"]'
+    )
+    c = Combo({"name": "n", "val": 555, "x": "zzz", "y": {"z": 5}, "z": True})
+    assert '{"name": "n", "val": 555, "x": "zzz", "y": {"z": 5}, "z": true}' == str(c)
+    c = Combo(name="n", val=555, x="zzz", y={"z": 5})
+    assert '{"name": "n", "val": 555, "x": "zzz", "y": {"z": 5}}' == str(c)
+    with raises(AttributeError, match="Required : {'x'}"):
+        Combo(name="n", val=555)
 
 
 def test_wrap():
