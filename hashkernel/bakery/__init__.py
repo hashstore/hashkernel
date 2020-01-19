@@ -30,7 +30,7 @@ from nanotime import nanotime
 from hashkernel import CodeEnum, EnsureIt, GlobalRef, OneBit, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.hashing import Hasher
+from hashkernel.hashing import Hasher, HashKey
 from hashkernel.packer import (
     INT_8,
     NANOTIME,
@@ -70,7 +70,6 @@ class CakeProperties(enum.Enum):
 
 
 B62 = base_x(62)
-B36 = base_x(36)
 
 
 class CakeType:
@@ -276,7 +275,7 @@ class Cake(Stringable, EnsureIt, Primitive):
     >>> longer_k = Cake.from_bytes(longer_content)
     >>> str(longer_k)
     'zQQN0yLEZ5dVzPWK4jFifOXqnjgrQLac7T365E1ckGT0'
-    >>> len(longer_k.digest)
+    >>> len(longer_k.hash_key.digest)
     32
     >>> len({hash(longer_k), hash(Cake(str(longer_k)))})
     1
@@ -322,29 +321,27 @@ class Cake(Stringable, EnsureIt, Primitive):
     def __init__(
         self,
         s: Union[str, bytes, None],
-        digest: Optional[bytes] = None,
+        digest: Union[HashKey, bytes, str, None] = None,
         type: Optional[CakeType] = None,
     ) -> None:
         if s is None:
             assert (
                 digest is not None and type is not None
             ), f"both digest={digest!r} and type={type!r} required"
-            self.digest = digest
+            self.hash_key = HashKey.ensure_it(digest)
             self.type = type
         elif isinstance(s, bytes):
             assert len(s) == SIZEOF_CAKE, f"invalid length of s: {len(s)}"
-            self.digest = s[:-1]
+            self.hash_key = HashKey(s[:-1])
             self.type = CakeTypes[ord(s[-1:])]
         else:
-            self.digest = B62.decode(s[:-1])
+            self.hash_key = HashKey(B62.decode(s[:-1]))
             self.type = CakeTypes[s[-1:]]
         CakeProperties.set_properties(self, *self.type.modifiers)
-        if len(self.digest) != Hasher.SIZEOF:
-            raise AttributeError(f"invalid cake digest: {s!r} {digest.hex()} {type} ")
 
     def guid_header(self) -> GuidHeader:
         assert self.is_guid
-        return GuidHeader(self.digest)
+        return GuidHeader(self.hash_key.digest)
 
     def uniform_digest(self):
         """
@@ -353,7 +350,7 @@ class Cake(Stringable, EnsureIt, Primitive):
 
         :return: Portion of digest that could be used for sharding and routing
         """
-        return self.digest[GuidHeader.SIZEOF :]
+        return self.hash_key.digest[GuidHeader.SIZEOF :]
 
     @staticmethod
     def from_stream(fd: IO[bytes], type=CakeTypes.NO_CLASS) -> "Cake":
@@ -383,27 +380,22 @@ class Cake(Stringable, EnsureIt, Primitive):
         return Cake(None, digest=digest, type=type)
 
     @staticmethod
-    def from_digest36(digest: str, type: CakeType):
-        return Cake(None, B36.decode(digest), type)
+    def from_hash_key(hash_key: Union[bytes, str, HashKey], type: CakeType):
+        return Cake(None, hash_key, type)
 
     def assert_guid(self) -> None:
         assert self.is_guid, f"has to be a guid: {self}"
 
     def __str__(self) -> str:
         if not (hasattr(self, "_str")):
-            self._str = B62.encode(self.digest) + str(self.type)
+            self._str = B62.encode(self.hash_key.digest) + str(self.type)
         return self._str
-
-    def digest36(self) -> str:
-        return B36.encode(self.digest)
 
     def __repr__(self) -> str:
         return f"Cake({str(self)!r})"
 
     def __hash__(self) -> int:
-        if not (hasattr(self, "_hash")):
-            self._hash = hash(self.digest)
-        return self._hash
+        return hash(self.hash_key)
 
     def __eq__(self, other) -> bool:
         return str(self) == str(other)
@@ -412,7 +404,7 @@ class Cake(Stringable, EnsureIt, Primitive):
         return str(self) < str(other)
 
     def __bytes__(self):
-        return self.digest + bytes(self.type)
+        return self.hash_key.digest + bytes(self.type)
 
 
 Cake.__packer__ = ProxyPacker(Cake, FixedSizePacker(SIZEOF_CAKE))

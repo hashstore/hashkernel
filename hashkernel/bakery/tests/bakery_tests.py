@@ -28,9 +28,9 @@ def test_cake_roundtrip(content, cake_s):
     assert cake_s == str(u1)
     u1n = Cake(str(u1))
     u1b = Cake(bytes(u1))
-    assert u1.digest == u1n.digest
+    assert u1.hash_key == u1n.hash_key
     assert u1 == u1n
-    assert u1.digest == u1b.digest
+    assert u1.hash_key == u1b.hash_key
     assert u1 == u1b
 
 
@@ -55,5 +55,5 @@ def test_guid():
 
 
 def test_wrong_size_of_digest():
-    with raises(AttributeError, match="invalid cake digest: None 0757ed 0"):
-        Cake.from_digest36("abcd", CakeTypes.NO_CLASS)
+    with raises(AttributeError, match="digest is wrong size: 3 'abcd'"):
+        Cake.from_hash_key("abcd", CakeTypes.NO_CLASS)

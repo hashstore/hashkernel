@@ -3,6 +3,7 @@ import datetime
 import sys
 from logging import getLogger
 
+import pytest
 from hs_build_tools.pytest import assert_text
 
 import hashkernel as kernel
@@ -321,3 +322,19 @@ def test_CodeEnum():
         ...
     assert int(CodeEnumExample.A) == 0
     assert hex(CodeEnumExample.A) == "0x0"
+
+
+def test_inherit_CodeEnum():
+    class AB(kernel.CodeEnum):
+        A = 0
+        B = 1
+
+    class C2(kernel.CodeEnum, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]):
+        C = 2
+
+    with pytest.raises(TypeError, match="duplicate code"):
+
+        class ButNotC1(
+            kernel.CodeEnum, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]
+        ):
+            C = 1

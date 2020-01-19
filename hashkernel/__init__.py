@@ -4,6 +4,7 @@ import enum
 import json
 import sys
 from datetime import date, datetime
+from enum import EnumMeta
 from inspect import isclass, isfunction, ismodule
 from pathlib import Path
 from types import ModuleType
@@ -573,7 +574,10 @@ class CodeEnum(Stringable, enum.Enum):
     def __init__(self, code: int, doc: str = "") -> None:
         self.__doc__ = doc
         self.code = code
-        type(self)._value2member_map_[code] = self  # type: ignore
+        by_code: Dict[int, CodeEnumT] = type(self)._value2member_map_  # type: ignore
+        if code in by_code:
+            raise TypeError(f"duplicate code: {self} = {code}")
+        by_code[code] = self
 
     @classmethod
     def _missing_(cls, value):
@@ -601,6 +605,40 @@ class CodeEnum(Stringable, enum.Enum):
 
     def __repr__(self):
         return f"<{type(self).__name__}.{self.name}: {self.code}>"
+
+
+class MetaCodeEnumExtended(EnumMeta):
+    """
+
+    """
+
+    @classmethod
+    def __prepare__(metacls, name, bases, enums=None, **kargs):
+        """
+        Generates the class's namespace.
+        @param enums Iterable of `enum.Enum` classes to include in the new class.  Conflicts will
+            be resolved by overriding existing values defined by Enums earlier in the iterable with
+            values defined by Enums later in the iterable.
+        """
+        if enums is None:
+            raise ValueError(
+                "Class keyword argument `enums` must be defined to use this metaclass."
+            )
+        ret = super().__prepare__(name, bases, **kargs)
+        for enm in enums:
+            for item in enm:
+                ret[item.name] = item.value  # Throws `TypeError` if conflict.
+        return ret
+
+    def __new__(metacls, name, bases, namespace, **kargs):
+        return super().__new__(metacls, name, bases, namespace)
+        # DO NOT send "**kargs" to "type.__new__".  It won't catch them and
+        # you'll get a "TypeError: type() takes 1 or 3 arguments" exception.
+
+    def __init__(cls, name, bases, namespace, **kargs):
+        super().__init__(name, bases, namespace)
+        # DO NOT send "**kargs" to "type.__init__" in Python 3.5 and older.  You'll get a
+        # "TypeError: type.__init__() takes no keyword arguments" exception.
 
 
 def delegate_factory(cls: type, delegate_attrs: Iterable[str]) -> Callable[[Any], Any]:

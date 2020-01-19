@@ -16,7 +16,7 @@ from hashkernel.bakery import (
     CakeTypes,
 )
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import Hasher, HasherSigner, Signer
+from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer
 from hashkernel.packer import (
     GREEDY_BYTES,
     INT_32,
@@ -33,6 +33,32 @@ from hashkernel.time import TTL, nanotime_now
 
 """
 Somewhat inspired by BitCask
+
+
+Cascade is public class you supposed to interact 
+
+class Caskade:
+
+    == Data ==
+    dir: Path
+    config: CaskadeConfig
+    active: Optional[CaskFile]
+    casks: Dict[Cake, CaskFile]
+    data_locations: Dict[Cake, DataLocation]
+    check_points: List[CheckPoint]
+    permalinks: Dict[Cake, Cake]
+    tags: Dict[Cake, List[Tag]]
+    derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
+
+    == Public methods ==
+
+    def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
+    def read_bytes(self, id: Cake) -> bytes:
+    def __contains__(self, id: Cake) -> bool:
+    def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
+    def set_permalink(self, data: Cake, link: Cake) -> bool:
+    def save_derived(self, src: Cake, filter: Cake, derived: Cake):
+    def tag(self, src: Cake, tag: Tag):
 
 """
 
@@ -62,7 +88,6 @@ class DataValidationError(Exception):
 
 
 class CheckPointType(CodeEnum):
-
     MANUAL = (
         0,
         """
@@ -195,13 +220,29 @@ class Tag(SmAttr):
     link: Optional[Cake]
 
 
+class StoreSyncPoints(SmAttr):
+    """
+    map of all caskades mapped by particular store
+    """
+
+    caskades: Dict[Cake, Cake]
+
+
+class CaskadeSyncPoints(SmAttr):
+    """
+    map of all stores that tracking particular caskade
+    """
+
+    stores: Dict[Cake, Cake]
+
+
 class EntryType(CodeEnum):
     """
     >>> [ (e, e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
     [(<EntryType.DATA: 0>, None), (<EntryType.CHECK_POINT: 1>, 9),
     (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.CASK_HEADER: 3>, 66),
     (<EntryType.PERMALINK: 4>, 33), (<EntryType.DERIVED: 5>, 66),
-    (<EntryType.TAG: 6>, None)]
+    (<EntryType.TAG: 6>, None), (<EntryType.CASCADE_SYNC: 7>, None)]
 
     """
 
@@ -270,6 +311,14 @@ class EntryType(CodeEnum):
         """,
     )
 
+    CASCADE_SYNC = (
+        7,
+        Tag,
+        """
+        `src` - points to Cake
+        """,
+    )
+
     def __init__(self, code, entry_cls, doc):
         CodeEnum.__init__(self, code, doc)
         self.entry_cls = entry_cls
@@ -315,7 +364,6 @@ def check_point_size(config: "CaskadeConfig"):
 HEADER_SIZE = size_of_entry(EntryType.CASK_HEADER)
 END_SEQ_SIZE = size_of_double_entry(EntryType.NEXT_CASK, EntryType.CHECK_POINT)
 
-
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
 CHUNK_SIZE_2x = CHUNK_SIZE * 2
 MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
@@ -338,7 +386,7 @@ class CaskType(CodeEnum):
     )
 
     def cask_path(self, dir: Path, guid: Cake) -> Path:
-        return dir / f"{guid.digest36()}.{self.name.lower()}"
+        return dir / f"{guid.hash_key}.{self.name.lower()}"
 
 
 def find_cask_by_guid(
@@ -445,7 +493,7 @@ class CaskFile:
     def by_file(cls, caskade: "Caskade", fpath: Path) -> Optional["CaskFile"]:
         try:
             cask_type = CaskType[fpath.suffix[1:].upper()]
-            guid = Cake.from_digest36(fpath.stem, CakeTypes.CASK)
+            guid = Cake.from_hash_key(HashKey(fpath.stem), CakeTypes.CASK)
             return cls(caskade, guid, cask_type)
         except (KeyError, AttributeError) as e:
             return None
@@ -729,7 +777,6 @@ class Caskade:
     permalinks: Dict[Cake, Cake]
     tags: Dict[Cake, List[Tag]]
     derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
-    # guids: Dict[Cake, GuidRef]
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.dir = Path(dir).absolute()
@@ -900,71 +947,3 @@ class Caskade:
         TODO: caching of `written_data` if appropriate/available
         """
         self.data_locations[cake] = dp
-
-    # def write_journal(self, src: Cake, value: Cake):
-    #     ...
-    #
-    # def write_path(self, src: Cake, path: str, value: Optional[Cake]):
-    #     ...
-
-
-# class ActiveHistoryReconEntry(NamedTuple):
-#     content: Cake
-#
-#
-# class GuidReconEntry(NamedTuple):
-#     type_overide: CakeType
-#     content: Cake
-#
-#
-# class JournalEntry(NamedTuple):
-#     value: Cake
-#
-#
-# class SetPathInVtreeEntry(NamedTuple):
-#     value: Cake
-#     path: str
-#
-#
-# class DeletePathInVtreeEntry(NamedTuple):
-#     path: str
-
-# JOURNAL = (
-#     1,
-#     JournalEntry,
-#     """
-#     Entry in `src` journal set to current `value`
-#     """,
-# )
-#
-# SET_PATH_IN_VTREE = (
-#     2,
-#     SetPathInVtreeEntry,
-#     """
-#     `src` identify vtree and entry contains new `value` for `path`
-#     """,
-# )
-#
-# DELETE_PATH_IN_VTREE = (
-#     3,
-#     DeletePathInVtreeEntry,
-#     """
-#     `src` identify vtree and entry contains `path` to deleted
-#     """,
-# )
-#     ACTIVE_HISTORY = (
-#         8,
-#         ActiveHistoryReconEntry,
-#         """
-#         `src` has address of prev cask segment. This entry has to
-#         follow FIRST_SEGMENT entry in each continuing segment cask.
-#         """,
-#     )
-#     GUID_RECON = (
-#         9,
-#         GuidReconEntry,
-#         """
-#         `src` has address of prev cask segment. This entry has to
-#         follow FIRST_SEGMENT entry in each continuing segment cask.
-#         """,
-#     )

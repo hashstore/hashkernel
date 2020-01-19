@@ -8,7 +8,7 @@ from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
 from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
-from hashkernel.bakery.cask import (
+from hashkernel.caskade import (
     CHUNK_SIZE,
     END_SEQ_SIZE,
     HEADER_SIZE,
