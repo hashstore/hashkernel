@@ -9,8 +9,13 @@ jobs:
 
   - template: azure-pybuild.yml
     parameters:
+      name: WinContainer
+      vmImage: 'windows-2019'
+
+  - template: azure-pybuild.yml
+    parameters:
       name: macOS
-      vmImage: 'macOS-10.13'
+      vmImage: 'macOS-10.14'
 
   - template: azure-pybuild.yml
     parameters:
@@ -20,6 +25,7 @@ jobs:
 
   - job: Check
     dependsOn:
+      - WinContainer
       - Windows
       - macOS
       - Linux
