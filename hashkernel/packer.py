@@ -285,6 +285,7 @@ ADJSIZE_PACKER_4 = AdjustableSizePacker(4)
 SMALL_SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_3)  # up to 2Mb
 SIZED_BYTES = SizedPacker(ADJSIZE_PACKER_4)  # up to 256Mb
 INT_32_SIZED_BYTES = SizedPacker(INT_32)
+BOOL_AS_BYTE = ProxyPacker(bool, INT_8, int)
 
 NANOTIME = ProxyPacker(nanotime, BE_INT_64, lambda nt: nt.nanoseconds(), nanotime)
 
@@ -305,17 +306,17 @@ def build_code_enum_packer(code_enum_cls) -> Packer:
     return ProxyPacker(code_enum_cls, INT_8, int)
 
 
-def unpack_greedily(
+def unpack_constraining_greed(
     buffer: bytes, offset: int, size: int, greedy_packer: Packer
 ) -> Tuple[Any, int]:
     """
-    >>> unpack_greedily(b'abc', 0, 3, UTF8_GREEDY_STR)
+    >>> unpack_constraining_greed(b'abc', 0, 3, UTF8_GREEDY_STR)
     ('abc', 3)
-    >>> unpack_greedily(b'abc', 1, 1, UTF8_GREEDY_STR)
+    >>> unpack_constraining_greed(b'abc', 1, 1, UTF8_GREEDY_STR)
     ('b', 2)
-    >>> unpack_greedily(b'abc', 0, 2, UTF8_GREEDY_STR)
+    >>> unpack_constraining_greed(b'abc', 0, 2, UTF8_GREEDY_STR)
     ('ab', 2)
-    >>> unpack_greedily(b'abc', 0, 10, UTF8_GREEDY_STR)
+    >>> unpack_constraining_greed(b'abc', 0, 10, UTF8_GREEDY_STR)
     Traceback (most recent call last):
     ...
     hashkernel.packer.NeedMoreBytes: 7
@@ -353,27 +354,30 @@ class PackerLibrary:
     factories: List[Tuple[type, PackerFactory]]
     cache: Dict[type, Packer]
 
-    def __init__(self):
+    def __init__(self, next_lib:"PackerLibrary" = None):
         self.factories = []
         self.cache = {}
+        self.next_lib = next_lib
 
     def __contains__(self, item):
         return self[item] is not None
 
-    def __getitem__(self, key: type) -> Optional[Packer]:
+    def __getitem__(self, key: type) -> Packer:
         return self.get_packer_by_type(key)
 
-    def get_packer_by_type(self, key: type) -> Optional[Packer]:
+    def get_packer_by_type(self, key: type) -> Packer:
         packer = None
         if key in self.cache:
-            packer = self.cache[key]
+            return self.cache[key]
         else:
             for i in range(len(self.factories)):
                 if issubclass(key, self.factories[i][0]):
                     packer = self.factories[i][1](key)
-                    break
-            self.cache[key] = packer
-        return packer
+                    self.cache[key] = packer
+                    return packer
+            if packer is None and self.next_lib is not None:
+                return self.next_lib.get_packer_by_type(key)
+        raise KeyError(key)
 
     def register_packer(self, key: type, packer_factory: PackerFactory):
         self.cache = {}
@@ -385,6 +389,12 @@ class PackerLibrary:
                 return
         self.factories.append((key, packer_factory))
 
+    def register_all(self, *pack_defs: Tuple[type, PackerFactory]):
+        for t in pack_defs:
+            self.register_packer(*t)
+        return self
+
+
 
 class PackerDefinitions:
     typed_packers: List[Tuple[type, PackerFactory]]
@@ -392,9 +402,13 @@ class PackerDefinitions:
     def __init__(self, *pack_defs: Tuple[type, PackerFactory]):
         self.typed_packers = [*pack_defs]
 
-    def register_all(self, lib: PackerLibrary = None) -> PackerLibrary:
-        if lib is None:
-            lib = PackerLibrary()
-        for t in self.typed_packers:
-            lib.register_packer(*t)
-        return lib
+    def build_lib(self, next_lib: PackerLibrary = None) -> PackerLibrary:
+        return PackerLibrary(next_lib).register_all(*self)
+
+    def __iter__(self):
+        return iter(self.typed_packers)
+
+
+
+
+

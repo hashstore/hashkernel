@@ -21,7 +21,6 @@ from hashkernel.caskade import (
     EntryType,
     Record,
     Record_PACKER,
-    Tag,
     check_point_size,
     size_of_dynamic_entry,
     size_of_entry,
@@ -177,13 +176,13 @@ def test_3steps(name, config):
     caskade.set_permalink(a4, a4_permalink)
     sp.add(size_of_entry(EntryType.PERMALINK))
 
-    a4_derived = Cake.from_bytes(a4_bytes[:100])
-    caskade.save_derived(a4, a4_permalink, a4_derived)
-    sp.add(size_of_entry(EntryType.DERIVED))
+    # a4_derived = Cake.from_bytes(a4_bytes[:100])
+    # caskade.save_derived(a4, a4_permalink, a4_derived)
+    # sp.add(size_of_entry(EntryType.DERIVED))
 
-    a4_tag = Tag(name="Hello")
-    caskade.tag(a4, a4_tag)
-    sp.add(size_of_dynamic_entry(EntryType.TAG, a4_tag))
+    # a4_tag = Tag(name="Hello")
+    # caskade.tag(a4, a4_tag)
+    # sp.add(size_of_dynamic_entry(EntryType.TAG, a4_tag))
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
@@ -242,8 +241,8 @@ def test_3steps(name, config):
         # logit(str(k)[:8])
 
     assert read_caskade.permalinks[a4_permalink] == a4
-    assert read_caskade.tags[a4] == [a4_tag]
-    assert read_caskade.derived[a4][a4_permalink] == a4_derived
+    # assert read_caskade.tags[a4] == [a4_tag]
+    # assert read_caskade.derived[a4][a4_permalink] == a4_derived
 
     # logit("all_matched")
 

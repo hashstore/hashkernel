@@ -15,14 +15,12 @@ from hashkernel.packer import (
 from hashkernel.plugins import query_plugins
 from hashkernel.smattr import SmAttr
 
-CAKEABLES = PackerLibrary()
-
-PackerDefinitions((Jsonable, lambda t: ProxyPacker(t, GREEDY_BYTES))).register_all(
-    CAKEABLES
-)
+CAKEABLES = PackerDefinitions(
+    (Jsonable, lambda t: ProxyPacker(t, GREEDY_BYTES))
+).build_lib()
 
 for pdefs in query_plugins(PackerDefinitions, "hashkernel.bakery.cakables"):
-    pdefs.register_all(CAKEABLES)
+    CAKEABLES.register_all(*pdefs)
 
 
 class Cakeable:

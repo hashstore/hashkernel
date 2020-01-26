@@ -2,7 +2,8 @@ import os
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional, \
+    Tuple, Union, ClassVar
 
 from nanotime import nanotime
 
@@ -26,7 +27,8 @@ from hashkernel.packer import (
     PackerDefinitions,
     ProxyPacker,
     build_code_enum_packer,
-)
+    Packer, TuplePacker, INT_8, UTF8_STR, BOOL_AS_BYTE,
+    ADJSIZE_PACKER_4, PackerLibrary)
 from hashkernel.smattr import MoldConfig, SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
 
@@ -160,7 +162,7 @@ class CheckPointType(CodeEnum):
     )
 
 
-_COMPONENTS_PACKERS = PackerDefinitions(
+_COMPONENTS_PACKERS = PackerLibrary().register_all(
     (str, lambda _: UTF8_GREEDY_STR),
     (Cake, lambda _: Cake.__packer__),
     (bytes, lambda _: GREEDY_BYTES),
@@ -168,16 +170,26 @@ _COMPONENTS_PACKERS = PackerDefinitions(
     (nanotime, lambda _: NANOTIME),
     (CakeType, lambda _: CAKE_TYPE_PACKER),
     (CodeEnum, build_code_enum_packer),
-).register_all()
+)
 
-_ENTRY_PACKERS = PackerDefinitions(
+_ENTRY_PACKERS = PackerLibrary().register_all(
     (bytes, lambda _: SIZED_BYTES),
     (SmAttr, lambda t: ProxyPacker(t, SIZED_BYTES)),
     (
         tuple,
         lambda t: build_named_tuple_packer(t, _COMPONENTS_PACKERS.get_packer_by_type),
     ),
-).register_all()
+)
+
+
+
+class CatalogItem(NamedTuple):
+    entry_type: int
+    entry_name: str
+    header_size: int
+    has_payload: bool
+
+CatalogItem_PACKER = TuplePacker(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE)
 
 
 class CheckpointEntry(NamedTuple):
@@ -203,46 +215,24 @@ class LinkEntry(NamedTuple):
     dest: Cake
 
 
-class DerivedEntry(NamedTuple):
-    filter: Cake
-    derived: Cake
 
+class AbstractEntryType(CodeEnum):
+    def __init__(self, code, entry_cls, doc):
+        CodeEnum.__init__(self, code, doc)
+        self.entry_cls = entry_cls
+        self.entry_packer = None
+        if self.entry_cls is not None:
+            self.entry_packer = _ENTRY_PACKERS[self.entry_cls]
+            self.size = self.entry_packer.size
+        else:
+            self.size = 0
 
-class Tag(SmAttr):
-    """
-    >>> str(Tag(name="abc"))
-    '{"name": "abc"}'
-    """
-
-    __mold_config__ = MoldConfig(omit_optional_null=True)
-    name: str
-    value: Optional[float]
-    link: Optional[Cake]
-
-
-class StoreSyncPoints(SmAttr):
-    """
-    map of all caskades mapped by particular store
-    """
-
-    caskades: Dict[Cake, Cake]
-
-
-class CaskadeSyncPoints(SmAttr):
-    """
-    map of all stores that tracking particular caskade
-    """
-
-    stores: Dict[Cake, Cake]
-
-
-class EntryType(CodeEnum):
+class EntryType(AbstractEntryType):
     """
     >>> [ (e, e.size) for e in EntryType] #doctest: +NORMALIZE_WHITESPACE
     [(<EntryType.DATA: 0>, None), (<EntryType.CHECK_POINT: 1>, 9),
     (<EntryType.NEXT_CASK: 2>, 0), (<EntryType.CASK_HEADER: 3>, 66),
-    (<EntryType.PERMALINK: 4>, 33), (<EntryType.DERIVED: 5>, 66),
-    (<EntryType.TAG: 6>, None), (<EntryType.CASCADE_SYNC: 7>, None)]
+    (<EntryType.PERMALINK: 4>, 33)]
 
     """
 
@@ -253,6 +243,11 @@ class EntryType(CodeEnum):
         Data identified by `src` hash
         """,
     )
+
+    # STREAM = (
+    #     1,
+    #
+    # )
 
     CHECK_POINT = (
         1,
@@ -293,41 +288,7 @@ class EntryType(CodeEnum):
         """,
     )
 
-    DERIVED = (
-        5,
-        DerivedEntry,
-        """
-        `src` - points to data Cake
-        `filter` - filter points to logic that used to derive `src`
-        `data` points to derived data  
-        """,
-    )
 
-    TAG = (
-        6,
-        Tag,
-        """
-        `src` - points to Cake
-        """,
-    )
-
-    CASCADE_SYNC = (
-        7,
-        Tag,
-        """
-        `src` - points to Cake
-        """,
-    )
-
-    def __init__(self, code, entry_cls, doc):
-        CodeEnum.__init__(self, code, doc)
-        self.entry_cls = entry_cls
-        self.entry_packer = None
-        if self.entry_cls is not None:
-            self.entry_packer = _ENTRY_PACKERS[self.entry_cls]
-            self.size = self.entry_packer.size
-        else:
-            self.size = 0
 
 
 class Record(NamedTuple):
@@ -583,14 +544,15 @@ class CaskFile:
                 elif rec.entry_type == EntryType.PERMALINK:
                     link_entry: LinkEntry = entry
                     self.caskade.permalinks[link_entry.dest] = rec.src
-                elif rec.entry_type == EntryType.TAG:
-                    tag: Tag = entry
-                    self.caskade.tags[rec.src].append(tag)
-                elif rec.entry_type == EntryType.DERIVED:
-                    derived_entry: DerivedEntry = entry
-                    self.caskade.derived[rec.src][
-                        derived_entry.filter
-                    ] = derived_entry.derived
+                #TODO move to specific cascade
+                # elif rec.entry_type == EntryType.TAG:
+                #     tag: Tag = entry
+                #     self.caskade.tags[rec.src].append(tag)
+                # elif rec.entry_type == EntryType.DERIVED:
+                #     derived_entry: DerivedEntry = entry
+                #     self.caskade.derived[rec.src][
+                #         derived_entry.filter
+                #     ] = derived_entry.derived
                 elif rec.entry_type == EntryType.CHECK_POINT:
                     cp_entry: CheckPointType = entry
                     check_point_to_add = CheckPoint(self.guid, rec.src, *cp_entry)
@@ -640,7 +602,7 @@ class CaskFile:
 
     def write_entry(
         self,
-        et: EntryType,
+        et: AbstractEntryType,
         src: Cake,
         entry: Any,
         tstamp: nanotime = None,
@@ -648,7 +610,8 @@ class CaskFile:
     ) -> Optional[DataLocation]:
         if tstamp is None:
             tstamp = nanotime_now()
-        rec = Record(et, tstamp, src)
+        #TODO use configurable factory instead EntryType.find_by_code
+        rec = Record(EntryType.find_by_code(et.code), tstamp, src)
         buffer = pack_entry(rec, entry)
         entry_sz = len(buffer)
         cp_type = self.tracker.will_it_spill(self.caskade.config, tstamp, entry_sz)
@@ -775,16 +738,12 @@ class Caskade:
     data_locations: Dict[Cake, DataLocation]
     check_points: List[CheckPoint]
     permalinks: Dict[Cake, Cake]
-    tags: Dict[Cake, List[Tag]]
-    derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.dir = Path(dir).absolute()
         self.casks = {}
         self.data_locations = {}
         self.permalinks = {}
-        self.derived = defaultdict(dict)
-        self.tags = defaultdict(list)
         self.check_points = []
         if not self.dir.exists():
             self.dir.mkdir(mode=0o0700, parents=True)
@@ -870,15 +829,7 @@ class Caskade:
             return True
         return False
 
-    def save_derived(self, src: Cake, filter: Cake, derived: Cake):
-        self.assert_write()
-        self.active.write_entry(EntryType.DERIVED, src, DerivedEntry(filter, derived))
-        self.derived[src][filter] = derived
 
-    def tag(self, src: Cake, tag: Tag):
-        self.assert_write()
-        self.active.write_entry(EntryType.TAG, src, tag)
-        self.tags[src].append(tag)
 
     def pause(self):
         self.assert_write()
