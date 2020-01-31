@@ -32,7 +32,7 @@ from hashkernel.typings import (
     is_list,
     is_optional,
     is_tuple,
-)
+    is_NamedTuple)
 
 
 class Conversion(IntEnum):
@@ -128,6 +128,8 @@ class ClassRef(Stringable, StrKeyMixin, EnsureIt):
             self._from_json = identity
         elif issubclass(self.cls, EnsureIt):
             self._from_json = self.cls.ensure_it_or_none
+        elif is_NamedTuple(self.cls):
+            self._from_json = lazy_factory(self.cls, lambda v: self.cls(*v))
         else:
             self._from_json = lazy_factory(self.cls, self.cls)
 

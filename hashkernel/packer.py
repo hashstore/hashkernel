@@ -1,7 +1,7 @@
 import abc
 import struct
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from nanotime import nanotime
 
@@ -371,16 +371,19 @@ class PackerLibrary:
             return self.cache[key]
         else:
             for i in range(len(self.factories)):
-                if issubclass(key, self.factories[i][0]):
-                    packer = self.factories[i][1](key)
+                factory_cls, factory = self.factories[i]
+                if issubclass(key, factory_cls):
+                    packer = factory(key)
                     self.cache[key] = packer
                     return packer
             if packer is None and self.next_lib is not None:
                 return self.next_lib.get_packer_by_type(key)
         raise KeyError(key)
 
-    def register_packer(self, key: type, packer_factory: PackerFactory):
+
+    def register_packer(self, key: type, packer: Union[PackerFactory,Packer]):
         self.cache = {}
+        packer_factory = (lambda _: packer) if isinstance(packer, Packer) else packer
         for i in range(len(self.factories)):
             i_type = self.factories[i][0]
             assert i_type != key, "Conflict: Registering {key} twice"

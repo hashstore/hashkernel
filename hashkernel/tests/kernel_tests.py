@@ -325,12 +325,17 @@ def test_CodeEnum():
 
 
 def test_inherit_CodeEnum():
-    class AB(kernel.CodeEnum):
-        A = 0
-        B = 1
+    class Root(kernel.CodeEnum):
+        def __init__(self, code, description, docs=""):
+            kernel.CodeEnum.__init__(self, code, docs)
+            self.descr = description
 
-    class C2(kernel.CodeEnum, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]):
-        C = 2
+    class AB(Root):
+        A = 0,'a'
+        B = 1,'b'
+
+    class C2(Root, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]):
+        C = 2,'c','documnetation for c'
 
     with pytest.raises(TypeError, match="duplicate code"):
 
@@ -338,3 +343,6 @@ def test_inherit_CodeEnum():
             kernel.CodeEnum, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]
         ):
             C = 1
+
+    assert C2.A == C2.find_by_code(0)
+    assert AB.A != C2.A

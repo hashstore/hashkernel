@@ -1,11 +1,12 @@
 from pathlib import Path
-from typing import NamedTuple, Optional, Dict, List, Union
+from typing import NamedTuple, Optional, Dict, List, Union, Any
 
 from collections import defaultdict
 
-from hashkernel import CodeEnum
 from hashkernel.bakery import Cake
-from hashkernel.caskade import Caskade, CaskadeConfig, AbstractEntryType
+from hashkernel.caskade import CaskadeConfig, EntryType, \
+    Record, BaseEntries
+from hashkernel.caskade.cask import Caskade
 from hashkernel.mold import MoldConfig
 from hashkernel.smattr import SmAttr
 
@@ -42,7 +43,7 @@ class CaskadeSyncPoints(SmAttr):
 
     stores: Dict[Cake, Cake]
 
-class OptionalEntryType(AbstractEntryType):
+class OptionalEntries(EntryType):
     DERIVED = (
         5,
         DerivedEntry,
@@ -74,16 +75,29 @@ class OptionalCascade(Caskade):
     derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
-        Caskade.__init__(self, dir, config)
+        Caskade.__init__(self, dir, EntryType.combine(BaseEntries, OptionalEntries), config)
         self.derived = defaultdict(dict)
         self.tags = defaultdict(list)
 
     def tag(self, src: Cake, tag: Tag):
         self.assert_write()
-        self.active.write_entry(OptionalEntryType.TAG, src, tag)
+        self.active.write_entry(OptionalEntries.TAG, src, tag)
         self.tags[src].append(tag)
 
     def save_derived(self, src: Cake, filter: Cake, derived: Cake):
         self.assert_write()
-        self.active.write_entry(OptionalEntryType.DERIVED, src, DerivedEntry(filter, derived))
+        self.active.write_entry(OptionalEntries.DERIVED, src, DerivedEntry(filter, derived))
         self.derived[src][filter] = derived
+
+    def process_sub_entry(self, rec:Record, entry:Any):
+        if rec.entry_code == OptionalEntries.TAG.code:
+            tag: Tag = entry
+            self.tags[rec.src].append(tag)
+        elif rec.entry_code == OptionalEntries.DERIVED.code:
+            derived_entry: DerivedEntry = entry
+            self.derived[rec.src][
+                derived_entry.filter
+            ] = derived_entry.derived
+        else:
+            return False
+        return True
