@@ -403,3 +403,8 @@ class Caskade:
 
     def process_sub_entry(self, rec:Record, entry:Any):
         return False
+
+
+class BaseCaskade(Caskade):
+    def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
+        Caskade.__init__(self, dir, BaseEntries, config)

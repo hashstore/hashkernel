@@ -231,13 +231,20 @@ class EntryType(CodeEnum):
         return [ et.build_catalog_item() for et in cls]
 
     @staticmethod
-    def combine(*enums: Any):
+    def combine(*enums: Type["EntryType"]):
         class CombinedEntryType(
             EntryType, metaclass=MetaCodeEnumExtended,
             enums=[*enums]
         ):
             pass
         return CombinedEntryType
+
+    @classmethod
+    def extends(cls, *enums: Type["EntryType"]):
+        def decorate(decorated_enum: Type["EntryType"]):
+            return cls.combine(cls, decorated_enum, *enums)
+        return decorate
+
 
 class BaseEntries(EntryType):
     """

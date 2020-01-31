@@ -19,7 +19,8 @@ from hashkernel.caskade import (
     Record,
     Record_PACKER,
 )
-from hashkernel.caskade.cask import Caskade
+from hashkernel.caskade.cask import Caskade, BaseCaskade
+from hashkernel.caskade.optional import Tag, OptionalCaskade
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -136,11 +137,17 @@ def test_recover_no_checkpoints():
 
 @pytest.mark.slow
 @pytest.mark.parametrize(
-    "name, config", [("common", common_config), ("singer", common_singer)]
+    "name, caskade_cls, config",
+    [
+        ("common", BaseCaskade, common_config),
+        ("singer", BaseCaskade, common_singer),
+        ("common_opt", OptionalCaskade, common_config),
+        ("singer_opt", OptionalCaskade, common_singer),
+    ]
 )
-def test_3steps(name, config):
+def test_3steps(name, caskade_cls, config):
     dir = caskades / f"3steps_{name}"
-    caskade = Caskade(dir, BaseEntries, config=config)
+    caskade = caskade_cls(dir, config=config)
     first_cask = caskade.active.guid
     assert caskade.active.tracker.current_offset == caskade.meta.size_of_header()
     a0 = caskade.write_bytes(rand_bytes(0, ONE_AND_QUARTER))
@@ -171,13 +178,14 @@ def test_3steps(name, config):
     caskade.set_permalink(a4, a4_permalink)
     sp.add(caskade.meta.size_of_entry(BaseEntries.PERMALINK))
 
-    # a4_derived = Cake.from_bytes(a4_bytes[:100])
-    # caskade.save_derived(a4, a4_permalink, a4_derived)
-    # sp.add(size_of_entry(BaseEntries.DERIVED))
+    if caskade_cls == OptionalCaskade :
+        a4_derived = Cake.from_bytes(a4_bytes[:100])
+        caskade.save_derived(a4, a4_permalink, a4_derived)
+        sp.add(caskade.meta.size_of_entry(BaseEntries.DERIVED))
 
-    # a4_tag = Tag(name="Hello")
-    # caskade.tag(a4, a4_tag)
-    # sp.add(size_of_dynamic_entry(BaseEntries.TAG, a4_tag))
+        a4_tag = Tag(name="Hello")
+        caskade.tag(a4, a4_tag)
+        sp.add(caskade.meta.size_of_dynamic_entry(BaseEntries.TAG, a4_tag))
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
@@ -222,7 +230,7 @@ def test_3steps(name, config):
     #     idx += 1
 
     # logit("read_caskade")
-    read_caskade = Caskade(dir, entry_types=BaseEntries)
+    read_caskade = caskade_cls(dir)
 
     assert read_caskade.data_locations.keys() == caskade.data_locations.keys()
     # logit("keys_match")
@@ -246,7 +254,7 @@ def test_3steps(name, config):
 
     sp.add(caskade.meta.size_of_checkpoint())
 
-    write_caskade = Caskade(dir, BaseEntries)
+    write_caskade = caskade_cls(dir)
     assert write_caskade.check_points[0].type == CheckPointType.ON_CASK_HEADER
 
     assert caskade.check_points == write_caskade.check_points
@@ -270,7 +278,7 @@ def test_3steps(name, config):
 
     # logit("abandon")
 
-    write_caskade = Caskade(dir, BaseEntries)
+    write_caskade = caskade_cls(dir)
     write_caskade.recover(1)
     # logit("recover_1")
 

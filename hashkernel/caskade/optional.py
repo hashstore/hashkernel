@@ -43,6 +43,7 @@ class CaskadeSyncPoints(SmAttr):
 
     stores: Dict[Cake, Cake]
 
+@BaseEntries.extends()
 class OptionalEntries(EntryType):
     DERIVED = (
         5,
@@ -70,12 +71,13 @@ class OptionalEntries(EntryType):
         """,
     )
 
-class OptionalCascade(Caskade):
+
+class OptionalCaskade(Caskade):
     tags: Dict[Cake, List[Tag]]
     derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
 
     def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
-        Caskade.__init__(self, dir, EntryType.combine(BaseEntries, OptionalEntries), config)
+        Caskade.__init__(self, dir, OptionalEntries, config)
         self.derived = defaultdict(dict)
         self.tags = defaultdict(list)
 
