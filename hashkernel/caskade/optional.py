@@ -1,11 +1,9 @@
-from pathlib import Path
-from typing import NamedTuple, Optional, Dict, List, Union, Any
-
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, Dict, List, NamedTuple, Optional, Union
 
 from hashkernel.bakery import Cake
-from hashkernel.caskade import CaskadeConfig, EntryType, \
-    Record, BaseEntries
+from hashkernel.caskade import BaseEntries, CaskadeConfig, EntryType, Record
 from hashkernel.caskade.cask import Caskade
 from hashkernel.mold import MoldConfig
 from hashkernel.smattr import SmAttr
@@ -42,6 +40,7 @@ class CaskadeSyncPoints(SmAttr):
     """
 
     stores: Dict[Cake, Cake]
+
 
 @BaseEntries.extends()
 class OptionalEntries(EntryType):
@@ -88,18 +87,18 @@ class OptionalCaskade(Caskade):
 
     def save_derived(self, src: Cake, filter: Cake, derived: Cake):
         self.assert_write()
-        self.active.write_entry(OptionalEntries.DERIVED, src, DerivedEntry(filter, derived))
+        self.active.write_entry(
+            OptionalEntries.DERIVED, src, DerivedEntry(filter, derived)
+        )
         self.derived[src][filter] = derived
 
-    def process_sub_entry(self, rec:Record, entry:Any):
+    def process_sub_entry(self, rec: Record, entry: Any):
         if rec.entry_code == OptionalEntries.TAG.code:
             tag: Tag = entry
             self.tags[rec.src].append(tag)
         elif rec.entry_code == OptionalEntries.DERIVED.code:
             derived_entry: DerivedEntry = entry
-            self.derived[rec.src][
-                derived_entry.filter
-            ] = derived_entry.derived
+            self.derived[rec.src][derived_entry.filter] = derived_entry.derived
         else:
             return False
         return True

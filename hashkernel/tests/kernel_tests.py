@@ -331,11 +331,11 @@ def test_inherit_CodeEnum():
             self.descr = description
 
     class AB(Root):
-        A = 0,'a'
-        B = 1,'b'
+        A = 0, "a"
+        B = 1, "b"
 
     class C2(Root, metaclass=kernel.MetaCodeEnumExtended, enums=[AB]):
-        C = 2,'c','documnetation for c'
+        C = 2, "c", "documnetation for c"
 
     with pytest.raises(TypeError, match="duplicate code"):
 

@@ -11,17 +11,16 @@ from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.caskade import (
     CHUNK_SIZE,
     AccessError,
+    BaseEntries,
     CaskadeConfig,
     CaskHashSigner,
     CheckpointEntry,
     CheckPointType,
-    BaseEntries,
     Record,
     Record_PACKER,
 )
-from hashkernel.caskade.cask import Caskade, BaseCaskade
-from hashkernel.caskade.optional import Tag, OptionalCaskade, \
-    OptionalEntries
+from hashkernel.caskade.cask import BaseCaskade, Caskade
+from hashkernel.caskade.optional import OptionalCaskade, OptionalEntries, Tag
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -64,7 +63,11 @@ def test_entries():
 
 @pytest.mark.parametrize(
     "name, entry_types, config",
-    [("config_none", BaseEntries, None), ("common", BaseEntries, common_config), ("singer", BaseEntries, common_singer)],
+    [
+        ("config_none", BaseEntries, None),
+        ("common", BaseEntries, common_config),
+        ("singer", BaseEntries, common_singer),
+    ],
 )
 def test_config(name, entry_types, config):
     new_ck = Caskade(caskades / name, entry_types=entry_types, config=config)
@@ -72,7 +75,9 @@ def test_config(name, entry_types, config):
 
     assert new_ck.meta.config == loaded_ck.meta.config
     assert new_ck.meta.config.signature_size() == loaded_ck.meta.config.signature_size()
-    assert type(new_ck.meta.config.checkpoint_ttl) == type(loaded_ck.meta.config.checkpoint_ttl)
+    assert type(new_ck.meta.config.checkpoint_ttl) == type(
+        loaded_ck.meta.config.checkpoint_ttl
+    )
 
 
 ONE_AND_QUARTER = (CHUNK_SIZE * 5) // 4
@@ -83,7 +88,7 @@ TWO_K = 2048
 
 
 class SizePredictor:
-    def __init__(self, pos = 0):
+    def __init__(self, pos=0):
         self.pos = pos
 
     def add(self, size):
@@ -98,7 +103,9 @@ class SizePredictor:
 
 
 def test_recover_no_checkpoints():
-    caskade = Caskade(caskades / "recover_no_cp", entry_types=BaseEntries, config=common_config)
+    caskade = Caskade(
+        caskades / "recover_no_cp", entry_types=BaseEntries, config=common_config
+    )
     sp = SizePredictor(caskade.meta.size_of_header())
     first_cask = caskade.active.guid
     assert caskade.active.tracker.current_offset == caskade.meta.size_of_header()
@@ -144,7 +151,7 @@ def test_recover_no_checkpoints():
         ("singer", BaseCaskade, common_singer),
         ("common_opt", OptionalCaskade, common_config),
         ("singer_opt", OptionalCaskade, common_singer),
-    ]
+    ],
 )
 def test_3steps(name, caskade_cls, config):
     dir = caskades / f"3steps_{name}"
@@ -179,7 +186,7 @@ def test_3steps(name, caskade_cls, config):
     caskade.set_permalink(a4, a4_permalink)
     sp.add(caskade.meta.size_of_entry(BaseEntries.PERMALINK))
 
-    if caskade_cls == OptionalCaskade :
+    if caskade_cls == OptionalCaskade:
         a4_derived = Cake.from_bytes(a4_bytes[:100])
         caskade.save_derived(a4, a4_permalink, a4_derived)
         sp.add(caskade.meta.size_of_entry(OptionalEntries.DERIVED))

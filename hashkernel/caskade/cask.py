@@ -1,15 +1,28 @@
-from pathlib import Path
-from typing import Optional, Any, Dict, List, Union, Type
-
 import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Type, Union
+
 from nanotime import nanotime
 
-from hashkernel.bakery import Cake, CakeTypes, BlockStream, NULL_CAKE, \
-    CakeType
-from hashkernel.caskade import CaskType, SegmentTracker, BaseEntries, \
-    Record, CaskHeaderEntry, CheckPoint, CheckPointType, DataLocation, \
-    Record_PACKER, DataValidationError, LinkEntry, EntryType, \
-    CaskadeMetadata, AccessError, CaskadeConfig, NotQuietError
+from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
+from hashkernel.caskade import (
+    AccessError,
+    BaseEntries,
+    CaskadeConfig,
+    CaskadeMetadata,
+    CaskHeaderEntry,
+    CaskType,
+    CheckPoint,
+    CheckPointType,
+    DataLocation,
+    DataValidationError,
+    EntryType,
+    LinkEntry,
+    NotQuietError,
+    Record,
+    Record_PACKER,
+    SegmentTracker,
+)
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import HashKey
@@ -99,8 +112,7 @@ class CaskFile:
 
         while curr_pos < len(fbytes):
             rec, new_pos = Record_PACKER.unpack(fbytes, curr_pos)
-            entry_type = self.caskade.meta.entry_types.find_by_code(
-                rec.entry_code)
+            entry_type = self.caskade.meta.entry_types.find_by_code(rec.entry_code)
             entry_packer = entry_type.entry_packer
             check_point_to_add = None
             if rec.entry_code == BaseEntries.DATA.code:
@@ -251,6 +263,7 @@ class CaskFile:
             assert size == len(buff)
             return buff
 
+
 class Caskade:
     """
 
@@ -263,7 +276,12 @@ class Caskade:
     check_points: List[CheckPoint]
     permalinks: Dict[Cake, Cake]
 
-    def __init__(self, path: Union[Path, str], entry_types:Type[EntryType], config: Optional[CaskadeConfig] = None):
+    def __init__(
+        self,
+        path: Union[Path, str],
+        entry_types: Type[EntryType],
+        config: Optional[CaskadeConfig] = None,
+    ):
         self.casks = {}
         self.data_locations = {}
         self.permalinks = {}
@@ -337,8 +355,6 @@ class Caskade:
             return True
         return False
 
-
-
     def pause(self):
         self.assert_write()
         self.active.write_checkpoint(CheckPointType.ON_CASKADE_PAUSE)
@@ -391,7 +407,6 @@ class Caskade:
         self.assert_write()
         self.active._do_end_cask_sequence(CheckPointType.ON_CASKADE_CLOSE)
 
-
     def _add_data_location(
         self, cake: Cake, dp: DataLocation, written_data: Optional[bytes] = None
     ):
@@ -402,7 +417,7 @@ class Caskade:
         """
         self.data_locations[cake] = dp
 
-    def process_sub_entry(self, rec:Record, entry:Any):
+    def process_sub_entry(self, rec: Record, entry: Any):
         return False
 
 

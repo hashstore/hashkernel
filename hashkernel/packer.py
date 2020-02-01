@@ -354,7 +354,7 @@ class PackerLibrary:
     factories: List[Tuple[type, PackerFactory]]
     cache: Dict[type, Packer]
 
-    def __init__(self, next_lib:"PackerLibrary" = None):
+    def __init__(self, next_lib: "PackerLibrary" = None):
         self.factories = []
         self.cache = {}
         self.next_lib = next_lib
@@ -380,8 +380,7 @@ class PackerLibrary:
                 return self.next_lib.get_packer_by_type(key)
         raise KeyError(key)
 
-
-    def register_packer(self, key: type, packer: Union[PackerFactory,Packer]):
+    def register_packer(self, key: type, packer: Union[PackerFactory, Packer]):
         self.cache = {}
         packer_factory = (lambda _: packer) if isinstance(packer, Packer) else packer
         for i in range(len(self.factories)):
@@ -398,7 +397,6 @@ class PackerLibrary:
         return self
 
 
-
 class PackerDefinitions:
     typed_packers: List[Tuple[type, PackerFactory]]
 
@@ -410,8 +408,3 @@ class PackerDefinitions:
 
     def __iter__(self):
         return iter(self.typed_packers)
-
-
-
-
-

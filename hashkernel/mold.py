@@ -30,9 +30,10 @@ from hashkernel.typings import (
     get_attr_hints,
     is_dict,
     is_list,
+    is_NamedTuple,
     is_optional,
     is_tuple,
-    is_NamedTuple)
+)
 
 
 class Conversion(IntEnum):

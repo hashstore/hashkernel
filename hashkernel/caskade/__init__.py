@@ -1,13 +1,23 @@
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, NamedTuple, Optional, \
-    Tuple, Union, TypeVar, Generic, Type
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum, dump_jsonable, load_jsonable, \
-    MetaCodeEnumExtended
+from hashkernel import CodeEnum, MetaCodeEnumExtended, dump_jsonable, load_jsonable
 from hashkernel.bakery import (
     CAKE_TYPE_PACKER,
     NULL_CAKE,
@@ -19,15 +29,20 @@ from hashkernel.bakery import (
 from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer
 from hashkernel.packer import (
+    ADJSIZE_PACKER_4,
+    BOOL_AS_BYTE,
     GREEDY_BYTES,
+    INT_8,
     INT_32,
     NANOTIME,
     SIZED_BYTES,
     UTF8_GREEDY_STR,
+    UTF8_STR,
+    PackerLibrary,
     ProxyPacker,
+    TuplePacker,
     build_code_enum_packer,
-    TuplePacker, INT_8, UTF8_STR, BOOL_AS_BYTE,
-    ADJSIZE_PACKER_4, PackerLibrary)
+)
 from hashkernel.smattr import SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
 
@@ -180,13 +195,19 @@ PACKERS = PackerLibrary().register_all(
     ),
 )
 
+
 class CatalogItem(NamedTuple):
     entry_code: int
     entry_name: str
     header_size: int
     has_payload: bool
 
-PACKERS.register_packer(CatalogItem, TuplePacker(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE, cls=CatalogItem))
+
+PACKERS.register_packer(
+    CatalogItem,
+    TuplePacker(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE, cls=CatalogItem),
+)
+
 
 class CheckpointEntry(NamedTuple):
     start: int
@@ -212,7 +233,6 @@ class LinkEntry(NamedTuple):
 
 
 class EntryType(CodeEnum):
-
     def __init__(self, code, entry_cls, doc):
         CodeEnum.__init__(self, code, doc)
         self.entry_cls = entry_cls
@@ -228,21 +248,22 @@ class EntryType(CodeEnum):
 
     @classmethod
     def catalog(cls):
-        return [ et.build_catalog_item() for et in cls]
+        return [et.build_catalog_item() for et in cls]
 
     @staticmethod
     def combine(*enums: Type["EntryType"]):
         class CombinedEntryType(
-            EntryType, metaclass=MetaCodeEnumExtended,
-            enums=[*enums]
+            EntryType, metaclass=MetaCodeEnumExtended, enums=[*enums]
         ):
             pass
+
         return CombinedEntryType
 
     @classmethod
     def extends(cls, *enums: Type["EntryType"]):
         def decorate(decorated_enum: Type["EntryType"]):
             return cls.combine(cls, decorated_enum, *enums)
+
         return decorate
 
 
@@ -307,21 +328,21 @@ class BaseEntries(EntryType):
     )
 
 
-
 class Record(NamedTuple):
     entry_code: int
     tstamp: nanotime
     src: Cake
+
 
 Record_PACKER = TuplePacker(INT_8, NANOTIME, Cake.__packer__, cls=Record)
 
 PACKERS.register_packer(Record, Record_PACKER)
 
 
-
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
 CHUNK_SIZE_2x = CHUNK_SIZE * 2
 MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
+
 
 class CaskType(CodeEnum):
     ACTIVE = (
@@ -445,6 +466,7 @@ class CaskHashSigner(CaskSigner, HasherSigner):
 
 CaskSigner.register("HashSigner", CaskHashSigner)
 
+
 class CaskadeConfig(SmAttr):
     """
     >>> cc = CaskadeConfig(origin=NULL_CAKE, catalog=BaseEntries.catalog())
@@ -458,6 +480,7 @@ class CaskadeConfig(SmAttr):
     >>> cc == cc2
     True
     """
+
     origin: Cake
     catalog: List[CatalogItem]
     max_cask_size: int = MAX_CASK_SIZE
@@ -477,7 +500,12 @@ class CaskadeMetadata:
     config: CaskadeConfig
     just_created: bool
 
-    def __init__(self, dir: Path, entry_types: Type[EntryType], config: Optional[CaskadeConfig] = None):
+    def __init__(
+        self,
+        dir: Path,
+        entry_types: Type[EntryType],
+        config: Optional[CaskadeConfig] = None,
+    ):
         self.dir = dir
         self.entry_types = entry_types
         self.just_created = not self.dir.exists()
@@ -487,8 +515,8 @@ class CaskadeMetadata:
 
             if config is None:
                 self.config = CaskadeConfig(
-                    origin=self.caskade_id,
-                    catalog=entry_types.catalog())
+                    origin=self.caskade_id, catalog=entry_types.catalog()
+                )
             else:
                 config.origin = self.caskade_id
                 config.catalog = entry_types.catalog()
@@ -529,12 +557,12 @@ class CaskadeMetadata:
         return Record_PACKER.size + len(pack)
 
     def size_of_checkpoint(self):
-        return self.config.signature_size() + self.size_of_entry(BaseEntries.CHECK_POINT)
+        return self.config.signature_size() + self.size_of_entry(
+            BaseEntries.CHECK_POINT
+        )
 
     def size_of_header(self):
         return self.size_of_entry(BaseEntries.CASK_HEADER)
 
     def size_of_end_sequence(self):
         return self.size_of_entry(BaseEntries.NEXT_CASK) + self.size_of_checkpoint()
-
-
