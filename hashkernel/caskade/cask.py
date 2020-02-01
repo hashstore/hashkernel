@@ -10,6 +10,7 @@ from hashkernel.caskade import CaskType, SegmentTracker, BaseEntries, \
     Record, CaskHeaderEntry, CheckPoint, CheckPointType, DataLocation, \
     Record_PACKER, DataValidationError, LinkEntry, EntryType, \
     CaskadeMetadata, AccessError, CaskadeConfig, NotQuietError
+from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import HashKey
 from hashkernel.time import nanotime_now
@@ -262,12 +263,12 @@ class Caskade:
     check_points: List[CheckPoint]
     permalinks: Dict[Cake, Cake]
 
-    def __init__(self, dir: Union[Path, str], entry_types:Type[EntryType], config: Optional[CaskadeConfig] = None):
+    def __init__(self, path: Union[Path, str], entry_types:Type[EntryType], config: Optional[CaskadeConfig] = None):
         self.casks = {}
         self.data_locations = {}
         self.permalinks = {}
         self.check_points = []
-        self.meta = CaskadeMetadata(Path(dir).absolute(), entry_types, config)
+        self.meta = CaskadeMetadata(ensure_path(path).absolute(), entry_types, config)
         if self.meta.just_created:
             self._set_active(CaskFile(self, self.meta.caskade_id, CaskType.ACTIVE))
             self.active.create_file()

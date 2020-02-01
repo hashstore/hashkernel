@@ -76,10 +76,10 @@ class OptionalCaskade(Caskade):
     tags: Dict[Cake, List[Tag]]
     derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
 
-    def __init__(self, dir: Union[Path, str], config: Optional[CaskadeConfig] = None):
-        Caskade.__init__(self, dir, OptionalEntries, config)
+    def __init__(self, path: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.derived = defaultdict(dict)
         self.tags = defaultdict(list)
+        Caskade.__init__(self, path, OptionalEntries, config)
 
     def tag(self, src: Cake, tag: Tag):
         self.assert_write()

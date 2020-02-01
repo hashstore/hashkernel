@@ -13,7 +13,8 @@ def py_files(filename):
     )
 
 
-run_envs = ["hk36", "hk37", "hk38"]
+# run_envs = ["hk36", "hk37", "hk38"]
+run_envs = ["hk36"]
 
 
 def os_system_in_env(e, cmd):
