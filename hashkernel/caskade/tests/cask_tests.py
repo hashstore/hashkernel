@@ -20,7 +20,8 @@ from hashkernel.caskade import (
     Record_PACKER,
 )
 from hashkernel.caskade.cask import Caskade, BaseCaskade
-from hashkernel.caskade.optional import Tag, OptionalCaskade
+from hashkernel.caskade.optional import Tag, OptionalCaskade, \
+    OptionalEntries
 from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
@@ -181,11 +182,11 @@ def test_3steps(name, caskade_cls, config):
     if caskade_cls == OptionalCaskade :
         a4_derived = Cake.from_bytes(a4_bytes[:100])
         caskade.save_derived(a4, a4_permalink, a4_derived)
-        sp.add(caskade.meta.size_of_entry(BaseEntries.DERIVED))
+        sp.add(caskade.meta.size_of_entry(OptionalEntries.DERIVED))
 
         a4_tag = Tag(name="Hello")
         caskade.tag(a4, a4_tag)
-        sp.add(caskade.meta.size_of_dynamic_entry(BaseEntries.TAG, a4_tag))
+        sp.add(caskade.meta.size_of_dynamic_entry(OptionalEntries.TAG, a4_tag))
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
