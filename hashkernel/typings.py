@@ -154,6 +154,43 @@ def is_NamedTuple(cls):
     return False
 
 
+def is_subclass(o, super_cls):
+    """
+    Properly recognizes subclasses of NamedTuple
+
+    >>> class AB(typing.NamedTuple):
+    ...    a: int
+    ...    b: float
+    ...
+    >>> issubclass(AB, tuple)
+    True
+    >>> issubclass(AB, object)
+    True
+    >>> issubclass(AB, typing.NamedTuple)
+    False
+
+    issubclass() does not recognize that AB is subclass of `NamedTuple`
+
+
+    >>> is_subclass(AB, object)
+    True
+    >>> is_subclass(AB, tuple)
+    True
+    >>> is_subclass(AB, typing.NamedTuple)
+    True
+    >>> is_subclass(typing.NamedTuple, AB)
+    False
+
+
+    """
+    if super_cls == o:
+        return True
+    if super_cls == typing.NamedTuple:
+        return is_NamedTuple(o)
+    if o == typing.NamedTuple:
+        return super_cls in (typing.NamedTuple, tuple, object)
+    return issubclass(o, super_cls)
+
 class OnlyAnnotatedProperties:
     """
     >>> class A(OnlyAnnotatedProperties):
@@ -193,3 +230,18 @@ class OnlyAnnotatedProperties:
                     raise ValueError(f"Wrong type (value={repr(v)}) for attribute: {k}")
             else:
                 raise ValueError(f"Required attribute: {k}")
+
+
+def is_callable(fn):
+    """
+    >>> def fn():
+    ...     pass
+    ...
+    >>> x = 5
+    >>> is_callable(x)
+    False
+    >>> is_callable(fn)
+    True
+
+    """
+    return hasattr(fn,'__call__')

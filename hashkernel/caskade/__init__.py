@@ -1,17 +1,13 @@
 import os
-import time
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    Generic,
     Iterable,
     List,
     NamedTuple,
     Optional,
     Tuple,
     Type,
-    TypeVar,
     Union,
 )
 
@@ -21,7 +17,6 @@ from hashkernel import CodeEnum, MetaCodeEnumExtended, dump_jsonable, load_jsona
 from hashkernel.bakery import (
     CAKE_TYPE_PACKER,
     NULL_CAKE,
-    BlockStream,
     Cake,
     CakeType,
     CakeTypes,
@@ -35,17 +30,15 @@ from hashkernel.packer import (
     INT_8,
     INT_32,
     NANOTIME,
-    SIZED_BYTES,
-    UTF8_GREEDY_STR,
     UTF8_STR,
     PackerLibrary,
     ProxyPacker,
     TuplePacker,
     build_code_enum_packer,
-)
+    Packer, named_tuple_packer, ensure_packer)
 from hashkernel.smattr import SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
-
+from hashkernel.typings import is_callable
 
 """
 Somewhat inspired by BitCask
@@ -176,26 +169,23 @@ class CheckPointType(CodeEnum):
     )
 
 
-_COMPONENTS_PACKERS = PackerLibrary().register_all(
-    (str, lambda _: UTF8_GREEDY_STR),
+def named_tuple_resolver(cls: type) -> Packer :
+    return build_named_tuple_packer(cls, PACKERS.get_packer_by_type)
+
+
+PACKERS = PackerLibrary().register_all(
     (Cake, lambda _: Cake.__packer__),
-    (bytes, lambda _: GREEDY_BYTES),
-    (int, lambda _: INT_32),
+    (HashKey, lambda _: HashKey.__packer__),
     (nanotime, lambda _: NANOTIME),
     (CakeType, lambda _: CAKE_TYPE_PACKER),
     (CodeEnum, build_code_enum_packer),
-)
-
-PACKERS = PackerLibrary().register_all(
-    (bytes, lambda _: SIZED_BYTES),
-    (SmAttr, lambda t: ProxyPacker(t, SIZED_BYTES)),
-    (
-        tuple,
-        lambda t: build_named_tuple_packer(t, _COMPONENTS_PACKERS.get_packer_by_type),
-    ),
+    (bytes, lambda _: GREEDY_BYTES),
+    (SmAttr, lambda t: ProxyPacker(t, GREEDY_BYTES)),
+    (NamedTuple, named_tuple_resolver),
 )
 
 
+@PACKERS.register(named_tuple_packer(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE))
 class CatalogItem(NamedTuple):
     entry_code: int
     entry_name: str
@@ -203,48 +193,56 @@ class CatalogItem(NamedTuple):
     has_payload: bool
 
 
-PACKERS.register_packer(
-    CatalogItem,
-    TuplePacker(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE, cls=CatalogItem),
-)
+@PACKERS.register(named_tuple_packer(Cake.__packer__, HashKey.__packer__))
+class StreamHeader(NamedTuple):
+    stream_id: Cake
+    chunk_id: HashKey
 
 
-class CheckpointEntry(NamedTuple):
+@PACKERS.register(named_tuple_packer(Cake.__packer__, INT_8, HashKey.__packer__))
+class DataLinkHeader(NamedTuple):
+    from_id: Cake
+    purpose: int
+    to_id: HashKey
+
+
+@PACKERS.register(named_tuple_packer(HashKey.__packer__, INT_32, INT_32,  build_code_enum_packer(CheckPointType)))
+class CheckpointHeader(NamedTuple):
+    checkpoint_id: HashKey
     start: int
     end: int
     type: CheckPointType
 
 
-class CheckPoint(NamedTuple):
-    cask_id: Cake
-    checkpoint_id: Cake
-    start: int
-    end: int
-    type: CheckPointType
-
-
+@PACKERS.resolve
 class CaskHeaderEntry(NamedTuple):
     caskade_id: Cake
-    checkpoint_id: Cake
+    checkpoint_id: HashKey
+    prev_cask_id: Cake
+    # TODO: entries_catalog: HashKey
 
+@PACKERS.register(named_tuple_packer(INT_8, NANOTIME))
+class Record(NamedTuple):
+    entry_code: int
+    tstamp: nanotime
 
-class LinkEntry(NamedTuple):
-    dest: Cake
+Record_PACKER = PACKERS.get_packer_by_type(Record)
 
+PAYLOAD_SIZE_PACKER = ADJSIZE_PACKER_4
 
 class EntryType(CodeEnum):
-    def __init__(self, code, entry_cls, doc):
+    def __init__(self, code, header:Union[type,Packer,None], payload:Union[type,Packer,None], doc):
         CodeEnum.__init__(self, code, doc)
-        self.entry_cls = entry_cls
-        self.entry_packer = None
-        if self.entry_cls is not None:
-            self.entry_packer = PACKERS[self.entry_cls]
-            self.size = self.entry_packer.size
+        self.header_packer = ensure_packer(header, PACKERS)
+        self.payload_packer = ensure_packer(payload, PACKERS)
+        if self.header_packer is None:
+            self.header_size = 0
         else:
-            self.size = 0
+            assert self.header_packer.fixed_size()
+            self.header_size = self.header_packer.size
 
     def build_catalog_item(self):
-        return CatalogItem(self.code, self.name, self.size or 0, self.size is None)
+        return CatalogItem(self.code, self.name, self.header_size, self.payload_packer is not None)
 
     @classmethod
     def catalog(cls):
@@ -266,77 +264,85 @@ class EntryType(CodeEnum):
 
         return decorate
 
+    def pack_entry(self, rec: Record, header: Any, payload:Any)->bytes:
+        header_buff = Record_PACKER.pack(rec)
+        if self.header_packer is not None:
+            header_buff += self.header_packer.pack(header)
+        return self.pack_payload(header_buff, payload)
+
+    def pack_payload(self, header_buff:bytes, payload: Any):
+        if self.payload_packer is None:
+            assert payload is None
+            payload_buff = b''
+        else:
+            assert payload is not None
+            if is_callable(payload):
+                payload = payload(header_buff)
+            data_buff = self.payload_packer.pack(payload)
+            payload_buff = PAYLOAD_SIZE_PACKER.pack(
+                len(data_buff)) + data_buff
+        return header_buff + payload_buff
+
 
 class BaseEntries(EntryType):
-    """
-    >>> [ (e.name, e.code, e.size) for e in BaseEntries] #doctest: +NORMALIZE_WHITESPACE
-    [('DATA', 0, None), ('CHECK_POINT', 1, 9), ('NEXT_CASK', 2, 0),
-    ('CASK_HEADER', 3, 66), ('PERMALINK', 4, 33)]
-
-    """
 
     DATA = (
         0,
-        bytes,
+        HashKey.__packer__,
+        GREEDY_BYTES,
         """
-        Data identified by `src` hash
+        Data identified by header HashKey
         """,
     )
 
-    # STREAM = (
-    #     1,
-    #
-    # )
+    STREAM = (
+        1,
+        StreamHeader,
+        GREEDY_BYTES,
+        "stream chank"
+    )
+
+    LINK = (
+        2,
+        DataLinkHeader,
+        None,
+        "Link"
+    )
 
     CHECK_POINT = (
-        1,
-        CheckpointEntry,
+        3,
+        CheckpointHeader,
+        GREEDY_BYTES,
         """ 
-        `start` and `end` - absolute positions in cask file 
-        `src` - hash of section of data from previous checkpoint 
-        `type` - reason why checkpoint happened
+        `start` and `end` - absolute positions in cask file, start points 
+         begining of previous checkpoint or begining of cask if there is 
+         no checkpioints yet. `checkpointid` - hash of section beween 
+         start and end. `type` - reason why checkpoint happened. Payload 
+         contains signature fo header.
         """,
     )
 
     NEXT_CASK = (
-        2,
+        4,
+        Cake.__packer__,
         None,
         """
-        `src` has address of next cask segment. This entry has to 
+        header points to next cask segment. This entry has to 
         precede ON_NEXT_CASK checkpoint.
         """,
     )
 
     CASK_HEADER = (
-        3,
+        5,
         CaskHeaderEntry,
+        None,
         """
-        first entry in any cask, `src` has cask_id of previous cask 
+        first entry in any cask, `prev_cask_id` has cask_id of previous cask 
         or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
         copied from `src` last checkpoint of previous cask or NULL_CAKE 
         and caskade_id points to caskade_id of series of cask.  
         """,
     )
-
-    PERMALINK = (
-        4,
-        LinkEntry,
-        """
-        `src` - points to data Cake
-        `dest` - permanent guid  
-        """,
-    )
-
-
-class Record(NamedTuple):
-    entry_code: int
-    tstamp: nanotime
-    src: Cake
-
-
-Record_PACKER = TuplePacker(INT_8, NANOTIME, Cake.__packer__, cls=Record)
-
-PACKERS.register_packer(Record, Record_PACKER)
 
 
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
@@ -377,6 +383,9 @@ class DataLocation(NamedTuple):
     cask_id: Cake
     offset: int
     size: int
+
+    def load(self, fbytes:FileBytes) -> bytes:
+        return fbytes[self.offset: self.offset+self.size]
 
 
 class SegmentTracker:
@@ -427,14 +436,13 @@ class SegmentTracker:
                 return CheckPointType.ON_SIZE
         return None
 
-    def checkpoint(self, cpt: CheckPointType) -> Tuple[Record, CheckpointEntry]:
+    def checkpoint(self, cpt: CheckPointType) -> Tuple[Record, CheckpointHeader]:
         return (
             Record(
                 BaseEntries.CHECK_POINT.code,
-                nanotime_now(),
-                src=(Cake(None, digest=self.hasher.digest(), type=CakeTypes.NO_CLASS)),
+                nanotime_now()
             ),
-            CheckpointEntry(self.start_offset, self.current_offset, cpt),
+            CheckpointHeader(HashKey(self.hasher), self.start_offset, self.current_offset, cpt),
         )
 
     def next_tracker(self):
@@ -471,9 +479,9 @@ class CaskadeConfig(SmAttr):
     """
     >>> cc = CaskadeConfig(origin=NULL_CAKE, catalog=BaseEntries.catalog())
     >>> str(cc) #doctest: +NORMALIZE_WHITESPACE
-    '{"auto_chunk_cutoff": 4194304, "catalog": [[0, "DATA", 0, true],
-    [1, "CHECK_POINT", 9, false], [2, "NEXT_CASK", 0, false],
-    [3, "CASK_HEADER", 66, false], [4, "PERMALINK", 33, false]],
+    '{"auto_chunk_cutoff": 4194304, "catalog": [[0, "DATA", 32, true],
+    [1, "STREAM", 65, true], [2, "LINK", 66, false], [3, "CHECK_POINT", 41, true],
+    [4, "NEXT_CASK", 33, false], [5, "CASK_HEADER", 98, false]],
     "checkpoint_size": 268435456, "checkpoint_ttl": null, "max_cask_size": 2147483648,
     "origin": "RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi50", "signer": null}'
     >>> cc2 = CaskadeConfig(str(cc))
@@ -544,21 +552,33 @@ class CaskadeMetadata:
         assert CHUNK_SIZE_2x < self.config.checkpoint_size
         assert CHUNK_SIZE_2x < self.config.max_cask_size <= MAX_CASK_SIZE
 
-    def pack_entry(self, rec: Record, entry: Any):
-        entry_type = self.entry_types.find_by_code(rec.entry_code)
-        packer = entry_type.entry_packer
-        return Record_PACKER.pack(rec) + packer.pack(entry)
+    def sign(self, header_buffer):
+        signature = b''
+        if self.config.signer is not None:
+            signature = self.config.signer.sign(header_buffer)
+        return signature
 
-    def size_of_entry(self, et: EntryType) -> int:
-        return Record_PACKER.size + et.size
+    def validate_signature(self, header_buffer:bytes, signature:bytes):
+        if self.config.signer is not None:
+            return self.config.signer.validate(header_buffer,signature)
+        return False
 
-    def size_of_dynamic_entry(self, et: EntryType, entry: Any) -> int:
-        pack = et.entry_packer.pack(entry)
-        return Record_PACKER.size + len(pack)
+    def pack_entry(self, rec: Record, header: Any, payload:Any)->bytes:
+        et:EntryType = self.entry_types.find_by_code(rec.entry_code)
+        return et.pack_entry(rec, header, payload)
+
+    def size_of_entry(self, et: EntryType, payload_size: int = 0) -> int:
+        size = Record_PACKER.size + et.header_size
+        if et.payload_packer is None:
+            assert payload_size == 0
+        else:
+            size_of_size = len(PAYLOAD_SIZE_PACKER.pack(payload_size))
+            size += size_of_size + payload_size
+        return size
 
     def size_of_checkpoint(self):
-        return self.config.signature_size() + self.size_of_entry(
-            BaseEntries.CHECK_POINT
+        return self.size_of_entry(
+            BaseEntries.CHECK_POINT, self.config.signature_size()
         )
 
     def size_of_header(self):

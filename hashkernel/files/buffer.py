@@ -1,6 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple, Union
+from typing import Tuple, Union, overload
 
 BUFFER_BITS = 14
 BUFFER_LEN = 1 << BUFFER_BITS  # 16k
@@ -37,6 +37,14 @@ class FileBytes:
             offset - offset within segment
         """
         return position >> BUFFER_BITS, position & BUFFER_MASK
+
+    @overload
+    def __getitem__(self, item: int) -> int:
+        ...
+
+    @overload
+    def __getitem__(slice, item: slice) -> bytes:
+        ...
 
     def __getitem__(self, item) -> Union[int, bytes]:
         if isinstance(item, int):

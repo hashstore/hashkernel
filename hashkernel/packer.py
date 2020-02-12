@@ -5,10 +5,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from nanotime import nanotime
 
-from hashkernel import Jsonable, OneBit, utf8_decode, utf8_encode
-from hashkernel.plugins import query_plugins
-from hashkernel.typings import is_NamedTuple
+from hashkernel import OneBit, utf8_decode, utf8_encode
+from hashkernel.files.buffer import FileBytes
+from hashkernel.typings import is_NamedTuple, is_subclass
 
+Buffer=Union[FileBytes,bytes]
 
 class NeedMoreBytes(Exception):
     def __init__(self, how_much: int = None):
@@ -25,15 +26,18 @@ class Packer(metaclass=abc.ABCMeta):
     cls: type
     size: Optional[int] = None
 
+    def fixed_size(self)->bool:
+        return self.size is not None
+
     @abc.abstractmethod
     def pack(self, v: Any) -> bytes:
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[Any, int]:
         raise NotImplementedError("subclasses must override")
 
-    def unpack_whole_buffer(self, buffer: bytes) -> Any:
+    def unpack_whole_buffer(self, buffer: Buffer) -> Any:
         obj, offset = self.unpack(buffer, 0)
         assert len(buffer) == offset
         return obj
@@ -108,7 +112,7 @@ class AdjustableSizePacker(Packer):
                 sz_bytes.append(numerical)
         raise ValueError(f"Size is too big: {v}")
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[int, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[int, int]:
         """
 
         Returns:
@@ -137,7 +141,7 @@ class SizedPacker(Packer):
     def pack(self, v: bytes) -> bytes:
         return self.size_packer.pack(len(v)) + v
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[bytes, int]:
         """
         Returns:
               value: unpacked value
@@ -159,7 +163,7 @@ class GreedyBytesPacker(Packer):
     def pack(self, v: bytes) -> bytes:
         return v
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[bytes, int]:
         """
         Returns:
               value: unpacked value
@@ -179,7 +183,7 @@ class FixedSizePacker(Packer):
         assert len(v) == self.size, f"{len(v)} != {self.size}"
         return v
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[bytes, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[bytes, int]:
         """
         Returns:
               value: unpacked value
@@ -199,7 +203,7 @@ class TypePacker(Packer):
     def pack(self, v: Any) -> bytes:
         return struct.pack(self.fmt, v)
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[Any, int]:
         """
         Returns:
               value: unpacked value
@@ -230,7 +234,7 @@ class ProxyPacker(Packer):
     def pack(self, v: Any) -> bytes:
         return self.packer.pack(self.to_proxy(v))
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[Any, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[Any, int]:
         """
         Returns:
               value: unpacked value
@@ -260,7 +264,7 @@ class TuplePacker(Packer):
         else:
             raise AssertionError(f"size mismatch {tuple_size}: {values}")
 
-    def unpack(self, buffer: bytes, offset: int) -> Tuple[tuple, int]:
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[tuple, int]:
         """
         Returns:
               value: unpacked value
@@ -307,7 +311,7 @@ def build_code_enum_packer(code_enum_cls) -> Packer:
 
 
 def unpack_constraining_greed(
-    buffer: bytes, offset: int, size: int, greedy_packer: Packer
+    buffer: Buffer, offset: int, size: int, greedy_packer: Packer
 ) -> Tuple[Any, int]:
     """
     >>> unpack_constraining_greed(b'abc', 0, 3, UTF8_GREEDY_STR)
@@ -327,27 +331,14 @@ def unpack_constraining_greed(
     return greedy_packer.unpack_whole_buffer(new_buffer), new_offset
 
 
-def ensure_packer(o: Any) -> Packer:
-    """
-    >>> class A:
-    ...     def __init__(self,i): self.i = i
-    ...     def __int__(self): return i
-    ...
-    >>> A.__packer__ = ProxyPacker(A,INT_32,int)
-    >>> ensure_packer(A) == A.__packer__
-    True
-    >>> ensure_packer(A.__packer__) == A.__packer__
-    True
-    """
-    if isinstance(o, Packer):
-        return o
-    elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
-        return o.__packer__
-    raise AssertionError(f"Cannot extract packer out: {repr(o)}")
 
 
 PackerFactory = Callable[[type], Packer]
 
+def named_tuple_packer(*parts:Packer):
+    def factory(cls:type):
+        return TuplePacker(*parts,cls=cls)
+    return factory
 
 class PackerLibrary:
 
@@ -372,7 +363,7 @@ class PackerLibrary:
         else:
             for i in range(len(self.factories)):
                 factory_cls, factory = self.factories[i]
-                if issubclass(key, factory_cls):
+                if is_subclass(key, factory_cls):
                     packer = factory(key)
                     self.cache[key] = packer
                     return packer
@@ -380,21 +371,70 @@ class PackerLibrary:
                 return self.next_lib.get_packer_by_type(key)
         raise KeyError(key)
 
+    def resolve(self, key_cls:type):
+        """
+        decorator that make sure that PackerLibra is capable to
+        build packer of particular `key_cls`
+
+        :param key_cls:
+        :return:
+        """
+        self.get_packer_by_type(key_cls)
+        return key_cls
+
+    def register(self, packer: Union[PackerFactory, Packer]):
+        """
+        decorator that register particular `packer` with `key_cls`
+        in library
+        :param packer:
+        :return:
+        """
+        def decorate(key_cls:type):
+            self.register_packer(key_cls,packer)
+            return key_cls
+        return decorate
+
     def register_packer(self, key: type, packer: Union[PackerFactory, Packer]):
         self.cache = {}
         packer_factory = (lambda _: packer) if isinstance(packer, Packer) else packer
         for i in range(len(self.factories)):
             i_type = self.factories[i][0]
             assert i_type != key, "Conflict: Registering {key} twice"
-            if issubclass(key, i_type):
+            if is_subclass(key, i_type):
                 self.factories.insert(i, (key, packer_factory))
                 return
         self.factories.append((key, packer_factory))
 
-    def register_all(self, *pack_defs: Tuple[type, PackerFactory]):
+    def register_all(self, *pack_defs: Tuple[type, Union[PackerFactory, Packer]]):
         for t in pack_defs:
             self.register_packer(*t)
         return self
+
+def ensure_packer(o: Any, packerlib:PackerLibrary = None) -> Optional[Packer]:
+    """
+    >>> class A:
+    ...     def __init__(self,i): self.i = int(i)
+    ...     def __int__(self): return i
+    ...     def __str__(self): return f'{i}'
+    ...
+    >>> A.__packer__ = ProxyPacker(A,INT_32,int)
+    >>> ensure_packer(A) == A.__packer__
+    True
+    >>> ensure_packer(A.__packer__) == A.__packer__
+    True
+    >>> s_packer = ProxyPacker(A,UTF8_STR,str)
+    >>> l = PackerLibrary()
+    >>> l.register_packer(A,s_packer)
+    >>> ensure_packer(A,l) == s_packer
+    True
+    """
+    if isinstance(o, Packer) or o is None:
+        return o
+    elif isinstance(o, type) and packerlib is not None and o in packerlib:
+        return packerlib[o]
+    elif hasattr(o, "__packer__") and isinstance(o.__packer__, Packer):
+        return o.__packer__
+    return None
 
 
 class PackerDefinitions:
