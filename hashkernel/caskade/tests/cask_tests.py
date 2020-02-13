@@ -184,12 +184,12 @@ def test_3steps(name, caskade_cls, config):
     caskade.set_link(a4_permalink, 0, a4)
     sp.add(caskade.meta.size_of_entry(BaseEntries.LINK))
 
+    a4_derived = HashKey.from_bytes(a4_bytes[:100])
+    a4_tag = Tag(name="Hello")
     if caskade_cls == OptionalCaskade:
-        a4_derived = HashKey.from_bytes(a4_bytes[:100])
         caskade.save_derived(a4, a4_permalink, a4_derived)
         sp.add(caskade.meta.size_of_entry(OptionalEntries.DERIVED))
 
-        a4_tag = Tag(name="Hello")
         caskade.tag(a4_permalink, a4_tag)
         sp.add(caskade.meta.size_of_entry(OptionalEntries.TAG, len(bytes(a4_tag))))
 
@@ -248,6 +248,9 @@ def test_3steps(name, caskade_cls, config):
         assert k == HashKey.from_bytes(read_caskade[k])
         assert k == HashKey.from_bytes(caskade[k])
         # logit(str(k)[:8])
+    if caskade_cls == OptionalCaskade:
+        assert read_caskade.derived[a4][a4_permalink]==a4_derived
+        assert caskade.tags[a4_permalink][0] == a4_tag
 
     assert read_caskade.datalinks[a4_permalink][0] == a4
     # assert read_caskade.tags[a4] == [a4_tag]
