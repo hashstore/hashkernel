@@ -641,6 +641,29 @@ class MetaCodeEnumExtended(EnumMeta):
         # "TypeError: type.__init__() takes no keyword arguments" exception.
 
 
+class LogicRegistry:
+    """
+    Associate logic with CodeEnum using code as key
+    """
+    logic_by_code: Dict[int, Callable[...,Any]] = {}
+
+    def add(self, e: CodeEnumT):
+        def decorate(fn):
+            assert e.code not in self.logic_by_code
+            self.logic_by_code[e.code] = fn
+            return fn
+        return decorate
+
+    def get(self, e: Union[CodeEnumT,int]):
+        return self.logic_by_code[self.code(e)]
+
+    def code(self, e: Union[CodeEnumT,int])->int:
+        return e if isinstance(e, int) else e.code
+
+    def has(self, e: Union[CodeEnumT,int]):
+        return self.code(e) in self.logic_by_code
+
+
 def delegate_factory(cls: type, delegate_attrs: Iterable[str]) -> Callable[[Any], Any]:
     """
     Create factory function that searches object `o` for `delegate_attrs`

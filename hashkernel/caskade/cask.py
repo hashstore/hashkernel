@@ -1,10 +1,12 @@
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union, NamedTuple
+from typing import Any, Dict, List, Optional, Type, Union, NamedTuple, \
+    ClassVar
 
 from collections import defaultdict
 from nanotime import nanotime
 
+from hashkernel import LogicRegistry
 from hashkernel.bakery import NULL_CAKE, BlockStream, Cake, CakeType, CakeTypes
 from hashkernel.caskade import (
     AccessError,
@@ -130,71 +132,16 @@ class CaskFile:
         if read_opts.validate_checkpoints:
             self.tracker = SegmentTracker(curr_pos)
         while curr_pos < len(fbytes):
-            rec, new_pos = Record_PACKER.unpack(fbytes, curr_pos)
-            entry_code = rec.entry_code
-            entry_type:EntryType = self.caskade.meta.entry_types.find_by_code(
-                entry_code)
-            if entry_type.header_packer is None:
-                header = None
-            else:
-                header, new_pos = entry_type.header_packer.unpack(fbytes, new_pos)
-            end_of_payload = end_of_header = new_pos
-            if entry_type.payload_packer is None:
-                payload_dl = None
-            else:
-                payload_size, new_pos = PAYLOAD_SIZE_PACKER.unpack(fbytes, new_pos)
-                payload_dl = DataLocation(self.guid, new_pos, payload_size)
-                end_of_payload = new_pos + payload_size
+            eh = self.caskade.new_entry_helper(self, fbytes, curr_pos, read_opts)
+            if eh.has_logic():
+                check_point_to_add = eh.load_entry()
+                if check_point_to_add is not None and check_point_collector is not None:
+                    check_point_collector.insert(cp_index, check_point_to_add)
+                    cp_index += 1
+                if self.tracker is not None:
+                    self.tracker.update(fbytes[eh.start_of_entry:eh.end_of_entry])
+            curr_pos = eh.end_of_entry
 
-            check_point_to_add = None
-            if entry_code == BaseEntries.DATA.code:
-                hkey:HashKey = header
-                self.caskade._add_data_location(hkey, payload_dl)
-
-                if read_opts.validate_data:
-                    if HashKey.from_bytes(
-                            payload_dl.load(fbytes)) != hkey:
-                        raise DataValidationError(hkey)
-
-            elif entry_code == BaseEntries.CASK_HEADER.code:
-                cask_head: CaskHeaderEntry = header
-                # add virtual checkpoint from cask header
-                check_point_to_add = CheckPoint(
-                    self.guid,
-                    cask_head.checkpoint_id,
-                    0,
-                    0,
-                    CheckPointType.ON_CASK_HEADER,
-                )
-            elif entry_code == BaseEntries.LINK.code:
-                assert payload_dl is None
-                data_link: DataLinkHeader = header
-                self.caskade.datalinks[data_link.from_id][data_link.purpose] = data_link.to_id
-            elif entry_code == BaseEntries.CHECK_POINT.code:
-                cp_entry: CheckpointHeader = header
-                check_point_to_add = CheckPoint(self.guid, *cp_entry)
-                if payload_dl.size and read_opts.validate_signatures:
-                    if not self.caskade.meta.validate_signature(
-                        fbytes[curr_pos:end_of_header],
-                        payload_dl.load(fbytes),
-                    ):
-                        raise ValueError("Cannot validate")
-                if read_opts.validate_checkpoints and self.tracker.writen_bytes_since_previous_checkpoint > 0:
-                    calculated = HashKey(self.tracker.hasher)
-                    if calculated != cp_entry.checkpoint_id:
-                        raise DataValidationError(f'{calculated} != {cp_entry.checkpoint_id}')
-                    self.tracker = self.tracker.next_tracker()
-            #TODO implementation for NEXT_CASK, and STREAM
-            elif self.caskade.process_sub_entry(rec, header):
-                pass
-
-            if check_point_to_add is not None and check_point_collector is not None:
-                check_point_collector.insert(cp_index, check_point_to_add)
-                cp_index += 1
-
-            if self.tracker is not None:
-                self.tracker.update(fbytes[curr_pos:end_of_payload])
-            curr_pos = end_of_payload
 
     def write_checkpoint(self, cpt: CheckPointType)->HashKey:
         rec, header = self.tracker.checkpoint(cpt)
@@ -287,6 +234,83 @@ class CaskFile:
             return buff
 
 
+class EntryHelper(object):
+    registry:ClassVar[LogicRegistry] = LogicRegistry()
+
+    def __init__(self, cask:CaskFile, fbytes:FileBytes, curr_pos:int, read_opts:ReadOptions):
+        self.cask = cask
+        self.fbytes = fbytes
+        self.start_of_entry = curr_pos
+        self.read_opts = read_opts
+        self.rec, new_pos = Record_PACKER.unpack(fbytes, curr_pos)
+        self.entry_code = self.rec.entry_code
+        entry_type: EntryType = self.cask.caskade.meta.entry_types.find_by_code(
+            self.entry_code)
+        if entry_type.header_packer is None:
+            self.header = None
+        else:
+            self.header, new_pos = entry_type.header_packer.unpack(fbytes, new_pos)
+        self.end_of_entry = self.end_of_header = new_pos
+        if entry_type.payload_packer is None:
+            self.payload_dl = None
+        else:
+            payload_size, new_pos = PAYLOAD_SIZE_PACKER.unpack(fbytes, new_pos)
+            self.payload_dl = DataLocation(cask.guid, new_pos, payload_size)
+            self.end_of_entry = new_pos + payload_size
+
+    def has_logic(self)->bool:
+        return self.registry.has(self.rec.entry_code)
+
+    def load_entry(self)->Optional[CheckPoint]:
+        return self.registry.get(self.rec.entry_code)(self)
+
+    @registry.add(BaseEntries.DATA)
+    def load_DATA(self):
+        hkey: HashKey = self.header
+        self.cask.caskade._add_data_location(hkey, self.payload_dl)
+
+        if self.read_opts.validate_data:
+            if HashKey.from_bytes(
+                    self.payload_dl.load(self.fbytes)) != hkey:
+                raise DataValidationError(hkey)
+
+    @registry.add(BaseEntries.CASK_HEADER)
+    def load_CASH_HEADER(self)->CheckPoint:
+        cask_head: CaskHeaderEntry = self.header
+        # add virtual checkpoint from cask header
+        return CheckPoint(
+            self.cask.guid,
+            cask_head.checkpoint_id,
+            0,
+            0,
+            CheckPointType.ON_CASK_HEADER,
+        )
+
+    @registry.add(BaseEntries.LINK)
+    def load_LINK(self):
+        assert self.payload_dl is None
+        data_link: DataLinkHeader = self.header
+        self.cask.caskade.datalinks[data_link.from_id][
+            data_link.purpose] = data_link.to_id
+
+    @registry.add(BaseEntries.CHECK_POINT)
+    def load_CHECK_POINT(self)->CheckPoint:
+        cp_entry: CheckpointHeader = self.header
+        if self.payload_dl.size and self.read_opts.validate_signatures:
+            if not self.cask.caskade.meta.validate_signature(
+                    self.fbytes[self.start_of_entry:self.end_of_header],
+                    self.payload_dl.load(self.fbytes),
+            ):
+                raise ValueError("Cannot validate")
+        if self.read_opts.validate_checkpoints and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0:
+            calculated = HashKey(self.cask.tracker.hasher)
+            if calculated != cp_entry.checkpoint_id:
+                raise DataValidationError(
+                    f'{calculated} != {cp_entry.checkpoint_id}')
+            self.cask.tracker = self.cask.tracker.next_tracker()
+        return CheckPoint(self.cask.guid, *cp_entry)
+
+
 class Caskade:
     """
 
@@ -329,6 +353,9 @@ class Caskade:
         self.active = file
         if file is not None:
             self.casks[self.active.guid] = self.active
+
+    def new_entry_helper(self, *args) -> EntryHelper:
+        return EntryHelper(*args)
 
     def is_file_belong(self, file: CaskFile):
         return file.guid.uniform_digest() == self.meta.caskade_id.uniform_digest()

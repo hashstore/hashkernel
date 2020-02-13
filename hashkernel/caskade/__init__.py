@@ -385,7 +385,10 @@ class DataLocation(NamedTuple):
     size: int
 
     def load(self, fbytes:FileBytes) -> bytes:
-        return fbytes[self.offset: self.offset+self.size]
+        return fbytes[self.offset: self.end_offset()]
+
+    def end_offset(self):
+        return self.offset + self.size
 
 
 class SegmentTracker:
