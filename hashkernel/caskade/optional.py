@@ -1,17 +1,21 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Union, \
+    ClassVar
 
+from hashkernel import LogicRegistry
 from hashkernel.bakery import Cake
 from hashkernel.caskade import BaseEntries, CaskadeConfig, EntryType, Record
-from hashkernel.caskade.cask import Caskade
+from hashkernel.caskade.cask import Caskade, EntryHelper
+from hashkernel.hashing import HashKey
 from hashkernel.mold import MoldConfig
 from hashkernel.smattr import SmAttr
 
 
-class DerivedEntry(NamedTuple):
+class DerivedHeader(NamedTuple):
+    src: HashKey
     filter: Cake
-    derived: Cake
+    derived: HashKey
 
 
 class Tag(SmAttr):
@@ -26,54 +30,46 @@ class Tag(SmAttr):
     link: Optional[Cake]
 
 
-class StoreSyncPoints(SmAttr):
-    """
-    map of all caskades mapped by particular store
-    """
-
-    caskades: Dict[Cake, Cake]
-
-
-class CaskadeSyncPoints(SmAttr):
-    """
-    map of all stores that tracking particular caskade
-    """
-
-    stores: Dict[Cake, Cake]
-
-
 @BaseEntries.extends()
 class OptionalEntries(EntryType):
     DERIVED = (
-        5,
-        DerivedEntry,
+        6,
+        DerivedHeader,
+        None,
         """
         `src` - points to data Cake
         `filter` - filter points to logic that used to derive `src`
-        `data` points to derived data  
+        `derived` - points to derived data  
         """,
     )
 
     TAG = (
-        6,
-        Tag,
-        """
-        `src` - points to Cake
-        """,
-    )
-
-    CASCADE_SYNC = (
         7,
+        Cake,
         Tag,
         """
-        `src` - points to Cake
+        `header` - points to Cake
+        `payload` - tag body
         """,
     )
 
+class OptionalEntryHelper(EntryHelper):
+    registry:ClassVar[LogicRegistry] = LogicRegistry().add_all(EntryHelper.registry)
+
+    @registry.add(OptionalEntries.TAG)
+    def load_TAG(self):
+        k: Cake = self.header
+        tag: Tag = self.payload()
+        self.cask.caskade.tags[k].append(tag)
+
+    @registry.add(OptionalEntries.DERIVED)
+    def load_DERIVED(self):
+        drvd: DerivedHeader = self.header
+        self.cask.caskade.derived[drvd.src][drvd.filter] = drvd.derived
 
 class OptionalCaskade(Caskade):
     tags: Dict[Cake, List[Tag]]
-    derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
+    derived: Dict[HashKey, Dict[Cake, HashKey]]  # src -> filter -> derived_data
 
     def __init__(self, path: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.derived = defaultdict(dict)
@@ -85,20 +81,12 @@ class OptionalCaskade(Caskade):
         self.active.write_entry(OptionalEntries.TAG, src, tag)
         self.tags[src].append(tag)
 
-    def save_derived(self, src: Cake, filter: Cake, derived: Cake):
+    def save_derived(self, src: HashKey, filter: Cake, derived: HashKey):
         self.assert_write()
         self.active.write_entry(
-            OptionalEntries.DERIVED, src, DerivedEntry(filter, derived)
+            OptionalEntries.DERIVED, DerivedHeader(src, filter, derived), None
         )
         self.derived[src][filter] = derived
 
-    def process_sub_entry(self, rec: Record, entry: Any):
-        if rec.entry_code == OptionalEntries.TAG.code:
-            tag: Tag = entry
-            self.tags[rec.src].append(tag)
-        elif rec.entry_code == OptionalEntries.DERIVED.code:
-            derived_entry: DerivedEntry = entry
-            self.derived[rec.src][derived_entry.filter] = derived_entry.derived
-        else:
-            return False
-        return True
+    def new_entry_helper(self, *args):
+        return OptionalEntryHelper(*args)

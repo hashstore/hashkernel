@@ -243,15 +243,15 @@ class EntryHelper(object):
         self.start_of_entry = curr_pos
         self.read_opts = read_opts
         self.rec, new_pos = Record_PACKER.unpack(fbytes, curr_pos)
-        self.entry_code = self.rec.entry_code
-        entry_type: EntryType = self.cask.caskade.meta.entry_types.find_by_code(
-            self.entry_code)
-        if entry_type.header_packer is None:
+        entry_code = self.rec.entry_code
+        self.entry_type: EntryType = self.cask.caskade.meta.entry_types.find_by_code(
+            entry_code)
+        if self.entry_type.header_packer is None:
             self.header = None
         else:
-            self.header, new_pos = entry_type.header_packer.unpack(fbytes, new_pos)
+            self.header, new_pos = self.entry_type.header_packer.unpack(fbytes, new_pos)
         self.end_of_entry = self.end_of_header = new_pos
-        if entry_type.payload_packer is None:
+        if self.entry_type.payload_packer is None:
             self.payload_dl = None
         else:
             payload_size, new_pos = PAYLOAD_SIZE_PACKER.unpack(fbytes, new_pos)
@@ -263,6 +263,10 @@ class EntryHelper(object):
 
     def load_entry(self)->Optional[CheckPoint]:
         return self.registry.get(self.rec.entry_code)(self)
+
+    def payload(self) -> Any:
+        return self.entry_type.payload_packer.unpack_whole_buffer(
+            self.payload_dl.load(self.fbytes))
 
     @registry.add(BaseEntries.DATA)
     def load_DATA(self):
@@ -464,8 +468,6 @@ class Caskade:
         """
         self.data_locations[cake] = dp
 
-    def process_sub_entry(self, rec: Record, header: Any):
-        return False
 
 
 class BaseCaskade(Caskade):

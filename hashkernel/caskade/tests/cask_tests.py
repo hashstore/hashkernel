@@ -20,9 +20,8 @@ from hashkernel.caskade import (
     Record_PACKER,
 )
 from hashkernel.caskade.cask import BaseCaskade, Caskade
-# from hashkernel.caskade.optional import OptionalCaskade, OptionalEntries, Tag
+from hashkernel.caskade.optional import OptionalCaskade, OptionalEntries, Tag
 from hashkernel.hashing import HashKey
-from hashkernel.packer import SIZED_BYTES
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
 
@@ -147,13 +146,14 @@ def test_recover_no_checkpoints():
     [
         ("common", BaseCaskade, common_config),
         ("singer", BaseCaskade, common_singer),
-        # ("common_opt", OptionalCaskade, common_config),
-        # ("singer_opt", OptionalCaskade, common_singer),
+        ("common_opt", OptionalCaskade, common_config),
+        ("singer_opt", OptionalCaskade, common_singer),
     ],
 )
 def test_3steps(name, caskade_cls, config):
     dir = caskades / f"3steps_{name}"
     caskade = caskade_cls(dir, config=config)
+    print(caskade.meta.size_of_checkpoint())
     first_cask = caskade.active.guid
     assert caskade.active.tracker.current_offset == caskade.meta.size_of_header()
     a0 = caskade.write_bytes(rand_bytes(0, ONE_AND_QUARTER))
@@ -184,14 +184,14 @@ def test_3steps(name, caskade_cls, config):
     caskade.set_link(a4_permalink, 0, a4)
     sp.add(caskade.meta.size_of_entry(BaseEntries.LINK))
 
-    # if caskade_cls == OptionalCaskade:
-    #     a4_derived = Cake.from_bytes(a4_bytes[:100])
-    #     caskade.save_derived(a4, a4_permalink, a4_derived)
-    #     sp.add(caskade.meta.size_of_entry(OptionalEntries.DERIVED))
-    #
-    #     a4_tag = Tag(name="Hello")
-    #     caskade.tag(a4, a4_tag)
-    #     sp.add(caskade.meta.size_of_dynamic_entry(OptionalEntries.TAG, a4_tag))
+    if caskade_cls == OptionalCaskade:
+        a4_derived = HashKey.from_bytes(a4_bytes[:100])
+        caskade.save_derived(a4, a4_permalink, a4_derived)
+        sp.add(caskade.meta.size_of_entry(OptionalEntries.DERIVED))
+
+        a4_tag = Tag(name="Hello")
+        caskade.tag(a4_permalink, a4_tag)
+        sp.add(caskade.meta.size_of_entry(OptionalEntries.TAG, len(bytes(a4_tag))))
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(caskade, ONE_AND_QUARTER)
