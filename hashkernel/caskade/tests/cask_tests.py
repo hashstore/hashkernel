@@ -18,7 +18,7 @@ from hashkernel.caskade import (
     CheckPointType,
     Record,
     Record_PACKER,
-)
+    Catalog_PACKER)
 from hashkernel.caskade.cask import BaseCaskade, Caskade
 from hashkernel.caskade.optional import OptionalCaskade, OptionalEntries, Tag
 from hashkernel.hashing import HashKey
@@ -44,7 +44,6 @@ common_singer = CaskadeConfig(
     signer=CaskHashSigner(),
 )
 
-
 def test_entries():
     r = Record(BaseEntries.DATA.code, nanotime(0))
     pack = Record_PACKER.pack(r)
@@ -58,6 +57,26 @@ def test_entries():
     o2, offset = packer.unpack(pack, 0)
     assert len(pack) == offset
     assert o == o2
+
+@pytest.mark.parametrize(
+    "entries, conform_to",
+    [
+        (BaseEntries, OptionalEntries),
+        (OptionalEntries, BaseEntries),
+    ],
+)
+def test_catalog_entries(entries, conform_to):
+    cat = entries.catalog()
+    pack = Catalog_PACKER.pack(cat)
+    cat2, end = Catalog_PACKER.unpack(pack,0)
+    assert len(pack) == end
+    assert cat == cat2
+    new_entries = entries.confirm_to_catalog(conform_to.catalog())
+    if entries == OptionalEntries:
+        assert new_entries == entries
+    else:
+        assert new_entries.catalog() == conform_to.catalog()
+
 
 
 @pytest.mark.parametrize(

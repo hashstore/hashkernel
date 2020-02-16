@@ -35,7 +35,8 @@ from hashkernel.packer import (
     ProxyPacker,
     TuplePacker,
     build_code_enum_packer,
-    Packer, named_tuple_packer, ensure_packer)
+    Packer, named_tuple_packer, ensure_packer, GreedyListPacker,
+    FixedSizePacker)
 from hashkernel.smattr import SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
 from hashkernel.typings import is_callable
@@ -184,6 +185,9 @@ PACKERS = PackerLibrary().register_all(
     (NamedTuple, named_tuple_resolver),
 )
 
+class FakeEnumItem(NamedTuple):
+    name: str
+    value: Any
 
 @PACKERS.register(named_tuple_packer(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE))
 class CatalogItem(NamedTuple):
@@ -191,6 +195,14 @@ class CatalogItem(NamedTuple):
     entry_name: str
     header_size: int
     has_payload: bool
+
+    def enum_item(self):
+        return FakeEnumItem(self.entry_name, (
+                self.entry_code,
+                FixedSizePacker(self.header_size) if self.header_size else None,
+                GREEDY_BYTES if self.has_payload else None,
+                self.entry_name,
+            ))
 
 
 @PACKERS.register(named_tuple_packer(Cake.__packer__, HashKey.__packer__))
@@ -228,6 +240,8 @@ class Record(NamedTuple):
 
 Record_PACKER = PACKERS.get_packer_by_type(Record)
 
+Catalog_PACKER = GreedyListPacker(CatalogItem, packer_lib=PACKERS)
+
 PAYLOAD_SIZE_PACKER = ADJSIZE_PACKER_4
 
 class EntryType(CodeEnum):
@@ -245,8 +259,23 @@ class EntryType(CodeEnum):
         return CatalogItem(self.code, self.name, self.header_size, self.payload_packer is not None)
 
     @classmethod
-    def catalog(cls):
-        return [et.build_catalog_item() for et in cls]
+    def catalog(cls) -> List[CatalogItem]:
+        return sorted([et.build_catalog_item() for et in cls])
+
+    @classmethod
+    def confirm_to_catalog(cls, other_catalog: List[CatalogItem]) -> Type["EntryType"]:
+        cat_dict = {item.entry_code: item for item in cls.catalog()}
+        add = []
+        mismatch = []
+        for other in other_catalog:
+            if other.entry_code not in cat_dict:
+                add.append(other)
+            elif cat_dict[other.entry_code] != other:
+                mismatch.append(other)
+        assert not mismatch, mismatch
+        if not add:
+            return cls
+        return EntryType.combine(cls, [a.enum_item() for a in add])#type:ignore
 
     @staticmethod
     def combine(*enums: Type["EntryType"]):
@@ -480,12 +509,9 @@ CaskSigner.register("HashSigner", CaskHashSigner)
 
 class CaskadeConfig(SmAttr):
     """
-    >>> cc = CaskadeConfig(origin=NULL_CAKE, catalog=BaseEntries.catalog())
+    >>> cc = CaskadeConfig(origin=NULL_CAKE)
     >>> str(cc) #doctest: +NORMALIZE_WHITESPACE
-    '{"auto_chunk_cutoff": 4194304, "catalog": [[0, "DATA", 32, true],
-    [1, "STREAM", 65, true], [2, "LINK", 66, false], [3, "CHECK_POINT", 41, true],
-    [4, "NEXT_CASK", 33, false], [5, "CASK_HEADER", 98, false]],
-    "checkpoint_size": 268435456, "checkpoint_ttl": null, "max_cask_size": 2147483648,
+    '{"auto_chunk_cutoff": 4194304, "checkpoint_size": 268435456, "checkpoint_ttl": null, "max_cask_size": 2147483648,
     "origin": "RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi50", "signer": null}'
     >>> cc2 = CaskadeConfig(str(cc))
     >>> cc == cc2
@@ -493,7 +519,6 @@ class CaskadeConfig(SmAttr):
     """
 
     origin: Cake
-    catalog: List[CatalogItem]
     max_cask_size: int = MAX_CASK_SIZE
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE
@@ -523,14 +548,10 @@ class CaskadeMetadata:
         if self.just_created:
             self.dir.mkdir(mode=0o0700, parents=True)
             self.caskade_id = Cake.new_guid(CakeTypes.CASK)
-
             if config is None:
-                self.config = CaskadeConfig(
-                    origin=self.caskade_id, catalog=entry_types.catalog()
-                )
+                self.config = CaskadeConfig(origin=self.caskade_id)
             else:
                 config.origin = self.caskade_id
-                config.catalog = entry_types.catalog()
                 self.config = config
             self._etc_dir().mkdir(mode=0o0700, parents=True)
             if self.config.signer is not None:

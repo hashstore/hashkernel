@@ -326,6 +326,7 @@ class Caskade:
     data_locations: Dict[HashKey, DataLocation]
     check_points: List[CheckPoint]
     datalinks: Dict[Cake, Dict[int, HashKey]]
+    entriy_types: Type[EntryType]
 
     def __init__(
         self,
@@ -346,9 +347,11 @@ class Caskade:
                 file = CaskFile.by_file(self, fpath)
                 if file is not None and self.is_file_belong(file):
                     self.casks[file.guid] = file
-            for k in sorted(
-                self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds()
-            ):
+            keys = sorted(self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds())
+            assert len(keys)
+            self.casks[keys[0]].read_file(check_point_collector=self.check_points)
+
+            for k in keys[1:]:
                 self.casks[k].read_file(check_point_collector=self.check_points)
 
 

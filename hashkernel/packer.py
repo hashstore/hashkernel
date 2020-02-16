@@ -244,6 +244,32 @@ class ProxyPacker(Packer):
         return self.to_cls(v), new_offset
 
 
+class GreedyListPacker(Packer):
+    def __init__(
+        self,
+        item_cls: type ,
+        item_packer: Packer = None,
+        packer_lib: "PackerLibrary" = None,
+    ) -> None:
+        self.cls = list
+        self.item_cls = item_cls
+        if item_packer is None:
+            self.item_packer = packer_lib.get_packer_by_type(item_cls)
+        else:
+            self.item_packer = item_packer
+        self.size = None
+
+    def pack(self, v: List[Any]) -> bytes:
+        return b''.join(map(self.item_packer.pack, v))
+
+    def unpack(self, buffer: Buffer, offset: int) -> Tuple[Any, int]:
+        items = []
+        while offset < len(buffer):
+            v, offset = self.item_packer.unpack(buffer, offset)
+            items.append(v)
+        assert offset == len(buffer)
+        return items, offset
+
 class TuplePacker(Packer):
     def __init__(self, *packers: Packer, cls=tuple) -> None:
         self.packers = packers
