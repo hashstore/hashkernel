@@ -75,7 +75,7 @@ setup(
     author_email="wg@walnutgeek.com",
     license="Apache 2.0",
     packages=find_packages(exclude=("*.tests",)),
-    package_data={"files": ["file_types.json"]},
+    package_data={"files": ["mime_infos.json"]},
     cmdclass=cmdclass_dict,
     entry_points={"console_scripts": ["hk=hashkernel.cli:main"]},
     install_requires=install_requires,

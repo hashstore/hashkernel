@@ -10,9 +10,9 @@
 #
 # from hashkernel import ensure_bytes, exception_message, json_encode
 # from hashkernel.bakery import Content, NotAuthorizedError
-# from hashkernel.file_types import file_types
+# from hashkernel.mime_infos import mime_infos
 #
-# JSON__MIME = file_types["JSON"].mime
+# JSON__MIME = mime_infos["JSON"].mime
 #
 # log = logging.getLogger(__name__)
 #

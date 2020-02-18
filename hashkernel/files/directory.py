@@ -7,7 +7,7 @@ from hashkernel import CodeEnum, to_json
 from hashkernel.files.ignore_file import IgnoreRuleSet
 
 
-class EntryType(CodeEnum):
+class FileType(CodeEnum):
     DIR = (1,)
     FILE = (2,)
 
@@ -16,7 +16,7 @@ class DirEntry(NamedTuple):
     name: str
     size: int
     mod: datetime
-    type: EntryType
+    type: FileType
     xtra: Optional[Any]
 
     def __to_json__(self):
@@ -33,10 +33,10 @@ class File(NamedTuple):
     path: Path
     size: int
     mod: datetime
-    type: EntryType
+    type: FileType
 
     @staticmethod
-    def from_path(path: Path, et: EntryType) -> "File":
+    def from_path(path: Path, et: FileType) -> "File":
         stat = path.stat()
         dt = datetime.utcfromtimestamp(stat.st_mtime)
         return File(path, stat.st_size, dt, et)
@@ -58,9 +58,9 @@ def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[
     for child in filter(ignore_rules.path_filter, listdir):
         symlink_to_be_ignored = child.is_symlink() and ignore_rules.ignore_symlinks
         if child.is_dir() and not symlink_to_be_ignored:
-            dirs.append(File.from_path(child, EntryType.DIR))
+            dirs.append(File.from_path(child, FileType.DIR))
         elif child.is_file and not symlink_to_be_ignored:
-            files.append(File.from_path(child, EntryType.FILE))
+            files.append(File.from_path(child, FileType.FILE))
     return files, dirs
 
 
@@ -86,7 +86,7 @@ class DirContent(NamedTuple):
         return dt
 
     def entry(self) -> DirEntry:
-        return DirEntry(self.path.name, self.size(), self.mod(), EntryType.DIR, self)
+        return DirEntry(self.path.name, self.size(), self.mod(), FileType.DIR, self)
 
     def __to_json__(self):
         return {"entries": [to_json(e) for e in self.entries]}

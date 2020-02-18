@@ -6,21 +6,21 @@ from hashkernel import load_json_file
 from hashkernel.smattr import SmAttr
 
 
-class FileType(SmAttr):
+class MimeInfo(SmAttr):
     mime: str
     ext: List[str]
 
 
-def read_file_types(json_file) -> Dict[str, FileType]:
+def read_mime_infos(json_file) -> Dict[str, MimeInfo]:
     load_json = load_json_file(json_file)
-    return {n: FileType(v) for n, v in load_json.items()}
+    return {n: MimeInfo(v) for n, v in load_json.items()}
 
 
-file_types = read_file_types(join(dirname(__file__), "file_types.json"))
+mime_infos = read_mime_infos(join(dirname(__file__), "mime_infos.json"))
 
-my_mime_dict = dict((ext, ft.mime) for ft in file_types.values() for ext in ft.ext)
+my_mime_dict = dict((ext, ft.mime) for ft in mime_infos.values() for ext in ft.ext)
 
-my_name_dict = dict((ext, k) for k, ft in file_types.items() for ext in ft.ext)
+my_name_dict = dict((ext, k) for k, ft in mime_infos.items() for ext in ft.ext)
 
 WDF = "WDF"
 HSB = "HSB"
@@ -47,7 +47,7 @@ def guess_name(filename):
     'BINARY'
 
     :param filename: file path
-    :return: name from `file_types`
+    :return: name from `mime_infos`
     """
     try:
         extension = extract_extension(filename)

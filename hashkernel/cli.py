@@ -7,7 +7,7 @@ import nanotime
 import pytz
 
 from hashkernel import GlobalRef
-from hashkernel.files.types import guess_name
+from hashkernel.files.mime_info import guess_name
 from hashkernel.logic import HashLogic
 
 modules = [nanotime, croniter, dateutil, aiohttp, pytz]

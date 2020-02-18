@@ -6,7 +6,7 @@ from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
 from hashkernel.bakery import Cake
-from hashkernel.files.types import file_types, guess_name
+from hashkernel.files.mime_info import mime_infos
 from hashkernel.smattr import SmAttr
 
 
@@ -237,7 +237,7 @@ class Content(PathInfo):
         if not (os.path.exists(file)):
             raise FileNotFoundError()
         file_type = guess_name(file)
-        return cls(file=file, file_type=file_type, mime=file_types[file_type].mime)
+        return cls(file=file, file_type=file_type, mime=mime_infos[file_type].mime)
 
     @classmethod
     def from_data_and_file_type(
@@ -248,10 +248,10 @@ class Content(PathInfo):
                 data=data,
                 size=len(data),
                 file_type=file_type,
-                mime=file_types[file_type].mime,
+                mime=mime_infos[file_type].mime,
             )
         elif file is not None:
-            return cls(file=file, file_type=file_type, mime=file_types[file_type].mime)
+            return cls(file=file, file_type=file_type, mime=mime_infos[file_type].mime)
         else:
             raise AssertionError("file or data should be defined")
 
