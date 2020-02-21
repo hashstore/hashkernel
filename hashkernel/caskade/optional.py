@@ -1,7 +1,6 @@
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, NamedTuple, Optional, Union, \
-    ClassVar
+from typing import ClassVar, Dict, List, NamedTuple, Optional, Union
 
 from hashkernel import LogicRegistry
 from hashkernel.bakery import Cake
@@ -53,8 +52,9 @@ class OptionalJots(JotType):
         """,
     )
 
+
 class OptionalEntryHelper(EntryHelper):
-    registry:ClassVar[LogicRegistry] = LogicRegistry().add_all(EntryHelper.registry)
+    registry: ClassVar[LogicRegistry] = LogicRegistry().add_all(EntryHelper.registry)
 
     @registry.add(OptionalJots.TAG)
     def load_TAG(self):
@@ -66,6 +66,7 @@ class OptionalEntryHelper(EntryHelper):
     def load_DERIVED(self):
         drvd: DerivedHeader = self.header
         self.cask.caskade.derived[drvd.src][drvd.filter] = drvd.derived
+
 
 class OptionalCaskade(Caskade):
     tags: Dict[Cake, List[Tag]]

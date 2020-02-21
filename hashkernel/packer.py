@@ -9,7 +9,8 @@ from hashkernel import OneBit, utf8_decode, utf8_encode
 from hashkernel.files.buffer import FileBytes
 from hashkernel.typings import is_NamedTuple, is_subclass
 
-Buffer=Union[FileBytes,bytes]
+Buffer = Union[FileBytes, bytes]
+
 
 class NeedMoreBytes(Exception):
     def __init__(self, how_much: int = None):
@@ -26,7 +27,7 @@ class Packer(metaclass=abc.ABCMeta):
     cls: type
     size: Optional[int] = None
 
-    def fixed_size(self)->bool:
+    def fixed_size(self) -> bool:
         return self.size is not None
 
     @abc.abstractmethod
@@ -247,7 +248,7 @@ class ProxyPacker(Packer):
 class GreedyListPacker(Packer):
     def __init__(
         self,
-        item_cls: type ,
+        item_cls: type,
         item_packer: Packer = None,
         packer_lib: "PackerLibrary" = None,
     ) -> None:
@@ -260,7 +261,7 @@ class GreedyListPacker(Packer):
         self.size = None
 
     def pack(self, v: List[Any]) -> bytes:
-        return b''.join(map(self.item_packer.pack, v))
+        return b"".join(map(self.item_packer.pack, v))
 
     def unpack(self, buffer: Buffer, offset: int) -> Tuple[Any, int]:
         items = []
@@ -269,6 +270,7 @@ class GreedyListPacker(Packer):
             items.append(v)
         assert offset == len(buffer)
         return items, offset
+
 
 class TuplePacker(Packer):
     def __init__(self, *packers: Packer, cls=tuple) -> None:
@@ -360,9 +362,10 @@ def unpack_constraining_greed(
 PackerFactory = Callable[[type], Packer]
 
 
-def named_tuple_packer(*parts:Packer):
-    def factory(cls:type):
-        return TuplePacker(*parts,cls=cls)
+def named_tuple_packer(*parts: Packer):
+    def factory(cls: type):
+        return TuplePacker(*parts, cls=cls)
+
     return factory
 
 
@@ -397,7 +400,7 @@ class PackerLibrary:
                 return self.next_lib.get_packer_by_type(key)
         raise KeyError(key)
 
-    def resolve(self, key_cls:type):
+    def resolve(self, key_cls: type):
         """
         decorator that make sure that PackerLibrary is capable to
         build packer of particular `key_cls`
@@ -415,9 +418,11 @@ class PackerLibrary:
         :param packer:
         :return:
         """
-        def decorate(key_cls:type):
-            self.register_packer(key_cls,packer)
+
+        def decorate(key_cls: type):
+            self.register_packer(key_cls, packer)
             return key_cls
+
         return decorate
 
     def register_packer(self, key: type, packer: Union[PackerFactory, Packer]):
@@ -436,7 +441,8 @@ class PackerLibrary:
             self.register_packer(*t)
         return self
 
-def ensure_packer(o: Any, packerlib:PackerLibrary = None) -> Optional[Packer]:
+
+def ensure_packer(o: Any, packerlib: PackerLibrary = None) -> Optional[Packer]:
     """
     >>> class A:
     ...     def __init__(self,i): self.i = int(i)

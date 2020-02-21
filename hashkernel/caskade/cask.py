@@ -1,31 +1,34 @@
 import time
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, Union, NamedTuple, \
-    ClassVar
-
 from collections import defaultdict
+from pathlib import Path
+from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
+
 from nanotime import nanotime
 
 from hashkernel import LogicRegistry, dump_jsonable, load_jsonable
 from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
 from hashkernel.caskade import (
+    PAYLOAD_SIZE_PACKER,
     AccessError,
     BaseJots,
     CaskadeConfig,
     CaskHeaderEntry,
     CaskType,
+    CheckpointHeader,
     CheckPointType,
+    DataLinkHeader,
     DataLocation,
     DataValidationError,
     JotType,
+    JotTypeCatalog,
     NotQuietError,
+    SegmentTracker,
     Stamp,
     Stamp_PACKER,
-    SegmentTracker,
-    DataLinkHeader, PAYLOAD_SIZE_PACKER, CheckpointHeader, JotTypeCatalog)
+)
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import HashKey, NULL_HASH_KEY
+from hashkernel.hashing import NULL_HASH_KEY, HashKey
 from hashkernel.time import nanotime_now
 
 
@@ -38,14 +41,17 @@ class CheckPoint(NamedTuple):
 
 
 class ReadOptions(NamedTuple):
-    validate_data:bool
-    validate_checkpoints:bool
-    validate_signatures:bool
+    validate_data: bool
+    validate_checkpoints: bool
+    validate_signatures: bool
 
-VALIDATE_NONE = ReadOptions(validate_data=False, validate_checkpoints=False,
-                validate_signatures=False)
-VALIDATE_ALL = ReadOptions(validate_data=True, validate_checkpoints=True,
-                validate_signatures=True)
+
+VALIDATE_NONE = ReadOptions(
+    validate_data=False, validate_checkpoints=False, validate_signatures=False
+)
+VALIDATE_ALL = ReadOptions(
+    validate_data=True, validate_checkpoints=True, validate_signatures=True
+)
 
 
 class CaskFile:
@@ -84,7 +90,7 @@ class CaskFile:
         self,
         tstamp=None,
         prev_cask_id: Cake = NULL_CAKE,
-        checkpoint_id: HashKey = NULL_HASH_KEY
+        checkpoint_id: HashKey = NULL_HASH_KEY,
     ):
         self.tracker = SegmentTracker(0)
         self.catalog = JotTypeCatalog(self.caskade.jot_types)
@@ -93,8 +99,13 @@ class CaskFile:
         self.append_buffer(
             self.pack_entry(
                 Stamp(BaseJots.CASK_HEADER.code, tstamp),
-                CaskHeaderEntry(self.caskade.caskade_id, checkpoint_id, prev_cask_id , self.catalog.key),
-                self.catalog.types.catalog()
+                CaskHeaderEntry(
+                    self.caskade.caskade_id,
+                    checkpoint_id,
+                    prev_cask_id,
+                    self.catalog.key,
+                ),
+                self.catalog.types.catalog(),
             ),
             mode="xb",
         )
@@ -118,7 +129,6 @@ class CaskFile:
             return DataLocation(self.guid, offset, content_size)
         return None
 
-
     def read_file(
         self,
         curr_pos=0,
@@ -140,16 +150,14 @@ class CaskFile:
                     check_point_collector.insert(cp_index, check_point_to_add)
                     cp_index += 1
                 if self.tracker is not None:
-                    self.tracker.update(fbytes[eh.start_of_entry:eh.end_of_entry])
+                    self.tracker.update(fbytes[eh.start_of_entry : eh.end_of_entry])
             curr_pos = eh.end_of_entry
 
-
-    def write_checkpoint(self, cpt: CheckPointType)->HashKey:
+    def write_checkpoint(self, cpt: CheckPointType) -> HashKey:
         rec, header = self.tracker.checkpoint(cpt)
         self.tracker = self.tracker.next_tracker()
-        self.append_buffer(self.pack_entry(rec, header,
-                                                        self.caskade.config.sign))
-        self.caskade.check_points.append(CheckPoint(self.guid,  *header))
+        self.append_buffer(self.pack_entry(rec, header, self.caskade.config.sign))
+        self.caskade.check_points.append(CheckPoint(self.guid, *header))
         return header.checkpoint_id
 
     def _deactivate(self):
@@ -217,15 +225,17 @@ class CaskFile:
             tstamp = nanotime_now()
         assert cp_type in (CheckPointType.ON_NEXT_CASK, CheckPointType.ON_CASKADE_CLOSE)
         assert next_cask_id != NULL_CAKE or cp_type == CheckPointType.ON_CASKADE_CLOSE
-        buff = self.pack_entry(Stamp(BaseJots.NEXT_CASK.code, tstamp), next_cask_id, None)
+        buff = self.pack_entry(
+            Stamp(BaseJots.NEXT_CASK.code, tstamp), next_cask_id, None
+        )
         self.append_buffer(buff)
         checkpoint_id = self.write_checkpoint(cp_type)
         self._deactivate()
         self.caskade._set_active(new_file)
         return checkpoint_id
 
-    def pack_entry(self, rec: Stamp, header: Any, payload:Any)->bytes:
-        et:JotType = self.catalog.types.find_by_code(rec.entry_code)
+    def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
+        et: JotType = self.catalog.types.find_by_code(rec.entry_code)
         return et.pack_entry(rec, header, payload)
 
     def __len__(self):
@@ -240,17 +250,18 @@ class CaskFile:
 
 
 class EntryHelper(object):
-    registry:ClassVar[LogicRegistry] = LogicRegistry()
+    registry: ClassVar[LogicRegistry] = LogicRegistry()
 
-    def __init__(self, cask:CaskFile, fbytes:FileBytes, curr_pos:int, read_opts:ReadOptions):
+    def __init__(
+        self, cask: CaskFile, fbytes: FileBytes, curr_pos: int, read_opts: ReadOptions
+    ):
         self.cask = cask
         self.fbytes = fbytes
         self.start_of_entry = curr_pos
         self.read_opts = read_opts
         self.rec, new_pos = Stamp_PACKER.unpack(fbytes, curr_pos)
         entry_code = self.rec.entry_code
-        self.entry_type: JotType = self.cask.caskade.jot_types.find_by_code(
-            entry_code)
+        self.entry_type: JotType = self.cask.caskade.jot_types.find_by_code(entry_code)
         if self.entry_type.header_packer is None:
             self.header = None
         else:
@@ -263,15 +274,16 @@ class EntryHelper(object):
             self.payload_dl = DataLocation(cask.guid, new_pos, payload_size)
             self.end_of_entry = new_pos + payload_size
 
-    def has_logic(self)->bool:
+    def has_logic(self) -> bool:
         return self.registry.has(self.rec.entry_code)
 
-    def load_entry(self)->Optional[CheckPoint]:
+    def load_entry(self) -> Optional[CheckPoint]:
         return self.registry.get(self.rec.entry_code)(self)
 
     def payload(self) -> Any:
         return self.entry_type.payload_packer.unpack_whole_buffer(
-            self.payload_dl.load(self.fbytes))
+            self.payload_dl.load(self.fbytes)
+        )
 
     @registry.add(BaseJots.DATA)
     def load_DATA(self):
@@ -279,24 +291,20 @@ class EntryHelper(object):
         self.cask.caskade._add_data_location(hkey, self.payload_dl)
 
         if self.read_opts.validate_data:
-            if HashKey.from_bytes(
-                    self.payload_dl.load(self.fbytes)) != hkey:
+            if HashKey.from_bytes(self.payload_dl.load(self.fbytes)) != hkey:
                 raise DataValidationError(hkey)
 
     @registry.add(BaseJots.CASK_HEADER)
-    def load_CASH_HEADER(self)->CheckPoint:
+    def load_CASH_HEADER(self) -> CheckPoint:
         cask_head: CaskHeaderEntry = self.header
         payload = self.payload()
-        self.cask.catalog = JotTypeCatalog(self.cask.caskade.jot_types,
-                                           payload, expand=False)
+        self.cask.catalog = JotTypeCatalog(
+            self.cask.caskade.jot_types, payload, expand=False
+        )
         assert cask_head.catalog_id == self.cask.catalog.key
         # add virtual checkpoint from cask header
         return CheckPoint(
-            self.cask.guid,
-            cask_head.checkpoint_id,
-            0,
-            0,
-            CheckPointType.ON_CASK_HEADER,
+            self.cask.guid, cask_head.checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER
         )
 
     @registry.add(BaseJots.LINK)
@@ -304,22 +312,25 @@ class EntryHelper(object):
         assert self.payload_dl is None
         data_link: DataLinkHeader = self.header
         self.cask.caskade.datalinks[data_link.from_id][
-            data_link.purpose] = data_link.to_id
+            data_link.purpose
+        ] = data_link.to_id
 
     @registry.add(BaseJots.CHECK_POINT)
-    def load_CHECK_POINT(self)->CheckPoint:
+    def load_CHECK_POINT(self) -> CheckPoint:
         cp_entry: CheckpointHeader = self.header
         if self.payload_dl.size and self.read_opts.validate_signatures:
             if not self.cask.caskade.config.validate_signature(
-                    self.fbytes[self.start_of_entry:self.end_of_header],
-                    self.payload_dl.load(self.fbytes),
+                self.fbytes[self.start_of_entry : self.end_of_header],
+                self.payload_dl.load(self.fbytes),
             ):
                 raise ValueError("Cannot validate")
-        if self.read_opts.validate_checkpoints and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0:
+        if (
+            self.read_opts.validate_checkpoints
+            and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0
+        ):
             calculated = HashKey(self.cask.tracker.hasher)
             if calculated != cp_entry.checkpoint_id:
-                raise DataValidationError(
-                    f'{calculated} != {cp_entry.checkpoint_id}')
+                raise DataValidationError(f"{calculated} != {cp_entry.checkpoint_id}")
             self.cask.tracker = self.cask.tracker.next_tracker()
         return CheckPoint(self.cask.guid, *cp_entry)
 
@@ -351,7 +362,7 @@ class Caskade:
         self.data_locations = {}
         self.datalinks = defaultdict(dict)
         self.check_points = []
-        self.dir = ensure_path(path).absolute();
+        self.dir = ensure_path(path).absolute()
         self.config = config
         if not self.dir.exists():
             self.dir.mkdir(mode=0o0700, parents=True)
@@ -366,13 +377,11 @@ class Caskade:
                 self.config.signer.init_dir(self._etc_dir())
             dump_jsonable(self._config_file(), self.config)
             self.cask_ids = []
-            self._set_active(
-                CaskFile(self, self.caskade_id, CaskType.ACTIVE))
+            self._set_active(CaskFile(self, self.caskade_id, CaskType.ACTIVE))
             self.active.create_file()
         else:
             assert self.dir.is_dir()
-            self.config = load_jsonable(self._config_file(),
-                                        CaskadeConfig)
+            self.config = load_jsonable(self._config_file(), CaskadeConfig)
             if self.config.signer is not None:
                 self.config.signer.load_from_dir(self._etc_dir())
             self.caskade_id = self.config.origin
@@ -381,14 +390,15 @@ class Caskade:
                 file = CaskFile.by_file(self, fpath)
                 if file is not None and self.is_file_belong(file):
                     self.casks[file.guid] = file
-            self.cask_ids = sorted(self.casks.keys(), key=lambda
-                k: -k.guid_header().time.nanoseconds())
+            self.cask_ids = sorted(
+                self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds()
+            )
             assert len(self.cask_ids)
             self.casks[self.cask_ids[0]].read_file(
-                check_point_collector=self.check_points)
+                check_point_collector=self.check_points
+            )
             for k in self.cask_ids[1:]:
-                self.casks[k].read_file(
-                    check_point_collector=self.check_points)
+                self.casks[k].read_file(check_point_collector=self.check_points)
         self.config.validate_config()
 
     def _config_file(self) -> Path:
@@ -403,7 +413,7 @@ class Caskade:
             self.cask_ids.insert(0, self.active.guid)
             self.casks[self.active.guid] = self.active
 
-    def latest_file(self) -> CaskFile :
+    def latest_file(self) -> CaskFile:
         return self.casks[self.cask_ids[0]]
 
     def new_entry_helper(self, *args) -> EntryHelper:
@@ -431,7 +441,7 @@ class Caskade:
         if self.active is None or self.active.tracker is None:
             raise AccessError("not writable")
 
-    def write_bytes(self, content: bytes, force:bool=False) -> HashKey:
+    def write_bytes(self, content: bytes, force: bool = False) -> HashKey:
         self.assert_write()
         hkey = HashKey.from_bytes(content)
         if force or hkey not in self:
@@ -448,9 +458,15 @@ class Caskade:
               to right data.
         """
         assert link.is_guid
-        if link not in self.datalinks or purpose not in self.datalinks[link] or self.datalinks[link][purpose] != data:
+        if (
+            link not in self.datalinks
+            or purpose not in self.datalinks[link]
+            or self.datalinks[link][purpose] != data
+        ):
             self.assert_write()
-            self.active.write_entry(BaseJots.LINK, DataLinkHeader(link, purpose, data), None)
+            self.active.write_entry(
+                BaseJots.LINK, DataLinkHeader(link, purpose, data), None
+            )
             self.datalinks[link][purpose] = data
             return True
         return False
@@ -468,9 +484,7 @@ class Caskade:
             if last_cp.end + size_of_check_point(self) == len(active_candidate):
                 active_candidate.tracker = SegmentTracker(last_cp.end)
                 active_candidate.tracker.update(
-                    active_candidate.fragment(
-                        last_cp.end, size_of_check_point(self)
-                    )
+                    active_candidate.fragment(last_cp.end, size_of_check_point(self))
                 )
                 self.active = active_candidate
                 self.active.write_checkpoint(CheckPointType.ON_CASKADE_RESUME)
@@ -496,9 +510,7 @@ class Caskade:
             time.sleep(quiet_time)
             if size != len(active_candidate):
                 raise NotQuietError()
-        active_candidate.read_file(
-            last_cp.end, read_opts=VALIDATE_ALL
-        )
+        active_candidate.read_file(last_cp.end, read_opts=VALIDATE_ALL)
         self.active = active_candidate
         self.active.write_checkpoint(CheckPointType.ON_CASKADE_RECOVER)
 
@@ -527,7 +539,7 @@ def size_of_entry(et: JotType, payload_size: int = 0) -> int:
     return size
 
 
-def size_of_check_point(cascade:Caskade):
+def size_of_check_point(cascade: Caskade):
     return size_of_entry(BaseJots.CHECK_POINT, cascade.config.signature_size())
 
 

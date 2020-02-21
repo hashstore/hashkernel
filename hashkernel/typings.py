@@ -191,6 +191,7 @@ def is_subclass(o, super_cls):
         return super_cls in (typing.NamedTuple, tuple, object)
     return issubclass(o, super_cls)
 
+
 class OnlyAnnotatedProperties:
     """
     >>> class A(OnlyAnnotatedProperties):
@@ -244,4 +245,4 @@ def is_callable(fn):
     True
 
     """
-    return hasattr(fn,'__call__')
+    return hasattr(fn, "__call__")

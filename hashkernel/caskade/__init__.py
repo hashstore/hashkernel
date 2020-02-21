@@ -1,26 +1,11 @@
 import os
 from pathlib import Path
-from typing import (
-    Any,
-    Iterable,
-    List,
-    NamedTuple,
-    Optional,
-    Tuple,
-    Type,
-    Union,
-    cast)
+from typing import Any, Iterable, List, NamedTuple, Optional, Tuple, Type, Union, cast
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum, MetaCodeEnumExtended, dump_jsonable, load_jsonable
-from hashkernel.bakery import (
-    CAKE_TYPE_PACKER,
-    NULL_CAKE,
-    Cake,
-    CakeType,
-    CakeTypes,
-)
+from hashkernel import CodeEnum, MetaCodeEnumExtended
+from hashkernel.bakery import CAKE_TYPE_PACKER, NULL_CAKE, Cake, CakeType, CakeTypes
 from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer
 from hashkernel.packer import (
@@ -31,15 +16,19 @@ from hashkernel.packer import (
     INT_32,
     NANOTIME,
     UTF8_STR,
+    FixedSizePacker,
+    GreedyListPacker,
+    Packer,
     PackerLibrary,
     ProxyPacker,
-    TuplePacker,
     build_code_enum_packer,
-    Packer, named_tuple_packer, ensure_packer, GreedyListPacker,
-    FixedSizePacker)
+    ensure_packer,
+    named_tuple_packer,
+)
 from hashkernel.smattr import SmAttr, build_named_tuple_packer
 from hashkernel.time import TTL, nanotime_now
 from hashkernel.typings import is_callable
+
 
 """
 Somewhat inspired by BitCask
@@ -170,7 +159,7 @@ class CheckPointType(CodeEnum):
     )
 
 
-def named_tuple_resolver(cls: type) -> Packer :
+def named_tuple_resolver(cls: type) -> Packer:
     return build_named_tuple_packer(cls, PACKERS.get_packer_by_type)
 
 
@@ -185,9 +174,11 @@ PACKERS = PackerLibrary().register_all(
     (NamedTuple, named_tuple_resolver),
 )
 
+
 class SurrogateEnum(NamedTuple):
     name: str
     value: Any
+
 
 @PACKERS.register(named_tuple_packer(INT_8, UTF8_STR, ADJSIZE_PACKER_4, BOOL_AS_BYTE))
 class CatalogItem(NamedTuple):
@@ -196,15 +187,16 @@ class CatalogItem(NamedTuple):
     header_size: int
     has_payload: bool
 
-    def enum_item(self)->SurrogateEnum:
-        return SurrogateEnum(self.entry_name, (
+    def enum_item(self) -> SurrogateEnum:
+        return SurrogateEnum(
+            self.entry_name,
+            (
                 self.entry_code,
                 FixedSizePacker(self.header_size) if self.header_size else None,
                 GREEDY_BYTES if self.has_payload else None,
                 self.entry_name,
-            ))
-
-
+            ),
+        )
 
 
 @PACKERS.register(named_tuple_packer(Cake.__packer__, HashKey.__packer__))
@@ -220,7 +212,11 @@ class DataLinkHeader(NamedTuple):
     to_id: HashKey
 
 
-@PACKERS.register(named_tuple_packer(HashKey.__packer__, INT_32, INT_32,  build_code_enum_packer(CheckPointType)))
+@PACKERS.register(
+    named_tuple_packer(
+        HashKey.__packer__, INT_32, INT_32, build_code_enum_packer(CheckPointType)
+    )
+)
 class CheckpointHeader(NamedTuple):
     checkpoint_id: HashKey
     start: int
@@ -234,12 +230,14 @@ class CaskHeaderEntry(NamedTuple):
     checkpoint_id: HashKey
     prev_cask_id: Cake
     catalog_id: HashKey
-    #TODO stop_cask: Cake
+    # TODO stop_cask: Cake
+
 
 @PACKERS.register(named_tuple_packer(INT_8, NANOTIME))
 class Stamp(NamedTuple):
     entry_code: int
     tstamp: nanotime
+
 
 Stamp_PACKER = PACKERS.get_packer_by_type(Stamp)
 
@@ -249,7 +247,13 @@ PAYLOAD_SIZE_PACKER = ADJSIZE_PACKER_4
 
 
 class JotType(CodeEnum):
-    def __init__(self, code, header:Union[type,Packer,None], payload:Union[type,Packer,None], doc):
+    def __init__(
+        self,
+        code,
+        header: Union[type, Packer, None],
+        payload: Union[type, Packer, None],
+        doc,
+    ):
         CodeEnum.__init__(self, code, doc)
         self.header_packer = ensure_packer(header, PACKERS)
         self.payload_packer = ensure_packer(payload, PACKERS)
@@ -260,16 +264,20 @@ class JotType(CodeEnum):
             self.header_size = self.header_packer.size
 
     def build_catalog_item(self):
-        return CatalogItem(self.code, self.name, self.header_size, self.payload_packer is not None)
+        return CatalogItem(
+            self.code, self.name, self.header_size, self.payload_packer is not None
+        )
 
     @classmethod
     def catalog(cls) -> List[CatalogItem]:
         return sorted([et.build_catalog_item() for et in cls])
 
     @classmethod
-    def force_in(cls, other_catalog: List[CatalogItem], expand:bool) -> Tuple[Type["JotType"],bool]:
+    def force_in(
+        cls, other_catalog: List[CatalogItem], expand: bool
+    ) -> Tuple[Type["JotType"], bool]:
         cat_dict = {item.entry_code: item for item in cls.catalog()}
-        add:List[Any] = []
+        add: List[Any] = []
         mismatch = []
         has_surrogates = False
         for other in other_catalog:
@@ -289,10 +297,9 @@ class JotType(CodeEnum):
 
     @staticmethod
     def combine(*enums: Iterable[Any]):
-        class CombinedJotType(
-            JotType, metaclass=MetaCodeEnumExtended, enums=[*enums]
-        ):
+        class CombinedJotType(JotType, metaclass=MetaCodeEnumExtended, enums=[*enums]):
             pass
+
         return CombinedJotType
 
     @classmethod
@@ -302,23 +309,22 @@ class JotType(CodeEnum):
 
         return decorate
 
-    def pack_entry(self, rec: Stamp, header: Any, payload:Any)->bytes:
+    def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
         header_buff = Stamp_PACKER.pack(rec)
         if self.header_packer is not None:
             header_buff += self.header_packer.pack(header)
         return self.pack_payload(header_buff, payload)
 
-    def pack_payload(self, header_buff:bytes, payload: Any):
+    def pack_payload(self, header_buff: bytes, payload: Any):
         if self.payload_packer is None:
             assert payload is None
-            payload_buff = b''
+            payload_buff = b""
         else:
             assert payload is not None
             if is_callable(payload):
                 payload = payload(header_buff)
             data_buff = self.payload_packer.pack(payload)
-            payload_buff = PAYLOAD_SIZE_PACKER.pack(
-                len(data_buff)) + data_buff
+            payload_buff = PAYLOAD_SIZE_PACKER.pack(len(data_buff)) + data_buff
         return header_buff + payload_buff
 
 
@@ -328,13 +334,20 @@ class JotTypeCatalog:
     key: HashKey
     has_surrogates: bool
 
-    def __init__(self, jot_types: Type[JotType], other_catalog: Optional[Union[bytes,List[CatalogItem]]] = None, expand: bool = True):
+    def __init__(
+        self,
+        jot_types: Type[JotType],
+        other_catalog: Optional[Union[bytes, List[CatalogItem]]] = None,
+        expand: bool = True,
+    ):
         if other_catalog is None:
             self.types = jot_types
             self.has_surrogates = False
         else:
             if isinstance(other_catalog, bytes):
-                other_catalog= cast(List[CatalogItem], Catalog_PACKER.unpack_whole_buffer(other_catalog))
+                other_catalog = cast(
+                    List[CatalogItem], Catalog_PACKER.unpack_whole_buffer(other_catalog)
+                )
             self.types, self.has_surrogates = jot_types.force_in(other_catalog, expand)
         self.binary = Catalog_PACKER.pack(self.types.catalog())
         self.key = HashKey.from_bytes(self.binary)
@@ -354,19 +367,9 @@ class BaseJots(JotType):
         """,
     )
 
-    STREAM = (
-        1,
-        StreamHeader,
-        GREEDY_BYTES,
-        "stream chank"
-    )
+    STREAM = (1, StreamHeader, GREEDY_BYTES, "stream chank")
 
-    LINK = (
-        2,
-        DataLinkHeader,
-        None,
-        "Link"
-    )
+    LINK = (2, DataLinkHeader, None, "Link")
 
     CHECK_POINT = (
         3,
@@ -443,8 +446,8 @@ class DataLocation(NamedTuple):
     offset: int
     size: int
 
-    def load(self, fbytes:FileBytes) -> bytes:
-        return fbytes[self.offset: self.end_offset()]
+    def load(self, fbytes: FileBytes) -> bytes:
+        return fbytes[self.offset : self.end_offset()]
 
     def end_offset(self):
         return self.offset + self.size
@@ -500,11 +503,10 @@ class SegmentTracker:
 
     def checkpoint(self, cpt: CheckPointType) -> Tuple[Stamp, CheckpointHeader]:
         return (
-            Stamp(
-                BaseJots.CHECK_POINT.code,
-                nanotime_now()
+            Stamp(BaseJots.CHECK_POINT.code, nanotime_now()),
+            CheckpointHeader(
+                HashKey(self.hasher), self.start_offset, self.current_offset, cpt
             ),
-            CheckpointHeader(HashKey(self.hasher), self.start_offset, self.current_offset, cpt),
         )
 
     def next_tracker(self):
@@ -559,18 +561,17 @@ class CaskadeConfig(SmAttr):
         return 0 if self.signer is None else self.signer.signature_size()
 
     def sign(self, header_buffer):
-        signature = b''
+        signature = b""
         if self.signer is not None:
             signature = self.signer.sign(header_buffer)
         return signature
 
-    def validate_signature(self, header_buffer:bytes, signature:bytes):
+    def validate_signature(self, header_buffer: bytes, signature: bytes):
         if self.signer is not None:
-            return self.signer.validate(header_buffer,signature)
+            return self.signer.validate(header_buffer, signature)
         return False
 
     def validate_config(self):
         assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
         assert CHUNK_SIZE_2x < self.checkpoint_size
         assert CHUNK_SIZE_2x < self.max_cask_size <= MAX_CASK_SIZE
-

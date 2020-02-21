@@ -645,11 +645,12 @@ class LogicRegistry:
     """
     Associate logic with CodeEnum using code as key
     """
-    def __init__(self):
-        self.logic_by_code: Dict[int, Callable[...,Any]] = {}
 
-    def add_all(self, registry:"LogicRegistry") -> "LogicRegistry":
-        for k,v in registry.logic_by_code.items():
+    def __init__(self):
+        self.logic_by_code: Dict[int, Callable[..., Any]] = {}
+
+    def add_all(self, registry: "LogicRegistry") -> "LogicRegistry":
+        for k, v in registry.logic_by_code.items():
             assert k not in self.logic_by_code
             self.logic_by_code[k] = v
         return self
@@ -659,15 +660,16 @@ class LogicRegistry:
             assert e.code not in self.logic_by_code
             self.logic_by_code[e.code] = fn
             return fn
+
         return decorate
 
-    def get(self, e: Union[CodeEnumT,int])->Callable[...,Any]:
+    def get(self, e: Union[CodeEnumT, int]) -> Callable[..., Any]:
         return self.logic_by_code[self.code(e)]
 
-    def code(self, e: Union[CodeEnumT,int])->int:
+    def code(self, e: Union[CodeEnumT, int]) -> int:
         return e if isinstance(e, int) else e.code
 
-    def has(self, e: Union[CodeEnumT,int]):
+    def has(self, e: Union[CodeEnumT, int]):
         return self.code(e) in self.logic_by_code
 
 

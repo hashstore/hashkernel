@@ -36,10 +36,11 @@ from hashkernel.packer import (
     NANOTIME,
     FixedSizePacker,
     Packer,
+    PackerLibrary,
     ProxyPacker,
     TuplePacker,
     build_code_enum_packer,
-    PackerLibrary)
+)
 from hashkernel.plugins import query_plugins
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr, build_named_tuple_packer
 from hashkernel.time import NANO_TTL_PACKER, TTL, TTL_PACKER, nano_ttl, nanotime_now
@@ -469,7 +470,7 @@ class VirtualTree:
     history: List[TimedPath]
 
 
-def named_tuple_resolver(cls: type) -> Packer :
+def named_tuple_resolver(cls: type) -> Packer:
     return build_named_tuple_packer(cls, BAKERY_PACKERS.get_packer_by_type)
 
 
@@ -480,7 +481,7 @@ BAKERY_PACKERS = PackerLibrary().register_all(
     (nano_ttl, NANO_TTL_PACKER),
     (CakeType, CAKE_TYPE_PACKER),
     (CodeEnum, build_code_enum_packer),
-    (NamedTuple, named_tuple_resolver)
+    (NamedTuple, named_tuple_resolver),
 )
 
 

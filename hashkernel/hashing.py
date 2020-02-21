@@ -5,7 +5,7 @@ from functools import total_ordering
 from hashlib import sha1, sha256
 from io import BytesIO
 from pathlib import Path
-from typing import IO, Callable, Optional, Union, ClassVar
+from typing import IO, Callable, ClassVar, Optional, Union
 
 from hashkernel import (
     EnsureIt,
@@ -17,7 +17,7 @@ from hashkernel import (
 )
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.packer import ProxyPacker, FixedSizePacker, Packer
+from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
 
 B36 = base_x(36)
 
@@ -61,7 +61,7 @@ class Hasher:
 
 @total_ordering
 class HashKey(Stringable, EnsureIt, Primitive):
-    __packer__:ClassVar[Packer]
+    __packer__: ClassVar[Packer]
 
     def __init__(self, s: Union[str, bytes, Hasher]):
         digest = B36.decode(s) if isinstance(s, str) else s
@@ -105,6 +105,7 @@ class HashKey(Stringable, EnsureIt, Primitive):
     @staticmethod
     def from_file(file: Union[str, Path]) -> "HashKey":
         return HashKey.from_stream(ensure_path(file).open("rb"))
+
 
 HashKey.__packer__ = ProxyPacker(HashKey, FixedSizePacker(Hasher.SIZEOF))
 

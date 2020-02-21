@@ -14,13 +14,18 @@ from hashkernel.caskade import (
     BaseJots,
     CaskadeConfig,
     CaskHashSigner,
+    Catalog_PACKER,
     CheckpointHeader,
     CheckPointType,
     Stamp,
     Stamp_PACKER,
-    Catalog_PACKER)
-from hashkernel.caskade.cask import BaseCaskade, Caskade, size_of_entry, \
-    size_of_check_point
+)
+from hashkernel.caskade.cask import (
+    BaseCaskade,
+    Caskade,
+    size_of_check_point,
+    size_of_entry,
+)
 from hashkernel.caskade.optional import OptionalCaskade, OptionalJots, Tag
 from hashkernel.hashing import HashKey
 from hashkernel.tests import rand_bytes
@@ -62,19 +67,15 @@ def test_packers():
 
 
 @pytest.mark.parametrize(
-    "entries, conform_to",
-    [
-        (BaseJots, OptionalJots),
-        (OptionalJots, BaseJots),
-    ],
+    "entries, conform_to", [(BaseJots, OptionalJots), (OptionalJots, BaseJots)]
 )
 def test_catalog(entries, conform_to):
     cat = entries.catalog()
     pack = Catalog_PACKER.pack(cat)
-    cat2, end = Catalog_PACKER.unpack(pack,0)
+    cat2, end = Catalog_PACKER.unpack(pack, 0)
     assert len(pack) == end
     assert cat == cat2
-    new_entries,_ = entries.force_in(conform_to.catalog(), expand=True)
+    new_entries, _ = entries.force_in(conform_to.catalog(), expand=True)
     if entries == OptionalJots:
         assert new_entries == entries
     else:
@@ -95,9 +96,7 @@ def test_config(name, jot_types, config):
 
     assert new_ck.config == loaded_ck.config
     assert new_ck.config.signature_size() == loaded_ck.config.signature_size()
-    assert type(new_ck.config.checkpoint_ttl) == type(
-        loaded_ck.config.checkpoint_ttl
-    )
+    assert type(new_ck.config.checkpoint_ttl) == type(loaded_ck.config.checkpoint_ttl)
 
 
 ONE_AND_QUARTER = (CHUNK_SIZE * 5) // 4
@@ -108,15 +107,17 @@ TWO_K = 2048
 
 
 class SizePredictor:
-    def __init__(self, caskade:Caskade):
+    def __init__(self, caskade: Caskade):
         self.cascade = caskade
-        self.pos = size_of_entry(BaseJots.CASK_HEADER, len(self.cascade.latest_file().catalog.binary))
+        self.pos = size_of_entry(
+            BaseJots.CASK_HEADER, len(self.cascade.latest_file().catalog.binary)
+        )
 
     def add(self, size):
         self.pos = self.pos + size
 
     def add_data(self, data_size):
-        self.add(size_of_entry(BaseJots.DATA,  data_size))
+        self.add(size_of_entry(BaseJots.DATA, data_size))
 
     def add_check_point(self):
         self.add(size_of_check_point(self.cascade))
@@ -140,10 +141,10 @@ def test_recover_no_checkpoints():
     assert first_cask == caskade.active.guid
     assert caskade.active.tracker.current_offset == sp.pos
     h0 = caskade.write_bytes(rand_bytes(0, TINY))
-    sp.add_data( TINY)
+    sp.add_data(TINY)
     assert caskade.active.tracker.current_offset == sp.pos
     a1 = caskade.write_bytes(rand_bytes(1, TWO_K))
-    sp.add_data( TWO_K)
+    sp.add_data(TWO_K)
     assert caskade.active.tracker.current_offset == sp.pos
     a1_again = caskade.write_bytes(rand_bytes(1, TWO_K))
     assert a1 == a1_again
@@ -155,7 +156,7 @@ def test_recover_no_checkpoints():
     sp.add_check_point()
     assert write_caskade.active.tracker.current_offset == sp.pos
     a2 = write_caskade.write_bytes(rand_bytes(2, TWO_K))
-    sp.add_data( TWO_K)
+    sp.add_data(TWO_K)
     assert write_caskade.active.tracker.current_offset == sp.pos
 
     assert write_caskade.active.tracker.current_offset == sp.pos
@@ -192,18 +193,18 @@ def test_3steps(name, caskade_cls, config):
     sp.add_data(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == sp.pos
     a1 = caskade.write_bytes(rand_bytes(1, ONE_AND_QUARTER))
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
     a2 = caskade.write_bytes(rand_bytes(2, ONE_AND_QUARTER))
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
     assert first_cask == caskade.active.guid
     assert caskade.active.tracker.current_offset == sp.pos
     a3 = caskade.write_bytes(rand_bytes(3, ONE_AND_QUARTER))
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
     a4_bytes = rand_bytes(4, ONE_AND_QUARTER)
     a4 = caskade.write_bytes(a4_bytes)
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
 
     a4_permalink = Cake.new_guid()
@@ -220,7 +221,7 @@ def test_3steps(name, caskade_cls, config):
         sp.add(size_of_entry(OptionalJots.TAG, len(bytes(a4_tag))))
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
 
     # cp1 by size
     sp.add_check_point()
@@ -228,21 +229,21 @@ def test_3steps(name, caskade_cls, config):
     assert first_cask == caskade.active.guid
 
     h1 = caskade.write_bytes(rand_bytes(1, ABOUT_HALF))
-    sp.add_data( ABOUT_HALF)
+    sp.add_data(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == sp.pos
     sleep(20)
     h2 = caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
-    sp.add_data( ABOUT_HALF)
+    sp.add_data(ABOUT_HALF)
     # cp2 by time
     sp.add_check_point()
     assert caskade.active.tracker.current_offset == sp.pos
     assert first_cask == caskade.active.guid
 
     h3 = caskade.write_bytes(rand_bytes(3, ABOUT_HALF))
-    sp.add_data( ABOUT_HALF)
+    sp.add_data(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == sp.pos
     h4 = caskade.write_bytes(rand_bytes(4, ABOUT_HALF))
-    sp.add_data( ABOUT_HALF)
+    sp.add_data(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == sp.pos
     a6 = caskade.write_bytes(rand_bytes(6, ONE_AND_QUARTER))
     # new_cask
@@ -275,7 +276,7 @@ def test_3steps(name, caskade_cls, config):
         assert k == HashKey.from_bytes(caskade[k])
         # logit(str(k)[:8])
     if caskade_cls == OptionalCaskade:
-        assert read_caskade.derived[a4][a4_permalink]==a4_derived
+        assert read_caskade.derived[a4][a4_permalink] == a4_derived
         assert caskade.tags[a4_permalink][0] == a4_tag
 
     assert read_caskade.datalinks[a4_permalink][0] == a4
@@ -303,7 +304,7 @@ def test_3steps(name, caskade_cls, config):
 
     assert write_caskade.check_points[-1].type == CheckPointType.ON_CASKADE_RESUME
     a7 = write_caskade.write_bytes(rand_bytes(7, ONE_AND_QUARTER))
-    sp.add_data( ONE_AND_QUARTER)
+    sp.add_data(ONE_AND_QUARTER)
     assert write_caskade.active.tracker.current_offset == sp.pos
     # logit("write_more")
 
