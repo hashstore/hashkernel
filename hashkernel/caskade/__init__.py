@@ -9,7 +9,7 @@ from typing import (
     Tuple,
     Type,
     Union,
-)
+    cast)
 
 from nanotime import nanotime
 
@@ -185,7 +185,7 @@ PACKERS = PackerLibrary().register_all(
     (NamedTuple, named_tuple_resolver),
 )
 
-class FakeEnumItem(NamedTuple):
+class SurrogateEnum(NamedTuple):
     name: str
     value: Any
 
@@ -196,13 +196,15 @@ class CatalogItem(NamedTuple):
     header_size: int
     has_payload: bool
 
-    def enum_item(self):
-        return FakeEnumItem(self.entry_name, (
+    def enum_item(self)->SurrogateEnum:
+        return SurrogateEnum(self.entry_name, (
                 self.entry_code,
                 FixedSizePacker(self.header_size) if self.header_size else None,
                 GREEDY_BYTES if self.has_payload else None,
                 self.entry_name,
             ))
+
+
 
 
 @PACKERS.register(named_tuple_packer(Cake.__packer__, HashKey.__packer__))
@@ -231,20 +233,22 @@ class CaskHeaderEntry(NamedTuple):
     caskade_id: Cake
     checkpoint_id: HashKey
     prev_cask_id: Cake
-    # TODO: entries_catalog: HashKey
+    catalog_id: HashKey
+    #TODO stop_cask: Cake
 
 @PACKERS.register(named_tuple_packer(INT_8, NANOTIME))
-class Record(NamedTuple):
+class Stamp(NamedTuple):
     entry_code: int
     tstamp: nanotime
 
-Record_PACKER = PACKERS.get_packer_by_type(Record)
+Stamp_PACKER = PACKERS.get_packer_by_type(Stamp)
 
 Catalog_PACKER = GreedyListPacker(CatalogItem, packer_lib=PACKERS)
 
 PAYLOAD_SIZE_PACKER = ADJSIZE_PACKER_4
 
-class EntryType(CodeEnum):
+
+class JotType(CodeEnum):
     def __init__(self, code, header:Union[type,Packer,None], payload:Union[type,Packer,None], doc):
         CodeEnum.__init__(self, code, doc)
         self.header_packer = ensure_packer(header, PACKERS)
@@ -263,38 +267,43 @@ class EntryType(CodeEnum):
         return sorted([et.build_catalog_item() for et in cls])
 
     @classmethod
-    def confirm_to_catalog(cls, other_catalog: List[CatalogItem]) -> Type["EntryType"]:
+    def force_in(cls, other_catalog: List[CatalogItem], expand:bool) -> Tuple[Type["JotType"],bool]:
         cat_dict = {item.entry_code: item for item in cls.catalog()}
-        add = []
+        add:List[Any] = []
         mismatch = []
+        has_surrogates = False
         for other in other_catalog:
             if other.entry_code not in cat_dict:
-                add.append(other)
+                add.append(other.enum_item())
             elif cat_dict[other.entry_code] != other:
                 mismatch.append(other)
+            elif not expand:
+                add.append(cls.find_by_code(other.entry_code))
         assert not mismatch, mismatch
-        if not add:
-            return cls
-        return EntryType.combine(cls, [a.enum_item() for a in add])#type:ignore
+        if expand:
+            if not add:
+                return cls, False
+            return JotType.combine(cls, add), has_surrogates
+        else:
+            return JotType.combine(add), has_surrogates
 
     @staticmethod
-    def combine(*enums: Type["EntryType"]):
-        class CombinedEntryType(
-            EntryType, metaclass=MetaCodeEnumExtended, enums=[*enums]
+    def combine(*enums: Iterable[Any]):
+        class CombinedJotType(
+            JotType, metaclass=MetaCodeEnumExtended, enums=[*enums]
         ):
             pass
-
-        return CombinedEntryType
+        return CombinedJotType
 
     @classmethod
-    def extends(cls, *enums: Type["EntryType"]):
-        def decorate(decorated_enum: Type["EntryType"]):
+    def extends(cls, *enums: Type["JotType"]):
+        def decorate(decorated_enum: Type["JotType"]):
             return cls.combine(cls, decorated_enum, *enums)
 
         return decorate
 
-    def pack_entry(self, rec: Record, header: Any, payload:Any)->bytes:
-        header_buff = Record_PACKER.pack(rec)
+    def pack_entry(self, rec: Stamp, header: Any, payload:Any)->bytes:
+        header_buff = Stamp_PACKER.pack(rec)
         if self.header_packer is not None:
             header_buff += self.header_packer.pack(header)
         return self.pack_payload(header_buff, payload)
@@ -313,7 +322,28 @@ class EntryType(CodeEnum):
         return header_buff + payload_buff
 
 
-class BaseEntries(EntryType):
+class JotTypeCatalog:
+    types: Type[JotType]
+    binary: bytes
+    key: HashKey
+    has_surrogates: bool
+
+    def __init__(self, jot_types: Type[JotType], other_catalog: Optional[Union[bytes,List[CatalogItem]]] = None, expand: bool = True):
+        if other_catalog is None:
+            self.types = jot_types
+            self.has_surrogates = False
+        else:
+            if isinstance(other_catalog, bytes):
+                other_catalog= cast(List[CatalogItem], Catalog_PACKER.unpack_whole_buffer(other_catalog))
+            self.types, self.has_surrogates = jot_types.force_in(other_catalog, expand)
+        self.binary = Catalog_PACKER.pack(self.types.catalog())
+        self.key = HashKey.from_bytes(self.binary)
+
+    def __len__(self):
+        return len(self.binary)
+
+
+class BaseJots(JotType):
 
     DATA = (
         0,
@@ -364,7 +394,7 @@ class BaseEntries(EntryType):
     CASK_HEADER = (
         5,
         CaskHeaderEntry,
-        None,
+        Catalog_PACKER,
         """
         first entry in any cask, `prev_cask_id` has cask_id of previous cask 
         or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
@@ -468,10 +498,10 @@ class SegmentTracker:
                 return CheckPointType.ON_SIZE
         return None
 
-    def checkpoint(self, cpt: CheckPointType) -> Tuple[Record, CheckpointHeader]:
+    def checkpoint(self, cpt: CheckPointType) -> Tuple[Stamp, CheckpointHeader]:
         return (
-            Record(
-                BaseEntries.CHECK_POINT.code,
+            Stamp(
+                BaseJots.CHECK_POINT.code,
                 nanotime_now()
             ),
             CheckpointHeader(HashKey(self.hasher), self.start_offset, self.current_offset, cpt),
@@ -528,85 +558,19 @@ class CaskadeConfig(SmAttr):
     def signature_size(self):
         return 0 if self.signer is None else self.signer.signature_size()
 
-
-class CaskadeMetadata:
-    dir: Path
-    caskade_id: Cake
-    entry_types: Type[EntryType]
-    config: CaskadeConfig
-    just_created: bool
-
-    def __init__(
-        self,
-        dir: Path,
-        entry_types: Type[EntryType],
-        config: Optional[CaskadeConfig] = None,
-    ):
-        self.dir = dir
-        self.entry_types = entry_types
-        self.just_created = not self.dir.exists()
-        if self.just_created:
-            self.dir.mkdir(mode=0o0700, parents=True)
-            self.caskade_id = Cake.new_guid(CakeTypes.CASK)
-            if config is None:
-                self.config = CaskadeConfig(origin=self.caskade_id)
-            else:
-                config.origin = self.caskade_id
-                self.config = config
-            self._etc_dir().mkdir(mode=0o0700, parents=True)
-            if self.config.signer is not None:
-                self.config.signer.init_dir(self._etc_dir())
-            dump_jsonable(self._config_file(), self.config)
-        else:
-            assert self.dir.is_dir()
-            self.config = load_jsonable(self._config_file(), CaskadeConfig)
-            if self.config.signer is not None:
-                self.config.signer.load_from_dir(self._etc_dir())
-            self.caskade_id = self.config.origin
-        self.validate_config()
-
-    def _config_file(self) -> Path:
-        return self._etc_dir() / "config.json"
-
-    def _etc_dir(self) -> Path:
-        return self.dir / ".hs_etc"
-
-    def validate_config(self):
-        assert CHUNK_SIZE <= self.config.auto_chunk_cutoff <= CHUNK_SIZE_2x
-        assert CHUNK_SIZE_2x < self.config.checkpoint_size
-        assert CHUNK_SIZE_2x < self.config.max_cask_size <= MAX_CASK_SIZE
-
     def sign(self, header_buffer):
         signature = b''
-        if self.config.signer is not None:
-            signature = self.config.signer.sign(header_buffer)
+        if self.signer is not None:
+            signature = self.signer.sign(header_buffer)
         return signature
 
     def validate_signature(self, header_buffer:bytes, signature:bytes):
-        if self.config.signer is not None:
-            return self.config.signer.validate(header_buffer,signature)
+        if self.signer is not None:
+            return self.signer.validate(header_buffer,signature)
         return False
 
-    def pack_entry(self, rec: Record, header: Any, payload:Any)->bytes:
-        et:EntryType = self.entry_types.find_by_code(rec.entry_code)
-        return et.pack_entry(rec, header, payload)
+    def validate_config(self):
+        assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x
+        assert CHUNK_SIZE_2x < self.checkpoint_size
+        assert CHUNK_SIZE_2x < self.max_cask_size <= MAX_CASK_SIZE
 
-    def size_of_entry(self, et: EntryType, payload_size: int = 0) -> int:
-        size = Record_PACKER.size + et.header_size
-        if et.payload_packer is None:
-            assert payload_size == 0
-        else:
-            size_of_size = len(PAYLOAD_SIZE_PACKER.pack(payload_size))
-            size += size_of_size + payload_size
-        return size
-
-    def size_of_checkpoint(self):
-        return self.size_of_entry(
-            BaseEntries.CHECK_POINT, self.config.signature_size()
-        )
-
-    def size_of_header(self):
-        return self.size_of_entry(BaseEntries.CASK_HEADER)
-
-    def size_of_end_sequence(self):
-        return self.size_of_entry(BaseEntries.NEXT_CASK) + self.size_of_checkpoint()

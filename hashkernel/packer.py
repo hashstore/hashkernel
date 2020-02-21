@@ -357,14 +357,14 @@ def unpack_constraining_greed(
     return greedy_packer.unpack_whole_buffer(new_buffer), new_offset
 
 
-
-
 PackerFactory = Callable[[type], Packer]
+
 
 def named_tuple_packer(*parts:Packer):
     def factory(cls:type):
         return TuplePacker(*parts,cls=cls)
     return factory
+
 
 class PackerLibrary:
 
@@ -399,7 +399,7 @@ class PackerLibrary:
 
     def resolve(self, key_cls:type):
         """
-        decorator that make sure that PackerLibra is capable to
+        decorator that make sure that PackerLibrary is capable to
         build packer of particular `key_cls`
 
         :param key_cls:

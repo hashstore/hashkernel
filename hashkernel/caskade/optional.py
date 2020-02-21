@@ -5,7 +5,7 @@ from typing import Any, Dict, List, NamedTuple, Optional, Union, \
 
 from hashkernel import LogicRegistry
 from hashkernel.bakery import Cake
-from hashkernel.caskade import BaseEntries, CaskadeConfig, EntryType, Record
+from hashkernel.caskade import BaseJots, CaskadeConfig, JotType, Stamp
 from hashkernel.caskade.cask import Caskade, EntryHelper
 from hashkernel.hashing import HashKey
 from hashkernel.mold import MoldConfig
@@ -30,8 +30,8 @@ class Tag(SmAttr):
     link: Optional[Cake]
 
 
-@BaseEntries.extends()
-class OptionalEntries(EntryType):
+@BaseJots.extends()
+class OptionalJots(JotType):
     DERIVED = (
         6,
         DerivedHeader,
@@ -56,13 +56,13 @@ class OptionalEntries(EntryType):
 class OptionalEntryHelper(EntryHelper):
     registry:ClassVar[LogicRegistry] = LogicRegistry().add_all(EntryHelper.registry)
 
-    @registry.add(OptionalEntries.TAG)
+    @registry.add(OptionalJots.TAG)
     def load_TAG(self):
         k: Cake = self.header
         tag: Tag = self.payload()
         self.cask.caskade.tags[k].append(tag)
 
-    @registry.add(OptionalEntries.DERIVED)
+    @registry.add(OptionalJots.DERIVED)
     def load_DERIVED(self):
         drvd: DerivedHeader = self.header
         self.cask.caskade.derived[drvd.src][drvd.filter] = drvd.derived
@@ -74,17 +74,17 @@ class OptionalCaskade(Caskade):
     def __init__(self, path: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.derived = defaultdict(dict)
         self.tags = defaultdict(list)
-        Caskade.__init__(self, path, OptionalEntries, config)
+        Caskade.__init__(self, path, OptionalJots, config)
 
     def tag(self, src: Cake, tag: Tag):
         self.assert_write()
-        self.active.write_entry(OptionalEntries.TAG, src, tag)
+        self.active.write_entry(OptionalJots.TAG, src, tag)
         self.tags[src].append(tag)
 
     def save_derived(self, src: HashKey, filter: Cake, derived: HashKey):
         self.assert_write()
         self.active.write_entry(
-            OptionalEntries.DERIVED, DerivedHeader(src, filter, derived), None
+            OptionalJots.DERIVED, DerivedHeader(src, filter, derived), None
         )
         self.derived[src][filter] = derived
 
