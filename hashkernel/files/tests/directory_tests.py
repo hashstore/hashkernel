@@ -1,15 +1,19 @@
 import asyncio
+import re
 import sys
 from pathlib import Path
 
 import pytest
 from hs_build_tools import LogTestOut
-import re
 
-from hashkernel import json_encode, to_json, json_decode
+from hashkernel import json_decode, json_encode, to_json
 from hashkernel.bakery import Cake
-from hashkernel.files.directory import DirContent, OnNewDirContent, \
-    process_dir, FileExtra
+from hashkernel.files.directory import (
+    DirContent,
+    FileExtra,
+    OnNewDirContent,
+    process_dir,
+)
 from hashkernel.files.ignore_file import DEFAULT_IGNORE_POLICY
 from hashkernel.files.tests import seed_file
 from hashkernel.hashing import HashKey
@@ -69,31 +73,31 @@ async def test_ignore_policy(
     json = json_encode(to_json(entry))
 
     fe = FileExtra.from_json(json_decode(json))
-    assert [x.name() for x in fe.xtra] == [x.name() for x in
-                                           entry.xtra.extras]
+    assert [x.name() for x in fe.xtra] == [x.name() for x in entry.xtra.extras]
     for i in range(len(entry.xtra)):
         assert fe.xtra[i].name() == entry.xtra[i].name()
 
     if file_extra_factory == HashKey.from_file and ignore_symlinks:
-        json = re.sub(r'"mod": "[^"]+",', '', json)
+        json = re.sub(r'"mod": "[^"]+",', "", json)
         print(json)
-        assert json == \
-               '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": ' \
-               '[{ "name": "a", "size": 5, "type": "TREE", "xtra": ' \
-               '[{ "name": "b", "size": 5, "type": "TREE", "xtra": ' \
-               '[{ "name": "1_5.dat", "size": 5, "type": "FILE", ' \
-               '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}, ' \
-               '{ "name": "c", "size": 12, "type": "TREE", "xtra": ' \
-               '[{ "name": "b", "size": 12, "type": "TREE", "xtra": ' \
-               '[{ "name": "1_5.dat", "size": 5, "type": "FILE", ' \
-               '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}, ' \
-               '{ "name": "2_7.dat", "size": 7, "type": "FILE", ' \
-               '"xtra": "pkmdkuteqp50nvdl3o23v6egmbjnyb5mx65qicbtiulhipuzw"}]}]}, ' \
-               '{ "name": "x", "size": 5, "type": "TREE", "xtra": ' \
-               '[{ "name": "f", "size": 5, "type": "TREE", "xtra": ' \
-               '[{ "name": "b", "size": 5, "type": "TREE", "xtra": ' \
-               '[{ "name": "1_5.dat", "size": 5, "type": "FILE", ' \
-               '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}]}]}'
+        assert (
+            json == '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": '
+            '[{ "name": "a", "size": 5, "type": "TREE", "xtra": '
+            '[{ "name": "b", "size": 5, "type": "TREE", "xtra": '
+            '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
+            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}, '
+            '{ "name": "c", "size": 12, "type": "TREE", "xtra": '
+            '[{ "name": "b", "size": 12, "type": "TREE", "xtra": '
+            '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
+            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}, '
+            '{ "name": "2_7.dat", "size": 7, "type": "FILE", '
+            '"xtra": "pkmdkuteqp50nvdl3o23v6egmbjnyb5mx65qicbtiulhipuzw"}]}]}, '
+            '{ "name": "x", "size": 5, "type": "TREE", "xtra": '
+            '[{ "name": "f", "size": 5, "type": "TREE", "xtra": '
+            '[{ "name": "b", "size": 5, "type": "TREE", "xtra": '
+            '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
+            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}]}]}'
+        )
 
 
 async def main():

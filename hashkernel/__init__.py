@@ -373,7 +373,7 @@ def to_json(v: Any) -> Any:
     if isinstance(v, Integerable):
         return int(v)
     if isinstance(v, dict):
-        return {str(k): to_json(v) for k,v in v.items()}
+        return {str(k): to_json(v) for k, v in v.items()}
     if isinstance(v, (list, tuple)):
         return [to_json(v) for v in v]
     if isinstance(v, (int, bool, float, str)):

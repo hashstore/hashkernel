@@ -1,11 +1,11 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, NamedTuple, Optional, Tuple, \
-    Union, Dict, cast
+from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union, cast
+
 from dateutil.parser import parse as dt_parse
 
-from hashkernel import CodeEnum, to_json, identity
+from hashkernel import CodeEnum, identity, to_json
 from hashkernel.files.ignore_file import IgnoreRuleSet
 
 
@@ -47,7 +47,9 @@ class FileExtra(NamedTuple):
         }
 
     @staticmethod
-    def from_json( json:Dict[str,Any], parent:Optional[Path] = None, file_extra=identity )->"FileExtra":
+    def from_json(
+        json: Dict[str, Any], parent: Optional[Path] = None, file_extra=identity
+    ) -> "FileExtra":
         name = json["name"]
         path = Path(name) if parent is None else parent / name
         file = File(path, json["size"], dt_parse(json["mod"]), FileType[json["type"]])
@@ -56,7 +58,13 @@ class FileExtra(NamedTuple):
             return FileExtra(file, None)
         if isinstance(xtra, str):
             return FileExtra(file, file_extra(xtra))
-        return FileExtra(file, [FileExtra.from_json(e, parent=file.path, file_extra=file_extra) for e in xtra])
+        return FileExtra(
+            file,
+            [
+                FileExtra.from_json(e, parent=file.path, file_extra=file_extra)
+                for e in xtra
+            ],
+        )
 
 
 def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[File]]:
@@ -82,7 +90,7 @@ class DirContent:
     file: File
     extras: List[FileExtra]
 
-    def __init__(self, file:File, extras:List[FileExtra]):
+    def __init__(self, file: File, extras: List[FileExtra]):
         self.file = file
         self.extras = extras
 
@@ -101,11 +109,13 @@ class DirContent:
     def __len__(self):
         return len(self.extras)
 
-    def __getitem__(self, i:int)->FileExtra:
+    def __getitem__(self, i: int) -> FileExtra:
         return self.extras[i]
 
     def tree_extra(self) -> FileExtra:
-        return FileExtra(File(self.file.path, self.size(), self.mod(), FileType.TREE), self)
+        return FileExtra(
+            File(self.file.path, self.size(), self.mod(), FileType.TREE), self
+        )
 
     def __to_json__(self):
         return [to_json(e) for e in self.extras]
