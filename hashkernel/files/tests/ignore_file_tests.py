@@ -41,8 +41,8 @@ async def test_ignore_policy(add_duplicates: bool, policy: IgnoreFilePolicy):
         rules.update_ignore_files("x")
 
     entry = await process_dir(ignorables_dir, rules)
-    assert entry.name == "ignorables"
-    entries = entry.xtra.entries
+    assert entry.name() == "ignorables"
+    extras = entry.xtra.extras
 
     expected_on_1st_level = [".ignore", "a"]
     expected_on_3st_level = ["1_5.dat"]
@@ -50,8 +50,8 @@ async def test_ignore_policy(add_duplicates: bool, policy: IgnoreFilePolicy):
         expected_on_1st_level.insert(1, ".svn")
         expected_on_3st_level.append("2_7.dat")
 
-    assert [e.name for e in entries] == expected_on_1st_level
-    a_entries = entries[-1].xtra.entries
-    assert [e.name for e in a_entries] == ["b"]
-    b_entries = a_entries[0].xtra.entries
-    assert [e.name for e in b_entries] == expected_on_3st_level
+    assert [e.name() for e in extras] == expected_on_1st_level
+    a_extras = extras[-1].xtra.extras
+    assert [e.name() for e in a_extras] == ["b"]
+    b_extras = a_extras[0].xtra.extras
+    assert [e.name() for e in b_extras] == expected_on_3st_level

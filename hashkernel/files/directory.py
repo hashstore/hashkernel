@@ -1,32 +1,18 @@
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Callable, List, NamedTuple, Optional, Tuple, \
+    Union, Dict, cast
+from dateutil.parser import parse as dt_parse
 
-from hashkernel import CodeEnum, to_json
+from hashkernel import CodeEnum, to_json, identity
 from hashkernel.files.ignore_file import IgnoreRuleSet
 
 
 class FileType(CodeEnum):
+    TREE = (0,)
     DIR = (1,)
     FILE = (2,)
-
-
-class DirEntry(NamedTuple):
-    name: str
-    size: int
-    mod: datetime
-    type: FileType
-    xtra: Optional[Any]
-
-    def __to_json__(self):
-        return {
-            "name": self.name,
-            "type": self.type.name,
-            "size": self.size,
-            "mod": self.mod.isoformat(),
-            "xtra": to_json(self.xtra),
-        }
 
 
 class File(NamedTuple):
@@ -36,13 +22,41 @@ class File(NamedTuple):
     type: FileType
 
     @staticmethod
-    def from_path(path: Path, et: FileType) -> "File":
+    def from_path(path: Path, ft: FileType = None) -> "File":
         stat = path.stat()
+        if ft is None:
+            ft = FileType.DIR if path.is_dir() else FileType.FILE
         dt = datetime.utcfromtimestamp(stat.st_mtime)
-        return File(path, stat.st_size, dt, et)
+        return File(path, stat.st_size, dt, ft)
 
-    def entry(self, xtra: Any = None):
-        return DirEntry(self.path.name, self.size, self.mod, self.type, xtra)
+
+class FileExtra(NamedTuple):
+    file: File
+    xtra: Optional[Any]
+
+    def name(self):
+        return self.file.path.name
+
+    def __to_json__(self):
+        return {
+            "name": self.name(),
+            "type": self.file.type.name,
+            "size": self.file.size,
+            "mod": self.file.mod.isoformat(),
+            "xtra": to_json(self.xtra),
+        }
+
+    @staticmethod
+    def from_json( json:Dict[str,Any], parent:Optional[Path] = None, file_extra=identity )->"FileExtra":
+        name = json["name"]
+        path = Path(name) if parent is None else parent / name
+        file = File(path, json["size"], dt_parse(json["mod"]), FileType[json["type"]])
+        xtra = json["xtra"]
+        if xtra is None:
+            return FileExtra(file, None)
+        if isinstance(xtra, str):
+            return FileExtra(file, file_extra(xtra))
+        return FileExtra(file, [FileExtra.from_json(e, parent=file.path, file_extra=file_extra) for e in xtra])
 
 
 def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[File]]:
@@ -64,32 +78,40 @@ def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[
     return files, dirs
 
 
-OnNewDirContent = Callable[[Any], None]
+class DirContent:
+    file: File
+    extras: List[FileExtra]
 
-
-class DirContent(NamedTuple):
-    path: Path
-    entries: List[DirEntry]
-    dir_entry: Optional[DirEntry]
+    def __init__(self, file:File, extras:List[FileExtra]):
+        self.file = file
+        self.extras = extras
 
     def size(self):
-        return sum(e.size for e in self.entries)
+        return sum(e.file.size for e in self.extras)
 
     def mod(self):
         dt = (
-            max(e.mod for e in self.entries)
-            if len(self.entries)
+            max(e.file.mod for e in self.extras)
+            if len(self.extras)
             else datetime.utcfromtimestamp(0)
         )
-        if self.dir_entry is not None:
-            dt = max(self.dir_entry.mod, dt)
+        dt = max(self.file.mod, dt)
         return dt
 
-    def entry(self) -> DirEntry:
-        return DirEntry(self.path.name, self.size(), self.mod(), FileType.DIR, self)
+    def __len__(self):
+        return len(self.extras)
+
+    def __getitem__(self, i:int)->FileExtra:
+        return self.extras[i]
+
+    def tree_extra(self) -> FileExtra:
+        return FileExtra(File(self.file.path, self.size(), self.mod(), FileType.TREE), self)
 
     def __to_json__(self):
-        return {"entries": [to_json(e) for e in self.entries]}
+        return [to_json(e) for e in self.extras]
+
+
+OnNewDirContent = Callable[[DirContent], None]
 
 
 async def run_io(*args):
@@ -99,30 +121,27 @@ async def run_io(*args):
 async def process_dir(
     dir: Union[Path, File],
     ignore_rules: IgnoreRuleSet,
-    callback: OnNewDirContent = None,
+    content_cb: OnNewDirContent = None,
     file_extra_factory: Callable[[Path], Any] = None,
-) -> DirEntry:
-    if isinstance(dir, File):
-        dir_entry = dir.entry()
-        path = dir.path
-    else:
-        dir_entry = None
-        path = dir
-    assert path.is_dir()
-    files, dirs = await run_io(read_dir, path, ignore_rules)
+) -> FileExtra:
+    if isinstance(dir, Path):
+        dir = cast(File, await run_io(File.from_path, dir))
+    assert dir.type != FileType.FILE
+    files, dirs = await run_io(read_dir, dir.path, ignore_rules)
     dir_futures = [
-        process_dir(p, ignore_rules, callback, file_extra_factory) for p in dirs
+        process_dir(child_dir, ignore_rules, content_cb, file_extra_factory)
+        for child_dir in dirs
     ]
     if file_extra_factory is not None:
-        child_entries = [
-            f.entry(await run_io(file_extra_factory, f.path)) for f in files
+        child_extras = [
+            FileExtra(f, await run_io(file_extra_factory, f.path)) for f in files
         ]
     else:
-        child_entries = [f.entry() for f in files]
-    child_entries += [await f for f in dir_futures]
-    child_entries.sort(key=lambda e: e.name)
+        child_extras = [FileExtra(f, None) for f in files]
+    child_extras += [await f for f in dir_futures]
+    child_extras.sort(key=lambda e: e.name())
 
-    content = DirContent(path, child_entries, dir_entry)
-    if callback is not None:
-        callback(content)
-    return content.entry()
+    content = DirContent(dir, child_extras)
+    if content_cb is not None:
+        content_cb(content)
+    return content.tree_extra()
