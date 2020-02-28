@@ -199,16 +199,10 @@ class CatalogItem(NamedTuple):
         )
 
 
-@PACKERS.register(named_tuple_packer(Cake.__packer__, HashKey.__packer__))
-class StreamHeader(NamedTuple):
-    stream_id: Cake
-    chunk_id: HashKey
-
-
 @PACKERS.register(named_tuple_packer(Cake.__packer__, INT_8, HashKey.__packer__))
-class DataLinkHeader(NamedTuple):
+class DataLink(NamedTuple):
     from_id: Cake
-    purpose: int
+    link_type: int # 0-255: depend on Cake Type
     to_id: HashKey
 
 
@@ -358,8 +352,20 @@ class JotTypeCatalog:
 
 class BaseJots(JotType):
 
-    DATA = (
+    CASK_HEADER = (
         0,
+        CaskHeaderEntry,
+        Catalog_PACKER,
+        """
+        first entry in any cask, `prev_cask_id` has cask_id of previous cask 
+        or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
+        copied from `src` last checkpoint of previous cask or NULL_CAKE 
+        and caskade_id points to caskade_id of series of cask.  
+        """,
+    )
+
+    DATA = (
+        1,
         HashKey.__packer__,
         GREEDY_BYTES,
         """
@@ -367,9 +373,7 @@ class BaseJots(JotType):
         """,
     )
 
-    STREAM = (1, StreamHeader, GREEDY_BYTES, "stream chank")
-
-    LINK = (2, DataLinkHeader, None, "Link")
+    LINK = (2, DataLink, None, "Link")
 
     CHECK_POINT = (
         3,
@@ -391,18 +395,6 @@ class BaseJots(JotType):
         """
         header points to next cask segment. This entry has to 
         precede ON_NEXT_CASK checkpoint.
-        """,
-    )
-
-    CASK_HEADER = (
-        5,
-        CaskHeaderEntry,
-        Catalog_PACKER,
-        """
-        first entry in any cask, `prev_cask_id` has cask_id of previous cask 
-        or NULL_CAKE. `checkpoint_id` has checksum hash that should be 
-        copied from `src` last checkpoint of previous cask or NULL_CAKE 
-        and caskade_id points to caskade_id of series of cask.  
         """,
     )
 

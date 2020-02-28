@@ -30,7 +30,8 @@ from nanotime import nanotime
 from hashkernel import CodeEnum, EnsureIt, GlobalRef, OneBit, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.hashing import Hasher, HashKey
+from hashkernel.hashing import Hasher, HashKey, NULL_HASH_KEY, \
+    SIZE_OF_HASH_KEY
 from hashkernel.packer import (
     INT_8,
     NANOTIME,
@@ -316,6 +317,8 @@ class Cake(Stringable, EnsureIt, Primitive):
     is_folder: bool
     is_journal: bool
     is_vtree: bool
+    hash_key: HashKey
+    type: CakeType
 
     __packer__: ClassVar[Packer]
 
@@ -491,9 +494,9 @@ TIMED_CAKE_PACKER = BAKERY_PACKERS.get_packer_by_type(TimedCake)
 @total_ordering
 class BlockStream:
     """
-    >>> bs = BlockStream(blocks=[NULL_CAKE, NULL_CAKE])
+    >>> bs = BlockStream(blocks=[NULL_HASH_KEY, NULL_HASH_KEY])
     >>> len(bytes(bs))
-    67
+    65
     >>> bs == BlockStream(bytes(bs))
     True
     >>> bs != BlockStream(bytes(bs))
@@ -501,24 +504,24 @@ class BlockStream:
     """
 
     type: CakeType
-    blocks: List[Cake]
+    blocks: List[HashKey]
 
     def __init__(
         self,
         s: Optional[bytes] = None,
-        blocks: Optional[Iterable[Cake]] = None,
+        blocks: Optional[Iterable[HashKey]] = None,
         type: CakeType = CakeTypes.NO_CLASS,
     ):
         if s is not None:
             assert blocks is None
             len_of_s = len(s)
-            assert len_of_s % SIZEOF_CAKE == 1
+            assert len_of_s % SIZE_OF_HASH_KEY == 1
             self.type = CakeTypes[ord(s[:1])]
             self.blocks = []
             offset = 1
-            for _ in range(len_of_s // SIZEOF_CAKE):
-                end = offset + SIZEOF_CAKE
-                self.blocks.append(Cake(s[offset:end]))
+            for _ in range(len_of_s // SIZE_OF_HASH_KEY):
+                end = offset + SIZE_OF_HASH_KEY
+                self.blocks.append(HashKey(s[offset:end]))
                 offset = end
         else:
             assert blocks is not None

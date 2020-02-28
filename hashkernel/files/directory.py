@@ -54,17 +54,14 @@ class FileExtra(NamedTuple):
         path = Path(name) if parent is None else parent / name
         file = File(path, json["size"], dt_parse(json["mod"]), FileType[json["type"]])
         xtra = json["xtra"]
-        if xtra is None:
-            return FileExtra(file, None)
         if isinstance(xtra, str):
-            return FileExtra(file, file_extra(xtra))
-        return FileExtra(
-            file,
-            [
+            xtra = file_extra(xtra)
+        elif xtra is not None:
+            xtra = [
                 FileExtra.from_json(e, parent=file.path, file_extra=file_extra)
                 for e in xtra
-            ],
-        )
+            ]
+        return FileExtra(file, xtra)
 
 
 def read_dir(path: Path, ignore_rules: IgnoreRuleSet) -> Tuple[List[File], List[File]]:

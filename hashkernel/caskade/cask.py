@@ -16,7 +16,7 @@ from hashkernel.caskade import (
     CaskType,
     CheckpointHeader,
     CheckPointType,
-    DataLinkHeader,
+    DataLink,
     DataLocation,
     DataValidationError,
     JotType,
@@ -310,7 +310,7 @@ class EntryHelper(object):
     @registry.add(BaseJots.LINK)
     def load_LINK(self):
         assert self.payload_dl is None
-        data_link: DataLinkHeader = self.header
+        data_link: DataLink = self.header
         self.cask.caskade.datalinks[data_link.from_id][
             data_link.purpose
         ] = data_link.to_id
@@ -465,7 +465,7 @@ class Caskade:
         ):
             self.assert_write()
             self.active.write_entry(
-                BaseJots.LINK, DataLinkHeader(link, purpose, data), None
+                BaseJots.LINK, DataLink(link, purpose, data), None
             )
             self.datalinks[link][purpose] = data
             return True

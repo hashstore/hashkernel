@@ -111,6 +111,7 @@ HashKey.__packer__ = ProxyPacker(HashKey, FixedSizePacker(Hasher.SIZEOF))
 
 
 NULL_HASH_KEY = HashKey(Hasher())
+SIZE_OF_HASH_KEY = Hasher.SIZEOF
 
 
 def shard_name_int(num: int):
