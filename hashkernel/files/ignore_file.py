@@ -182,7 +182,8 @@ INCLUSIVE_POLICY = IgnoreFilePolicy(ignore_files=(), spec_to_parse=())
 DEFAULT_IGNORE_POLICY = IgnoreFilePolicy(
     ignore_files=(
         ".svn",
-        ".hash_tree" ".git",
+        ".hash_tree",
+        ".git",
         ".DS_Store",
         ".vol",
         ".hotfiles.btree",
