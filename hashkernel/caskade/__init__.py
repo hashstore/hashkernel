@@ -206,6 +206,12 @@ class DataLink(NamedTuple):
     to_id: HashKey
 
 
+@PACKERS.register(named_tuple_packer(NANOTIME, INT_8, HashKey.__packer__))
+class DataLinkHistory(NamedTuple):
+    tstamp: nanotime
+    link_type: int # 0-255: depend on Cake Type
+    to_id: HashKey
+
 @PACKERS.register(
     named_tuple_packer(
         HashKey.__packer__, INT_32, INT_32, build_code_enum_packer(CheckPointType)

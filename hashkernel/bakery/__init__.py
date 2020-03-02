@@ -27,7 +27,7 @@ from typing import (
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum, EnsureIt, GlobalRef, OneBit, Primitive, Stringable
+from hashkernel import CodeEnum, EnsureIt, GlobalRef, BitMask, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
 from hashkernel.hashing import Hasher, HashKey, NULL_HASH_KEY, \
@@ -218,7 +218,7 @@ CakeTypes.extend(MsgTypes)
 
 GUIDHEADER_TUPLE = TuplePacker(NANOTIME, TTL_PACKER, INT_8)
 
-ON_HISTORY_BIT = OneBit(0)
+ON_HISTORY_BIT = BitMask(0)
 
 
 class GuidHeader:

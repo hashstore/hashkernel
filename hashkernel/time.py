@@ -7,7 +7,7 @@ from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, Integerable, OneBit, Stringable, StrKeyMixin
+from hashkernel import EnsureIt, Integerable, BitMask, Stringable, StrKeyMixin
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -19,36 +19,8 @@ def nanotime2datetime(nt: nanotime) -> datetime:
     return datetime.utcfromtimestamp(nt.timestamp())
 
 
-def split_ttl(i) -> Tuple[int, int]:
-    """
-    Splits TTL, that packs into 1 byte
-
-    Returns:
-        idx - lowest 5 bits
-        extra - higest 3 bits
-
-    >>> split_ttl(0xE5)
-    (5, 7)
-    >>> split_ttl(0x105)
-    (5, 0)
-    """
-    return (i & 0x1F), (i & 0xE0) >> 5
-
-
-def pack_ttl(ttl_idx, extra):
-    """
-    Packs TTL and extra into 1 byte. Inverse of `split_ttl()`
-
-    >>> pack_ttl(5, 7) == 0xE5
-    True
-    >>> pack_ttl(5, 0)
-    5
-    """
-    return (ttl_idx & 0x1F) + ((extra & 7) << 5)
-
-
-def offset_in_ns(ttl_idx: int) -> int:
-    return 1 << (33 + (ttl_idx & 0x1F))
+TTL_IDX = BitMask(0, 4)
+TTL_EXTRA = BitMask(4, 4)
 
 
 def nanotime_now():
@@ -56,54 +28,85 @@ def nanotime_now():
 
 
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
-_TIMEDELTAS = [
-    timedelta(seconds=nanotime(offset_in_ns(i)).seconds()) for i in range(31)
+FOREVER_DELTA = timedelta(seconds=FOREVER.seconds())
+_DELTAS = [
+    timedelta(seconds=5**i) for i in range(15)
 ]
-_MASKS = [1 << i for i in range(4, -1, -1)]
+_MASKS = [1 << i for i in range(3, -1, -1)]
 
+_DELTA_EXTRACTORS = {
+    'y': lambda td: int(td.days / 365),
+    'd': lambda td: int(td.days % 365),
+    'h': lambda td: int(td.seconds / 3600) % 24,
+    's': lambda td: int(td.seconds % 3600),
+}
+
+def delta2str(td:timedelta)->str:
+    s=''
+    for n,fn in _DELTA_EXTRACTORS.items():
+        i=fn(td)
+        if i > 0:
+            s+= f'{i}{n}'
+    return s
 
 @total_ordering
 class TTL(Integerable):
     """
-    TTL - Time to live interval expressed in 0 - 31 integer
+    TTL - Time to live interval expressed in 0 - 15 integer
 
-    TTL never expires
-    >>> TTL().idx
-    31
-    >>> TTL(timedelta(seconds=5)).idx
-    0
-    >>> TTL(timedelta(seconds=10)).idx
+    TTL that never expires (max nanotime from now)
+    >>> str(TTL())
+    '584y343d23h2073s extra=0'
+    >>> TTL()
+    TTL(15)
+
+    >>> t=TTL(timedelta(seconds=5))
+    >>> t.idx
     1
+    >>> t.timedelta().seconds, t.timedelta().microseconds
+    (5, 0)
+    >>> TTL(timedelta(seconds=10)).idx
+    2
     >>> TTL(timedelta(days=10)).idx
-    17
-    >>> TTL(timedelta(days=365*200)).idx
-    30
+    9
+    >>> td=TTL(timedelta(days=10)).timedelta()
+    >>> td.days, td.seconds
+    (22, 52325)
+    >>> TTL(timedelta(days=365*100)).idx
+    14
 
-    Too far in future means never expires
+    Duration of intervals
+    >>> [delta2str(TTL(n).timedelta()) for n in range(16)] #doctest: +NORMALIZE_WHITESPACE
+    ['1s', '5s', '25s', '125s',
+    '625s', '3125s', '4h1225s', '21h2525s',
+    '4d12h1825s', '22d14h1925s', '113d2425s', '1y200d3h1325s',
+    '7y270d16h3025s', '38y258d12h725s', '193y197d13h25s', '584y343d23h2073s']
+
+    300 years is too far in future means never expires
     >>> TTL(timedelta(days=365*300)).idx
-    31
+    15
 
     >>> TTL(nanotime(576460000*1e9)).idx
-    26
+    13
 
     Fifth TTL is about 5 minutes or in seconds
     >>> TTL(5).timedelta().seconds
-    274
+    3125
     >>> t5=TTL(5)
-    >>> t5.get_extra_bit(OneBit(0))
+    >>> t5.get_extra_bit(BitMask(0))
     False
-    >>> t5.set_extra_bit(OneBit(0), True)
-    >>> t5.get_extra_bit(OneBit(0))
+    >>> t5.set_extra_bit(BitMask(0), True)
+    >>> t5.get_extra_bit(BitMask(0))
     True
     >>> t5.extra
     1
     >>> int(t5)
-    37
+    21
     >>> copy=TTL(int(t5))
-    >>> t5.set_extra_bit(OneBit(0), False)
-    >>> t5.get_extra_bit(OneBit(0))
+    >>> t5.set_extra_bit(BitMask(0), False)
+    >>> t5.get_extra_bit(BitMask(0))
     False
-    >>> copy.get_extra_bit(OneBit(0))
+    >>> copy.get_extra_bit(BitMask(0))
     True
     >>> t5 < copy
     True
@@ -113,7 +116,7 @@ class TTL(Integerable):
     True
     >>> t5 == copy
     False
-    >>> t5.set_extra_bit(OneBit(0), True)
+    >>> t5.set_extra_bit(BitMask(0), True)
     >>> t5 == copy
     True
     >>> from hashkernel import json_encode, to_json
@@ -128,29 +131,30 @@ class TTL(Integerable):
     extra: int
 
     def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None):
-        idx = 31
+        idx = 15
         extra = 0
         if isinstance(ttl, nanotime):
             ttl = timedelta(seconds=ttl.seconds())
         if isinstance(ttl, timedelta):
             idx = 0
             for m in _MASKS:
-                c = _TIMEDELTAS[idx + m - 1]
+                c = _DELTAS[idx + m - 1]
                 if ttl > c:
                     idx += m
         elif isinstance(ttl, int):
-            idx, extra = split_ttl(ttl)
+            idx = TTL_IDX.extract(ttl)
+            extra = TTL_EXTRA.extract(ttl)
         else:
             assert ttl is None, f"{ttl}"
-        assert 0 <= idx < 32
+        assert 0 <= idx < 16, idx
         self.idx = idx
         self.extra = extra
 
     def timedelta(self):
-        return _TIMEDELTAS[self.idx]
+        return _DELTAS[self.idx] if self.idx < 15 else FOREVER_DELTA
 
     def expires(self, t: nanotime) -> nanotime:
-        ns = t.nanoseconds() + offset_in_ns(self.idx)
+        ns = t.nanoseconds() + (5 ** self.idx) * 1e9
         return FOREVER if ns >= FOREVER.nanoseconds() else nanotime(ns)
 
     def __eq__(self, other):
@@ -160,13 +164,16 @@ class TTL(Integerable):
         return (self.idx, self.extra) < (other.idx, other.extra)
 
     def __int__(self):
-        return pack_ttl(self.idx, self.extra)
+        return TTL_EXTRA.update(TTL_IDX.update(0,self.idx), self.extra)
 
-    def get_extra_bit(self, bit: OneBit) -> bool:
+    def get_extra_bit(self, bit: BitMask) -> bool:
         return bool(self.extra & bit.mask)
 
-    def set_extra_bit(self, bit: OneBit, v: bool):
+    def set_extra_bit(self, bit: BitMask, v: bool):
         self.extra = self.extra | bit.mask if v else self.extra & bit.inverse
+
+    def __str__(self):
+        return f'{delta2str(self.timedelta())} extra={self.extra}'
 
     def __repr__(self):
         return f"TTL({int(self)})"
@@ -176,17 +183,15 @@ class TTL(Integerable):
         """
         All posible `TTL`s with extra bits set to 0
         """
-        return (cls(i) for i in range(32))
+        return (cls(i) for i in range(16))
 
 
-FEW_SECONDS_TTL = TTL(0)  # 8.6s
-ABOUT_A_MINUTE_TTL = TTL(timedelta(minutes=1))
-ABOUT_AN_HOUR_TTL = TTL(timedelta(hours=1))
-ABOUT_A_DAY_TTL = TTL(timedelta(days=1))
-ABOUT_A_WEEK_TTL = TTL(timedelta(days=7))
-ABOUT_A_MONTH_TTL = TTL(timedelta(days=30))
-ABOUT_A_QUARTER_TTL = TTL(timedelta(days=90))
-ABOUT_A_YEAR_TTL = TTL(timedelta(days=366))
+HOURISH_TTL = TTL(5) #3125s
+DAYISH_TTL = TTL(7) #21h2525s
+WEEKISH_TTL = TTL(8) #4d12h1825s
+MONTHISH_TTL = TTL(9) #22d14h1925s
+QUARTERISH_TTL = TTL(10) #113d2425s
+TWOYEARISH_TTL = TTL(11) #1y200d3h1325s
 FOREVER_TTL = TTL()
 
 TTL_PACKER = ProxyPacker(TTL, INT_8, int)
@@ -209,9 +214,9 @@ class nano_ttl:
     >>> timedelta(days=10) <= ttl_delta
     True
     >>> ttl_delta.days
-    13
+    22
     >>> bytes(nano_ttl(nanotime(0x0102030405060708))).hex()
-    '01020304050607081f'
+    '01020304050607080f'
     >>> nano_ttl(bytes(nt)) == nt
     True
     >>> from time import sleep; sleep(1.5e-3)
@@ -287,10 +292,10 @@ class TimeZone(Stringable, EnsureIt, StrKeyMixin):
     TimeZone('Asia/Tokyo')
     >>> str(c)
     'Asia/Tokyo'
-    >>> TimeZone('Asia/Toky') # doctest: +IGNORE_EXCEPTION_DETAIL
+    >>> TimeZone('Asia/Toky')
     Traceback (most recent call last):
     ...
-    UnknownTimeZoneError: 'Asia/Toky'
+    pytz.exceptions.UnknownTimeZoneError: 'Asia/Toky'
     """
 
     def __init__(self, s):

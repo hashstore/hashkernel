@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from nanotime import nanotime
 
-from hashkernel import OneBit, utf8_decode, utf8_encode
+from hashkernel import BitMask, utf8_decode, utf8_encode
 from hashkernel.files.buffer import FileBytes
 from hashkernel.typings import is_NamedTuple, is_subclass
 
@@ -44,7 +44,7 @@ class Packer(metaclass=abc.ABCMeta):
         return obj
 
 
-MARK_BIT = OneBit(7)
+MARK_BIT = BitMask(7)
 
 
 class AdjustableSizePacker(Packer):

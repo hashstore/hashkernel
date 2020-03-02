@@ -312,7 +312,7 @@ class EntryHelper(object):
         assert self.payload_dl is None
         data_link: DataLink = self.header
         self.cask.caskade.datalinks[data_link.from_id][
-            data_link.purpose
+            data_link.link_type
         ] = data_link.to_id
 
     @registry.add(BaseJots.CHECK_POINT)
@@ -449,7 +449,7 @@ class Caskade:
             self._add_data_location(hkey, dp, content)
         return hkey
 
-    def set_link(self, link: Cake, purpose: int, data: HashKey) -> bool:
+    def set_link(self, link: Cake, link_type: int, data: HashKey) -> bool:
         """
         Ensures link.
 
@@ -460,14 +460,14 @@ class Caskade:
         assert link.is_guid
         if (
             link not in self.datalinks
-            or purpose not in self.datalinks[link]
-            or self.datalinks[link][purpose] != data
+            or link_type not in self.datalinks[link]
+            or self.datalinks[link][link_type] != data
         ):
             self.assert_write()
             self.active.write_entry(
-                BaseJots.LINK, DataLink(link, purpose, data), None
+                BaseJots.LINK, DataLink(link, link_type, data), None
             )
-            self.datalinks[link][purpose] = data
+            self.datalinks[link][link_type] = data
             return True
         return False
 

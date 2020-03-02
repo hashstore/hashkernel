@@ -4,7 +4,7 @@ from logging import getLogger
 import pytest
 
 from hashkernel.mold import ClassRef, Conversion
-from hashkernel.time import _TIMEDELTAS, TTL
+from hashkernel.time import _DELTAS, TTL
 
 SECOND = datetime.timedelta(seconds=1)
 
@@ -12,7 +12,7 @@ log = getLogger(__name__)
 
 
 def all_timedeltas():
-    return ((i, _TIMEDELTAS[i]) for i in range(31))
+    return ((i, _DELTAS[i]) for i in range(15))
 
 
 ttl_cref = ClassRef(TTL)

@@ -34,9 +34,11 @@ class Primitive:
     pass
 
 
-class OneBit:
+class BitMask:
     """
-    >>> for i in range(8): print(str(OneBit(i)))
+    Continues rage of bits
+
+    >>> for i in range(8): print(str(BitMask(i)))
     0 mask:00000001 inverse:11111110
     1 mask:00000010 inverse:11111101
     2 mask:00000100 inverse:11111011
@@ -46,13 +48,55 @@ class OneBit:
     6 mask:01000000 inverse:10111111
     7 mask:10000000 inverse:01111111
 
+    >>> for i in range(7): print(str(BitMask(i,2)))
+    0 mask:00000011 inverse:11111100
+    1 mask:00000110 inverse:11111001
+    2 mask:00001100 inverse:11110011
+    3 mask:00011000 inverse:11100111
+    4 mask:00110000 inverse:11001111
+    5 mask:01100000 inverse:10011111
+    6 mask:11000000 inverse:00111111
+
+    >>> def pb(n): print(f'{n:08b}')
+    >>> b23 = BitMask(2,2)
+    >>> b456 = BitMask(4,3)
+    >>> n=b23.update(0,7)
+    >>> pb(n)
+    00001100
+    >>> n=b456.update(n,5)
+    >>> pb(n)
+    01011100
+    >>> b23.extract(n)
+    3
+    >>> b456.extract(n)
+    5
+    >>> pb(b23.clear(n))
+    01010000
+    >>> pb(b456.set(n))
+    01111100
     """
 
-    def __init__(self, position):
-        assert 0 <= position < 8
-        self.position = position
-        self.mask = 1 << position
-        self.inverse = self.mask ^ 0xFF
+    def __init__(self, start, size=1):
+        bits = range(start, start+size)
+        mask = 0
+        for p in bits:
+            assert 0 <= p < 8
+            mask |= 1 << p
+        self.position = start
+        self.mask = mask
+        self.inverse = mask ^ 0xFF
+
+    def extract(self, i):
+        return (i & self.mask) >> self.position
+
+    def clear(self, i):
+        return (i & self.inverse)
+
+    def set(self, i):
+        return (i|self.mask)
+
+    def update(self, i, v):
+        return self.clear(i) | ( (v << self.position) & self.mask)
 
     def __str__(self):
         return f"{self.position} mask:{self.mask:08b} inverse:{self.inverse:08b}"

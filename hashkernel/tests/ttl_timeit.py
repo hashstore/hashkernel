@@ -2,7 +2,7 @@ import datetime
 import timeit
 
 from hashkernel.base_x import base_x
-from hashkernel.time import _TIMEDELTAS, TTL
+from hashkernel.time import _DELTAS, TTL
 
 B62 = base_x(62)
 
@@ -14,7 +14,7 @@ ttls = [TTL]  # , TTL2
 
 def ttl(s):
     for i in range(31):
-        td = _TIMEDELTAS[i]
+        td = _DELTAS[i]
         assert ttls[s](td).idx == i
         assert ttls[s](td - SECOND).idx == i
         assert ttls[s](td + SECOND).idx == i + 1
