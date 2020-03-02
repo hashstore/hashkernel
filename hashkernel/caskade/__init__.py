@@ -202,15 +202,16 @@ class CatalogItem(NamedTuple):
 @PACKERS.register(named_tuple_packer(Cake.__packer__, INT_8, HashKey.__packer__))
 class DataLink(NamedTuple):
     from_id: Cake
-    link_type: int # 0-255: depend on Cake Type
+    link_type: int  # 0-255: depend on Cake Type
     to_id: HashKey
 
 
 @PACKERS.register(named_tuple_packer(NANOTIME, INT_8, HashKey.__packer__))
 class DataLinkHistory(NamedTuple):
     tstamp: nanotime
-    link_type: int # 0-255: depend on Cake Type
+    link_type: int  # 0-255: depend on Cake Type
     to_id: HashKey
+
 
 @PACKERS.register(
     named_tuple_packer(

@@ -27,11 +27,10 @@ from typing import (
 
 from nanotime import nanotime
 
-from hashkernel import CodeEnum, EnsureIt, GlobalRef, BitMask, Primitive, Stringable
+from hashkernel import BitMask, CodeEnum, EnsureIt, GlobalRef, Primitive, Stringable
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.hashing import Hasher, HashKey, NULL_HASH_KEY, \
-    SIZE_OF_HASH_KEY
+from hashkernel.hashing import NULL_HASH_KEY, SIZE_OF_HASH_KEY, Hasher, HashKey
 from hashkernel.packer import (
     INT_8,
     NANOTIME,

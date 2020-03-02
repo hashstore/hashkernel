@@ -7,7 +7,7 @@ from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import EnsureIt, Integerable, BitMask, Stringable, StrKeyMixin
+from hashkernel import BitMask, EnsureIt, Integerable, Stringable, StrKeyMixin
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -29,25 +29,25 @@ def nanotime_now():
 
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
 FOREVER_DELTA = timedelta(seconds=FOREVER.seconds())
-_DELTAS = [
-    timedelta(seconds=5**i) for i in range(15)
-]
+_DELTAS = [timedelta(seconds=5 ** i) for i in range(15)]
 _MASKS = [1 << i for i in range(3, -1, -1)]
 
 _DELTA_EXTRACTORS = {
-    'y': lambda td: int(td.days / 365),
-    'd': lambda td: int(td.days % 365),
-    'h': lambda td: int(td.seconds / 3600) % 24,
-    's': lambda td: int(td.seconds % 3600),
+    "y": lambda td: int(td.days / 365),
+    "d": lambda td: int(td.days % 365),
+    "h": lambda td: int(td.seconds / 3600) % 24,
+    "s": lambda td: int(td.seconds % 3600),
 }
 
-def delta2str(td:timedelta)->str:
-    s=''
-    for n,fn in _DELTA_EXTRACTORS.items():
-        i=fn(td)
+
+def delta2str(td: timedelta) -> str:
+    s = ""
+    for n, fn in _DELTA_EXTRACTORS.items():
+        i = fn(td)
         if i > 0:
-            s+= f'{i}{n}'
+            s += f"{i}{n}"
     return s
+
 
 @total_ordering
 class TTL(Integerable):
@@ -164,7 +164,7 @@ class TTL(Integerable):
         return (self.idx, self.extra) < (other.idx, other.extra)
 
     def __int__(self):
-        return TTL_EXTRA.update(TTL_IDX.update(0,self.idx), self.extra)
+        return TTL_EXTRA.update(TTL_IDX.update(0, self.idx), self.extra)
 
     def get_extra_bit(self, bit: BitMask) -> bool:
         return bool(self.extra & bit.mask)
@@ -173,7 +173,7 @@ class TTL(Integerable):
         self.extra = self.extra | bit.mask if v else self.extra & bit.inverse
 
     def __str__(self):
-        return f'{delta2str(self.timedelta())} extra={self.extra}'
+        return f"{delta2str(self.timedelta())} extra={self.extra}"
 
     def __repr__(self):
         return f"TTL({int(self)})"
@@ -186,12 +186,12 @@ class TTL(Integerable):
         return (cls(i) for i in range(16))
 
 
-HOURISH_TTL = TTL(5) #3125s
-DAYISH_TTL = TTL(7) #21h2525s
-WEEKISH_TTL = TTL(8) #4d12h1825s
-MONTHISH_TTL = TTL(9) #22d14h1925s
-QUARTERISH_TTL = TTL(10) #113d2425s
-TWOYEARISH_TTL = TTL(11) #1y200d3h1325s
+HOURISH_TTL = TTL(5)  # 3125s
+DAYISH_TTL = TTL(7)  # 21h2525s
+WEEKISH_TTL = TTL(8)  # 4d12h1825s
+MONTHISH_TTL = TTL(9)  # 22d14h1925s
+QUARTERISH_TTL = TTL(10)  # 113d2425s
+TWOYEARISH_TTL = TTL(11)  # 1y200d3h1325s
 FOREVER_TTL = TTL()
 
 TTL_PACKER = ProxyPacker(TTL, INT_8, int)

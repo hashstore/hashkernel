@@ -77,7 +77,7 @@ class BitMask:
     """
 
     def __init__(self, start, size=1):
-        bits = range(start, start+size)
+        bits = range(start, start + size)
         mask = 0
         for p in bits:
             assert 0 <= p < 8
@@ -90,13 +90,13 @@ class BitMask:
         return (i & self.mask) >> self.position
 
     def clear(self, i):
-        return (i & self.inverse)
+        return i & self.inverse
 
     def set(self, i):
-        return (i|self.mask)
+        return i | self.mask
 
     def update(self, i, v):
-        return self.clear(i) | ( (v << self.position) & self.mask)
+        return self.clear(i) | ((v << self.position) & self.mask)
 
     def __str__(self):
         return f"{self.position} mask:{self.mask:08b} inverse:{self.inverse:08b}"
