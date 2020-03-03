@@ -5,6 +5,7 @@ import json
 import sys
 from datetime import date, datetime
 from enum import EnumMeta
+from functools import total_ordering
 from inspect import isclass, isfunction, ismodule
 from pathlib import Path
 from types import ModuleType
@@ -792,3 +793,131 @@ class DictLike(Mapping[str, Any]):
 
     def __len__(self):
         return len(self.members)
+
+
+class ScaleHelper:
+    scale_fn: Callable[[int], Any]
+    masks: List[int]
+    size: int
+    scaled_values: List[Any]
+    cache: List[Any]
+
+    def __init__(self, scale_fn: Callable[[int], Any], bit_size: int):
+        self.scale_fn = scale_fn  # type:ignore
+        # TODO: remove ignore when fixed https://github.com/python/mypy/issues/708
+        self.size = 2 ** bit_size
+        self.cache = [None for _ in range(self.size)]
+        self.scaled_values = [scale_fn(i) for i in range(self.size)]
+        self.masks = [1 << i for i in range(bit_size - 1, -1, -1)]
+
+    def build_cls(self, cls: Type["Scaling"], idx: int):
+        instance = self.cache[idx]
+        if instance is None:
+            instance = super(Scaling, cls).__new__(cls)
+            instance.idx = idx
+            self.cache[idx] = instance
+        return instance
+
+
+@total_ordering
+class Scaling(Integerable):
+    """
+
+    Scaling - to map range of values to discrete points and store
+    it as integer index between `0` and `2 ** bit_size`.
+
+    Order of scaled value should be that same as
+    index otherwise binary search will not work properly.
+
+    By default initialized with power of 5 scaling and them
+    to 4 bit integer `idx`.
+
+    >>> Scaling(0).value()
+    1
+    >>> Scaling(1).value()
+    5
+    >>> Scaling(2).value()
+    25
+
+    >>> t=Scaling.search(26)
+    >>> t.idx
+    3
+
+    >>> class PowerOf2(Scaling):
+    ...    @staticmethod
+    ...    def __new_scale_helper__():
+    ...        return ScaleHelper(lambda i: 2 ** i, 3)
+    ...
+    >>> [sc.value() for sc in PowerOf2.all()]
+    [1, 2, 4, 8, 16, 32, 64, 128]
+
+    Because `Scaling` lazily caches all its instances.
+    Avoid using if scaling range is too big. `all()` will force all
+    possible instances into cache.
+
+    >>> PowerOf2.search(50)
+    PowerOf2(6)
+
+    """
+
+    idx: int
+
+    helpers: ClassVar[Dict[type, ScaleHelper]] = {}
+
+    @staticmethod
+    def __new_scale_helper__():
+        """
+        Helper factory
+
+        Need to be overwritten by subclass. Default implementaion
+        create power of 5 scaler with range that fits into 4 bits
+        """
+        return ScaleHelper(lambda i: 5 ** i, 4)
+
+    @staticmethod
+    def __new__(cls, idx: int):
+        return cls.helper().build_cls(cls, idx)
+
+    @classmethod
+    def helper(cls) -> ScaleHelper:
+        if cls not in cls.helpers:
+            cls.helpers[cls] = cls.__new_scale_helper__()
+        helper = cls.helpers[cls]
+        return helper
+
+    @classmethod
+    def search(cls, value: Any) -> "Scaling":
+        "Binary search to the bucket in the scale"
+        idx = 0
+        h = cls.helper()
+        for m in h.masks:
+            c = h.scaled_values[idx + m - 1]
+            if value > c:
+                idx += m
+        return cls(idx)
+
+    def value(self):
+        return self.helper().scaled_values[self.idx]
+
+    def __eq__(self, other):
+        return self.idx == other.idx
+
+    def __lt__(self, other):
+        return self.idx < other.idx
+
+    def __int__(self):
+        return self.idx
+
+    @classmethod
+    def all(cls):
+        """
+        All posible values
+        """
+        return (cls(i) for i in range(cls.size()))
+
+    @classmethod
+    def size(cls):
+        """
+        All posible values
+        """
+        return cls.helper().size

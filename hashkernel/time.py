@@ -1,13 +1,21 @@
 from datetime import datetime, timedelta
 from functools import total_ordering
-from typing import Tuple, Union
+from typing import Callable, Dict, Union, cast
 
 import pytz
 from croniter import croniter
 from nanotime import datetime as datetime2nanotime
 from nanotime import nanotime
 
-from hashkernel import BitMask, EnsureIt, Integerable, Stringable, StrKeyMixin
+from hashkernel import (
+    BitMask,
+    EnsureIt,
+    Integerable,
+    ScaleHelper,
+    Scaling,
+    Stringable,
+    StrKeyMixin,
+)
 from hashkernel.packer import INT_8, NANOTIME, ProxyPacker, TuplePacker
 
 
@@ -19,20 +27,14 @@ def nanotime2datetime(nt: nanotime) -> datetime:
     return datetime.utcfromtimestamp(nt.timestamp())
 
 
-TTL_IDX = BitMask(0, 4)
-TTL_EXTRA = BitMask(4, 4)
-
-
 def nanotime_now():
     return datetime2nanotime(datetime.utcnow())
 
 
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
 FOREVER_DELTA = timedelta(seconds=FOREVER.seconds())
-_DELTAS = [timedelta(seconds=5 ** i) for i in range(15)]
-_MASKS = [1 << i for i in range(3, -1, -1)]
 
-_DELTA_EXTRACTORS = {
+_DELTA_EXTRACTORS: Dict[str, Callable[[timedelta], int]] = {
     "y": lambda td: int(td.days / 365),
     "d": lambda td: int(td.days % 365),
     "h": lambda td: int(td.seconds / 3600) % 24,
@@ -49,6 +51,101 @@ def delta2str(td: timedelta) -> str:
     return s
 
 
+class Timeout(Scaling):
+    """
+    Timeout - Time to live interval expressed in 0 - 15 integer
+
+    Timeout that never expires (max nanotime from now)
+    >>> str(Timeout(15))
+    '584y343d23h2073s'
+    >>> Timeout(15)
+    Timeout(15)
+
+    >>> t=Timeout.resolve(timedelta(seconds=5))
+    >>> t.idx
+    1
+    >>> t.timedelta().seconds, t.timedelta().microseconds
+    (5, 0)
+    >>> Timeout.resolve(timedelta(seconds=10)).idx
+    2
+    >>> Timeout.resolve(timedelta(days=10)).idx
+    9
+    >>> td=Timeout.resolve(timedelta(days=10)).timedelta()
+    >>> td.days, td.seconds
+    (22, 52325)
+    >>> Timeout.resolve(timedelta(days=365*100)).idx
+    14
+
+    Duration of intervals
+    >>> list(map(str, Timeout.all())) #doctest: +NORMALIZE_WHITESPACE
+    ['1s', '5s', '25s', '125s',
+    '625s', '3125s', '4h1225s', '21h2525s',
+    '4d12h1825s', '22d14h1925s', '113d2425s', '1y200d3h1325s',
+    '7y270d16h3025s', '38y258d12h725s', '193y197d13h25s', '584y343d23h2073s']
+
+    300 years is too far in future means never expires
+    >>> Timeout.resolve(timedelta(days=365*300)).idx
+    15
+
+    >>> Timeout.resolve(nanotime(576460000*1e9)).idx
+    13
+
+    Fifth Timeout is about 5 minutes or in seconds
+    >>> t5=Timeout.resolve(5)
+    >>> t5.timedelta().seconds
+    3125
+    >>> copy=Timeout.resolve(int(t5)+1)
+    >>> t5 < copy
+    True
+    >>> t5 > copy
+    False
+    >>> t5 != copy
+    True
+    >>> t5 == copy
+    False
+    >>> from hashkernel import json_encode, to_json
+    >>> to_json(Timeout(3))
+    3
+
+    """
+
+    @staticmethod
+    def __new_scale_helper__():
+        """
+        Helper factory
+        """
+        return ScaleHelper(
+            lambda i: FOREVER_DELTA if i == 15 else timedelta(seconds=5 ** i),
+            bit_size=4,
+        )
+
+    @classmethod
+    def resolve(cls, ttl: Union[int, nanotime, timedelta]) -> "Timeout":
+        if isinstance(ttl, nanotime):
+            ttl = timedelta(seconds=ttl.seconds())
+        if isinstance(ttl, timedelta):
+            return cast(Timeout, cls.search(ttl))
+        else:
+            return Timeout(ttl)
+
+    def timedelta(self) -> timedelta:
+        return self.value()
+
+    def expires(self, t: nanotime) -> nanotime:
+        ns = t.nanoseconds() + (5 ** self.idx) * 1e9
+        return FOREVER if ns >= FOREVER.nanoseconds() else nanotime(ns)
+
+    def __str__(self) -> str:
+        return delta2str(self.timedelta())
+
+    # def __repr__(self):
+    #     return f"Timeout({int(self)})"
+
+
+TTL_IDX = BitMask(0, 4)
+TTL_EXTRA = BitMask(4, 4)
+
+
 @total_ordering
 class TTL(Integerable):
     """
@@ -61,36 +158,29 @@ class TTL(Integerable):
     TTL(15)
 
     >>> t=TTL(timedelta(seconds=5))
-    >>> t.idx
+    >>> t.timeout.idx
     1
-    >>> t.timedelta().seconds, t.timedelta().microseconds
+    >>> t.timeout.timedelta().seconds, t.timeout.timedelta().microseconds
     (5, 0)
-    >>> TTL(timedelta(seconds=10)).idx
+    >>> TTL(timedelta(seconds=10)).timeout.idx
     2
-    >>> TTL(timedelta(days=10)).idx
+    >>> TTL(timedelta(days=10)).timeout.idx
     9
-    >>> td=TTL(timedelta(days=10)).timedelta()
+    >>> td=TTL(timedelta(days=10)).timeout.timedelta()
     >>> td.days, td.seconds
     (22, 52325)
-    >>> TTL(timedelta(days=365*100)).idx
+    >>> TTL(timedelta(days=365*100)).timeout.idx
     14
 
-    Duration of intervals
-    >>> [delta2str(TTL(n).timedelta()) for n in range(16)] #doctest: +NORMALIZE_WHITESPACE
-    ['1s', '5s', '25s', '125s',
-    '625s', '3125s', '4h1225s', '21h2525s',
-    '4d12h1825s', '22d14h1925s', '113d2425s', '1y200d3h1325s',
-    '7y270d16h3025s', '38y258d12h725s', '193y197d13h25s', '584y343d23h2073s']
-
     300 years is too far in future means never expires
-    >>> TTL(timedelta(days=365*300)).idx
+    >>> TTL(timedelta(days=365*300)).timeout.idx
     15
 
-    >>> TTL(nanotime(576460000*1e9)).idx
+    >>> TTL(nanotime(576460000*1e9)).timeout.idx
     13
 
     Fifth TTL is about 5 minutes or in seconds
-    >>> TTL(5).timedelta().seconds
+    >>> TTL(5).timeout.timedelta().seconds
     3125
     >>> t5=TTL(5)
     >>> t5.get_extra_bit(BitMask(0))
@@ -127,44 +217,27 @@ class TTL(Integerable):
 
     """
 
-    idx: int
+    timeout: Timeout
     extra: int
 
     def __init__(self, ttl: Union[int, nanotime, timedelta, None] = None):
-        idx = 15
-        extra = 0
-        if isinstance(ttl, nanotime):
-            ttl = timedelta(seconds=ttl.seconds())
-        if isinstance(ttl, timedelta):
-            idx = 0
-            for m in _MASKS:
-                c = _DELTAS[idx + m - 1]
-                if ttl > c:
-                    idx += m
-        elif isinstance(ttl, int):
-            idx = TTL_IDX.extract(ttl)
-            extra = TTL_EXTRA.extract(ttl)
+        if ttl is None:
+            ttl = 15
+        if isinstance(ttl, int):
+            self.timeout = Timeout(TTL_IDX.extract(ttl))
+            self.extra = TTL_EXTRA.extract(ttl)
         else:
-            assert ttl is None, f"{ttl}"
-        assert 0 <= idx < 16, idx
-        self.idx = idx
-        self.extra = extra
-
-    def timedelta(self):
-        return _DELTAS[self.idx] if self.idx < 15 else FOREVER_DELTA
-
-    def expires(self, t: nanotime) -> nanotime:
-        ns = t.nanoseconds() + (5 ** self.idx) * 1e9
-        return FOREVER if ns >= FOREVER.nanoseconds() else nanotime(ns)
+            self.timeout = Timeout.resolve(ttl)
+            self.extra = 0
 
     def __eq__(self, other):
-        return (self.idx, self.extra) == (other.idx, other.extra)
+        return (self.timeout, self.extra) == (other.timeout, other.extra)
 
     def __lt__(self, other):
-        return (self.idx, self.extra) < (other.idx, other.extra)
+        return (self.timeout, self.extra) < (other.timeout, other.extra)
 
     def __int__(self):
-        return TTL_EXTRA.update(TTL_IDX.update(0, self.idx), self.extra)
+        return TTL_EXTRA.update(TTL_IDX.update(0, int(self.timeout)), self.extra)
 
     def get_extra_bit(self, bit: BitMask) -> bool:
         return bool(self.extra & bit.mask)
@@ -173,7 +246,7 @@ class TTL(Integerable):
         self.extra = self.extra | bit.mask if v else self.extra & bit.inverse
 
     def __str__(self):
-        return f"{delta2str(self.timedelta())} extra={self.extra}"
+        return f"{self.timeout} extra={self.extra}"
 
     def __repr__(self):
         return f"TTL({int(self)})"
@@ -244,7 +317,7 @@ class nano_ttl:
             self.ttl = ttl if isinstance(ttl, TTL) else TTL(ttl)
 
     def time_expires(self) -> nanotime:
-        return self.ttl.expires(self.time)
+        return self.ttl.timeout.expires(self.time)
 
     def __bytes__(self):
         return NANOTTL_TUPLE_PACKER.pack((self.time, self.ttl))
