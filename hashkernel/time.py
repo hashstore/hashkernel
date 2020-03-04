@@ -92,6 +92,8 @@ class Timeout(Scaling):
 
     Fifth Timeout is about 5 minutes or in seconds
     >>> t5=Timeout.resolve(5)
+    >>> t5
+    Timeout(5)
     >>> t5.timedelta().seconds
     3125
     >>> copy=Timeout.resolve(int(t5)+1)
@@ -103,7 +105,7 @@ class Timeout(Scaling):
     True
     >>> t5 == copy
     False
-    >>> from hashkernel import json_encode, to_json
+    >>> from hashkernel import to_json
     >>> to_json(Timeout(3))
     3
 
@@ -137,9 +139,6 @@ class Timeout(Scaling):
 
     def __str__(self) -> str:
         return delta2str(self.timedelta())
-
-    # def __repr__(self):
-    #     return f"Timeout({int(self)})"
 
 
 TTL_IDX = BitMask(0, 4)
