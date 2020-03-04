@@ -37,14 +37,14 @@ caskades = Path(out.child_dir("caskades"))
 
 common_config = CaskadeConfig(
     origin=NULL_CAKE,
-    checkpoint_ttl=TTL(1),
+    checkpoint_ttl=TTL(2),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
 )
 
 common_singer = CaskadeConfig(
     origin=NULL_CAKE,
-    checkpoint_ttl=TTL(1),
+    checkpoint_ttl=TTL(2),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
     signer=CaskHashSigner(),
@@ -231,7 +231,7 @@ def test_3steps(name, caskade_cls, config):
     h1 = caskade.write_bytes(rand_bytes(1, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
     assert caskade.active.tracker.current_offset == sp.pos
-    sleep(20)
+    sleep(26)
     h2 = caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
     # cp2 by time

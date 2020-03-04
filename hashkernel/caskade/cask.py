@@ -156,7 +156,8 @@ class CaskFile:
     def write_checkpoint(self, cpt: CheckPointType) -> HashKey:
         rec, header = self.tracker.checkpoint(cpt)
         self.tracker = self.tracker.next_tracker()
-        self.append_buffer(self.pack_entry(rec, header, self.caskade.config.sign))
+        cp_buff = self.pack_entry(rec, header, self.caskade.config.sign)
+        self.append_buffer(cp_buff)
         self.caskade.check_points.append(CheckPoint(self.guid, *header))
         return header.checkpoint_id
 

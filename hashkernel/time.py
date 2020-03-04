@@ -244,6 +244,10 @@ class TTL(Integerable):
     def set_extra_bit(self, bit: BitMask, v: bool):
         self.extra = self.extra | bit.mask if v else self.extra & bit.inverse
 
+    def expires(self, t:nanotime) -> nanotime:
+        return self.timeout.expires(t)
+
+
     def __str__(self):
         return f"{self.timeout} extra={self.extra}"
 

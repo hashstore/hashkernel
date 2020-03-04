@@ -18,7 +18,9 @@ run_envs = ["hk36"]
 
 
 def os_system_in_env(e, cmd):
-    return os.system(cmd if e == "current" else f". activate {e}; {cmd}")
+    cmd = cmd if e == "current" else f". activate {e}; {cmd}"
+    print(f"> {cmd}")
+    return os.system(cmd)
 
 
 def run_tests(include_slow, envs, html=False):
