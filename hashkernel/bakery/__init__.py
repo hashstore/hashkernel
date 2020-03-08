@@ -44,7 +44,6 @@ from hashkernel.packer import (
 from hashkernel.plugins import query_plugins
 from hashkernel.smattr import BytesWrap, JsonWrap, SmAttr, build_named_tuple_packer
 from hashkernel.time import NANO_TTL_PACKER, TTL, TTL_PACKER, nano_ttl, nanotime_now
-from hashkernel.typings import is_NamedTuple
 
 log = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from pathlib import Path
-from time import sleep
+from time import sleep, time
 
 import pytest
 from hs_build_tools import LogTestOut
@@ -37,14 +37,14 @@ caskades = Path(out.child_dir("caskades"))
 
 common_config = CaskadeConfig(
     origin=NULL_CAKE,
-    checkpoint_ttl=TTL(2),
+    checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
 )
 
 common_singer = CaskadeConfig(
     origin=NULL_CAKE,
-    checkpoint_ttl=TTL(2),
+    checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
     signer=CaskHashSigner(),
@@ -180,13 +180,16 @@ def test_recover_no_checkpoints():
 )
 def test_3steps(name, caskade_cls, config):
     dir = caskades / f"3steps_{name}"
+    t = time()
     caskade = caskade_cls(dir, config=config)
+    t = time()
     sp = SizePredictor(caskade)
     first_cask = caskade.active.guid
     assert caskade.active.tracker.current_offset == sp.pos
     a0 = caskade.write_bytes(rand_bytes(0, ONE_AND_QUARTER))
     assert first_cask == caskade.active.guid
     sp.add_data(ONE_AND_QUARTER)
+    print(time() - t)
     assert first_cask == caskade.active.guid
     assert caskade.active.tracker.current_offset == sp.pos
     h0 = caskade.write_bytes(rand_bytes(0, ABOUT_HALF))
@@ -194,18 +197,21 @@ def test_3steps(name, caskade_cls, config):
     assert caskade.active.tracker.current_offset == sp.pos
     a1 = caskade.write_bytes(rand_bytes(1, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
+    print(time() - t)
     assert caskade.active.tracker.current_offset == sp.pos
     a2 = caskade.write_bytes(rand_bytes(2, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
     assert first_cask == caskade.active.guid
     assert caskade.active.tracker.current_offset == sp.pos
     a3 = caskade.write_bytes(rand_bytes(3, ONE_AND_QUARTER))
+    print(time() - t)
     sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
     a4_bytes = rand_bytes(4, ONE_AND_QUARTER)
     a4 = caskade.write_bytes(a4_bytes)
     sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos
+    print(time() - t)
 
     a4_permalink = Cake.new_guid()
     caskade.set_link(a4_permalink, 0, a4)
@@ -216,22 +222,29 @@ def test_3steps(name, caskade_cls, config):
     if caskade_cls == OptionalCaskade:
         caskade.save_derived(a4, a4_permalink, a4_derived)
         sp.add(size_of_entry(OptionalJots.DERIVED))
+        print(time() - t)
 
         caskade.tag(a4_permalink, a4_tag)
         sp.add(size_of_entry(OptionalJots.TAG, len(bytes(a4_tag))))
+    print(time() - t)
 
     a5 = caskade.write_bytes(rand_bytes(5, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
+    print(time() - t)
 
     # cp1 by size
     sp.add_check_point()
+    t = time()
     assert caskade.active.tracker.current_offset == sp.pos
     assert first_cask == caskade.active.guid
+    print(time() - t)
 
     h1 = caskade.write_bytes(rand_bytes(1, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
+    print(time() - t)
     assert caskade.active.tracker.current_offset == sp.pos
-    sleep(26)
+    sleep(21)
+    print(time() - t)
     h2 = caskade.write_bytes(rand_bytes(2, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
     # cp2 by time

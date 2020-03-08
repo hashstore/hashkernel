@@ -488,6 +488,7 @@ class SegmentTracker:
                 config.checkpoint_ttl is not None
                 and self.first_activity_after_last_checkpoint is not None
             ):
+                t = self.first_activity_after_last_checkpoint.nanoseconds()
                 expires = config.checkpoint_ttl.expires(
                     self.first_activity_after_last_checkpoint
                 )
