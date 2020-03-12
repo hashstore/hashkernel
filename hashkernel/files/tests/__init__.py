@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import sleep
 from typing import Union
 
 from hs_build_tools import ensure_dir
@@ -11,7 +12,9 @@ def seed_file(dir: Path, seed, sz):
     file = dir / f"{seed}_{sz}.dat"
     if not file.exists():
         bg = BytesGen(seed)
-        file.open("wb").write(bg.get_bytes(sz))
+        with file.open("wb") as f:
+            f.write(bg.get_bytes(sz))
+        sleep(0.03)
     return file
 
 

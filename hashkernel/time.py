@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from functools import total_ordering
-from typing import Callable, Dict, Union, cast
+from typing import Union, cast
 
 import pytz
 from croniter import croniter
@@ -34,23 +34,34 @@ def nanotime_now():
 FOREVER = nanotime(0xFFFFFFFFFFFFFFFF)
 FOREVER_DELTA = timedelta(seconds=FOREVER.seconds())
 
-DAYS_PER_YEAR = 365.25
+DAYS_PER_YEAR = 365.25  # aprox
 SEC_PER_HOUR = 3600
-
-_DELTA_EXTRACTORS: Dict[str, Callable[[timedelta], int]] = {
-    "y": lambda td: int(td.days / DAYS_PER_YEAR),
-    "d": lambda td: int(td.days % DAYS_PER_YEAR),
-    "h": lambda td: int(td.seconds / SEC_PER_HOUR),
-    "s": lambda td: int(td.seconds % SEC_PER_HOUR),
-}
 
 
 def delta2str(td: timedelta) -> str:
+    """
+    display `timedelta` as str with precision to seconds
+
+    >>> delta2str(timedelta(days=366,seconds=3605))
+    '1y19h5s'
+
+    """
     s = ""
-    for n, fn in _DELTA_EXTRACTORS.items():
-        i = fn(td)
-        if i > 0:
-            s += f"{i}{n}"
+
+    def build_s(v, suffix):
+        nonlocal s
+        if v > 0:
+            s += f"{v}{suffix}"
+
+    days_left, seconds_left = float(td.days), td.seconds
+    y = int(days_left / DAYS_PER_YEAR)
+    days_left -= y * DAYS_PER_YEAR
+    build_s(y, "y")
+    d = int(days_left)
+    build_s(d, "d")
+    seconds_left += int((days_left - d) * SEC_PER_HOUR * 24)
+    build_s(int(seconds_left / SEC_PER_HOUR), "h")
+    build_s(int(seconds_left % SEC_PER_HOUR), "s")
     return s
 
 

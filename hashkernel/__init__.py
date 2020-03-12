@@ -19,6 +19,7 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -75,6 +76,8 @@ class BitMask:
     01010000
     >>> pb(b456.set(n))
     01111100
+    >>> pb(BitMask.update_all(0, (b23, 3), (b456, 5)))
+    01011100
     """
 
     def __init__(self, start, size=1):
@@ -87,17 +90,25 @@ class BitMask:
         self.mask = mask
         self.inverse = mask ^ 0xFF
 
-    def extract(self, i):
+    def extract(self, i: int):
         return (i & self.mask) >> self.position
 
-    def clear(self, i):
+    def clear(self, i: int):
         return i & self.inverse
 
-    def set(self, i):
+    def set(self, i: int):
         return i | self.mask
 
-    def update(self, i, v):
+    def update(self, i: int, v: Any) -> int:
+        if not isinstance(v, int):
+            v = int(v)
         return self.clear(i) | ((v << self.position) & self.mask)
+
+    @staticmethod
+    def update_all(i: int, *mask_values: Tuple["BitMask", Any]) -> int:
+        for mask, v in mask_values:
+            i = mask.update(i, v)
+        return i
 
     def __str__(self):
         return f"{self.position} mask:{self.mask:08b} inverse:{self.inverse:08b}"

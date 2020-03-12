@@ -19,7 +19,7 @@ run_envs = ["hk36"]
 
 def os_system_in_env(e, cmd):
     cmd = cmd if e == "current" else f". activate {e}; {cmd}"
-    print(f"> {cmd}")
+    # print(f"> {cmd}")
     return os.system(cmd)
 
 
@@ -33,7 +33,10 @@ def run_tests(include_slow, envs, html=False):
         cleanup_cmds.append("python -m coverage html")
     for c in cleanup_cmds:
         os_system_in_env(envs[0], c)
-    os.unlink(".coverage")
+    try:
+        os.unlink(".coverage")
+    except:
+        pass
     return all(env_states)
 
 
