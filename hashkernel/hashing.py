@@ -21,6 +21,32 @@ from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
 
 B36 = base_x(36)
 
+
+class B36_Mixin:
+    """
+    Usefull for filenames. Some file systems are case-insesitive.
+    """
+
+    @classmethod
+    def from_b36(cls, s: str):
+        return cls(B36.decode(s.lower()))  # type: ignore
+
+    def to_b36(self):
+        return B36.encode(bytes(self))
+
+
+class BytesOrderingMixin:
+    """ use bytes() to define orgering
+        ned to be used with @total_ordering
+    """
+
+    def __eq__(self, other) -> bool:
+        return bytes(self) == bytes(other)  # type: ignore
+
+    def __lt__(self, other) -> bool:
+        return bytes(self) < bytes(other)  # type: ignore
+
+
 ALGO = sha256
 
 
@@ -60,7 +86,11 @@ class Hasher:
 
 
 @total_ordering
-class HashKey(Stringable, EnsureIt, Primitive):
+class HashKey(Stringable, EnsureIt, Primitive, BytesOrderingMixin):
+    """
+    >>> HashKey(Hasher().update(b'hello'))
+    HashKey('14bu24ea7cq4jhmrgj4a3jrn1v6vem8ualnohxyeq239y1gobo')
+    """
     __packer__: ClassVar[Packer]
 
     def __init__(self, s: Union[str, bytes, Hasher]):
@@ -84,15 +114,6 @@ class HashKey(Stringable, EnsureIt, Primitive):
         if not (hasattr(self, "_hash")):
             self._hash = hash(self.digest)
         return self._hash
-
-    def __repr__(self) -> str:
-        return f"HashKey({str(self)!r})"
-
-    def __eq__(self, other) -> bool:
-        return self.digest == other.digest
-
-    def __le__(self, other) -> bool:
-        return self.digest < other.digest
 
     @staticmethod
     def from_stream(fd: IO[bytes]) -> "HashKey":

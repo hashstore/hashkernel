@@ -40,7 +40,14 @@ from hashkernel import (
 )
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.hashing import NULL_HASH_KEY, SIZE_OF_HASH_KEY, Hasher, HashKey
+from hashkernel.hashing import (
+    NULL_HASH_KEY,
+    SIZE_OF_HASH_KEY,
+    B36_Mixin,
+    BytesOrderingMixin,
+    Hasher,
+    HashKey,
+)
 from hashkernel.packer import (
     INT_8,
     NANOTIME,
@@ -176,9 +183,9 @@ class LinkType(NamedTuple):
     cref: Optional[GlobalRef] = None
 
 
-class CakeLinks:
+class RakeLinks:
     """
-    >>> cl = CakeLinks()
+    >>> cl = RakeLinks()
     >>> cl.add_links(('a',0 , KEEP_ONE, HOUR_LT, None))
     >>> cl.add_links(('b',1 , KEEP_ONE, HOUR_LT, None))
     >>> cl.add_links(('c',1 , KEEP_ONE, HOUR_LT, None))
@@ -235,6 +242,85 @@ class CakeLinks:
             link_type = LinkType(name, link_idx, type_gref)
             self.links_by_name[name] = link_type
             self.links_by_idx[idx] = link_type
+
+
+OBJ_TYPE_MASK = BitMask(0, 6)
+
+
+@total_ordering
+class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
+    """
+    RAndom KEy
+    16 bytes - simular to UUIDv4, same collision likelyhood
+    122bit - urandom component
+    6bit - object type defined by schema. Packed in lower bits of last byte
+
+    >>> r0 = Rake.build_new(0)
+    >>> Rake(str(r0)) == r0
+    True
+    >>> r0_b36 = Rake.from_b36(r0.to_b36())
+    >>> r0 == r0_b36
+    True
+    >>> Rake.build_new(-1)
+    Traceback (most recent call last):
+    ...
+    AssertionError: out of range 0-63: -1
+    >>> Rake.build_new(64)
+    Traceback (most recent call last):
+    ...
+    AssertionError: out of range 0-63: 64
+    >>> ru = list(map( Rake.build_new, range(64)))
+    >>> all(ru[i].obj_type() == i for i in range(64))
+    True
+    >>> rs = sorted( ru )
+    >>> rs != ru
+    True
+    >>> rss = sorted(map( lambda r: Rake(str(r)), ru))
+    >>> rs == rss
+    True
+    >>> all(rs[i] < rs[i+1] for i in range(63))
+    True
+    >>> any(rs[i] > rs[i+1] for i in range(63))
+    False
+    >>> all(hash(rs[i]) == hash(rss[i]) for i in range(64))
+    True
+    >>> r0 > r0_b36
+    False
+    >>> Rake('32GweQDJvoH9dtuHzBGk6s')
+    Rake('32GweQDJvoH9dtuHzBGk6s')
+    """
+
+    buffer: bytes
+
+    def __init__(self, s: Union[str, bytes]):
+        if isinstance(s, str):
+            s = B62.decode(s)
+        self.buffer = s
+
+    @classmethod
+    def build_new(cls, obj_type: int):
+        assert 0 <= obj_type < 64, f"out of range 0-63: {obj_type}"
+        s = os.urandom(16)
+        return cls(s[:-1] + bytes([OBJ_TYPE_MASK.update(s[-1], obj_type)]))
+
+    def obj_type(self) -> int:
+        return OBJ_TYPE_MASK.extract(self.buffer[-1])
+
+    def __bytes__(self):
+        return self.buffer
+
+    def __str__(self):
+        return B62.encode(self.buffer)
+
+    def __repr__(self) -> str:
+        return f"Rake({str(self)!r})"
+
+    def __hash__(self) -> int:
+        return hash(self.buffer)
+
+
+class RakeSchema:
+    pass
 
 
 class CakeType:
@@ -567,7 +653,7 @@ class Cake(Stringable, EnsureIt, Primitive):
     def __eq__(self, other) -> bool:
         return str(self) == str(other)
 
-    def __le__(self, other) -> bool:
+    def __lt__(self, other) -> bool:
         return str(self) < str(other)
 
     def __bytes__(self):
@@ -655,7 +741,7 @@ TIMED_CAKE_PACKER = BAKERY_PACKERS.get_packer_by_type(TimedCake)
 
 
 @total_ordering
-class BlockStream:
+class BlockStream(BytesOrderingMixin):
     """
     >>> bs = BlockStream(blocks=[NULL_HASH_KEY, NULL_HASH_KEY])
     >>> len(bytes(bs))
@@ -690,12 +776,6 @@ class BlockStream:
             assert blocks is not None
             self.type = type
             self.blocks = list(blocks)
-
-    def __eq__(self, other):
-        return bytes(self) == bytes(other)
-
-    def __le__(self, other):
-        return bytes(self) < bytes(other)
 
     def __bytes__(self):
         return bytes(self.type) + b"".join(map(bytes, self.blocks))
