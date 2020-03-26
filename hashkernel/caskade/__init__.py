@@ -5,9 +5,9 @@ from typing import Any, Iterable, List, NamedTuple, Optional, Tuple, Type, Union
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, MetaCodeEnumExtended
-from hashkernel.bakery import CAKE_TYPE_PACKER, NULL_CAKE, Cake, CakeType, CakeTypes
+from hashkernel.bakery import Rake, RootSchema
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer
+from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer, B36
 from hashkernel.packer import (
     ADJSIZE_PACKER_4,
     BOOL_AS_BYTE,
@@ -33,32 +33,7 @@ from hashkernel.typings import is_callable
 """
 Somewhat inspired by BitCask
 
-
-Cascade is public class you supposed to interact 
-
-class Caskade:
-
-    == Data ==
-    dir: Path
-    config: CaskadeConfig
-    active: Optional[CaskFile]
-    casks: Dict[Cake, CaskFile]
-    data_locations: Dict[Cake, DataLocation]
-    check_points: List[CheckPoint]
-    permalinks: Dict[Cake, Cake]
-    tags: Dict[Cake, List[Tag]]
-    derived: Dict[Cake, Dict[Cake, Cake]]  # src -> filter -> derived_data
-
-    == Public methods ==
-
-    def __getitem__(self, id: Cake) -> Union[bytes, BlockStream]:
-    def read_bytes(self, id: Cake) -> bytes:
-    def __contains__(self, id: Cake) -> bool:
-    def write_bytes(self, content: bytes, ct: CakeType = CakeTypes.NO_CLASS) -> Cake:
-    def set_permalink(self, data: Cake, link: Cake) -> bool:
-    def save_derived(self, src: Cake, filter: Cake, derived: Cake):
-    def tag(self, src: Cake, tag: Tag):
-
+Cascade is interface for all public interactions   
 """
 
 
@@ -164,10 +139,9 @@ def named_tuple_resolver(cls: type) -> Packer:
 
 
 PACKERS = PackerLibrary().register_all(
-    (Cake, lambda _: Cake.__packer__),
+    (Rake, lambda _: Rake.__packer__),
     (HashKey, lambda _: HashKey.__packer__),
     (nanotime, lambda _: NANOTIME),
-    (CakeType, lambda _: CAKE_TYPE_PACKER),
     (CodeEnum, build_code_enum_packer),
     (bytes, lambda _: GREEDY_BYTES),
     (SmAttr, lambda t: ProxyPacker(t, GREEDY_BYTES)),
@@ -199,17 +173,17 @@ class CatalogItem(NamedTuple):
         )
 
 
-@PACKERS.register(named_tuple_packer(Cake.__packer__, INT_8, HashKey.__packer__))
+@PACKERS.register(named_tuple_packer(Rake.__packer__, INT_8, HashKey.__packer__))
 class DataLink(NamedTuple):
-    from_id: Cake
-    link_type: int  # 0-255: depend on Cake Type
+    from_id: Rake
+    link_type: int  # 0-255
     to_id: HashKey
 
 
 @PACKERS.register(named_tuple_packer(NANOTIME, INT_8, HashKey.__packer__))
 class DataLinkHistory(NamedTuple):
     tstamp: nanotime
-    link_type: int  # 0-255: depend on Cake Type
+    link_type: int  # 0-255
     to_id: HashKey
 
 
@@ -227,11 +201,10 @@ class CheckpointHeader(NamedTuple):
 
 @PACKERS.resolve
 class CaskHeaderEntry(NamedTuple):
-    caskade_id: Cake
+    caskade_id: Rake
     checkpoint_id: HashKey
-    prev_cask_id: Cake
     catalog_id: HashKey
-    # TODO stop_cask: Cake
+    # TODO stop_cask: CaskId
 
 
 @PACKERS.register(named_tuple_packer(INT_8, NANOTIME))
@@ -277,6 +250,12 @@ class JotType(CodeEnum):
     def force_in(
         cls, other_catalog: List[CatalogItem], expand: bool
     ) -> Tuple[Type["JotType"], bool]:
+        """
+        Impose
+        :param other_catalog:
+        :param expand:
+        :return:
+        """
         cat_dict = {item.entry_code: item for item in cls.catalog()}
         add: List[Any] = []
         mismatch = []
@@ -284,6 +263,7 @@ class JotType(CodeEnum):
         for other in other_catalog:
             if other.entry_code not in cat_dict:
                 add.append(other.enum_item())
+                has_surrogates = True
             elif cat_dict[other.entry_code] != other:
                 mismatch.append(other)
             elif not expand:
@@ -307,7 +287,6 @@ class JotType(CodeEnum):
     def extends(cls, *enums: Type["JotType"]):
         def decorate(decorated_enum: Type["JotType"]):
             return cls.combine(cls, decorated_enum, *enums)
-
         return decorate
 
     def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
@@ -357,6 +336,45 @@ class JotTypeCatalog:
         return len(self.binary)
 
 
+class CaskType(CodeEnum):
+    ACTIVE = (
+        0,
+        """
+        cask that actively populated by kernel process
+        """,
+    )
+
+    CASK = (
+        1,
+        """
+        cask closed for modification but still indexed in `Caskade`
+        """,
+    )
+
+
+@PACKERS.register(named_tuple_packer(Rake.__packer__, ADJSIZE_PACKER_4))
+class CaskId(NamedTuple):
+    caskade_id: Rake
+    idx: int
+
+    def __bytes__(self):
+        return CASK_ID_PACKER.pack(self)
+
+    @classmethod
+    def from_str(cls, name:str) -> "CaskId":
+        buffer = B36.decode(name.lower())
+        return cast(CaskId, CASK_ID_PACKER.unpack_whole_buffer(buffer))
+
+    def path(self, dir: Path, ct: CaskType):
+        return dir / f'{B36.encode(bytes(self))}.{ct.name.lower()}'
+
+    def next_id(self, add=1):
+        return CaskId(self.caskade_id, self.idx+add)
+
+
+CASK_ID_PACKER = PACKERS.get_packer_by_type(CaskId)
+
+
 class BaseJots(JotType):
 
     CASK_HEADER = (
@@ -395,53 +413,15 @@ class BaseJots(JotType):
         """,
     )
 
-    NEXT_CASK = (
-        4,
-        Cake.__packer__,
-        None,
-        """
-        header points to next cask segment. This entry has to 
-        precede ON_NEXT_CASK checkpoint.
-        """,
-    )
-
-
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
 CHUNK_SIZE_2x = CHUNK_SIZE * 2
 MAX_CASK_SIZE: int = 2 ** 31  # 2Gb
 
-
-class CaskType(CodeEnum):
-    ACTIVE = (
-        0,
-        """
-        cask that actively populated by kernel process
-        """,
-    )
-
-    CASK = (
-        1,
-        """
-        cask closed for modification but still indexed in `Caskade`
-        """,
-    )
-
-    def cask_path(self, dir: Path, guid: Cake) -> Path:
-        return dir / f"{guid.hash_key}.{self.name.lower()}"
-
-
-def find_cask_by_guid(
-    dir: Path, guid: Cake, types: Iterable[CaskType] = CaskType
-) -> Optional[Path]:
-    for ct in types:
-        path = ct.cask_path(dir, guid)
-        if path.exists():
-            return path
-    return None
+NULL_CASKADE = Rake.null(RootSchema.CASKADE)
 
 
 class DataLocation(NamedTuple):
-    cask_id: Cake
+    cask_id: CaskId
     offset: int
     size: int
 
@@ -541,16 +521,16 @@ CaskSigner.register("HashSigner", CaskHashSigner)
 
 class CaskadeConfig(SmAttr):
     """
-    >>> cc = CaskadeConfig(origin=NULL_CAKE)
+    >>> cc = CaskadeConfig(origin=NULL_CASKADE)
     >>> str(cc) #doctest: +NORMALIZE_WHITESPACE
     '{"auto_chunk_cutoff": 4194304, "checkpoint_size": 268435456, "checkpoint_ttl": null, "max_cask_size": 2147483648,
-    "origin": "RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi50", "signer": null}'
+    "origin": "0000000000000001", "signer": null}'
     >>> cc2 = CaskadeConfig(str(cc))
     >>> cc == cc2
     True
     """
 
-    origin: Cake
+    origin: Rake
     max_cask_size: int = MAX_CASK_SIZE
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE

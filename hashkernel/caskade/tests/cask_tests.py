@@ -7,7 +7,8 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
+from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes, Rake, \
+    RootSchema
 from hashkernel.caskade import (
     CHUNK_SIZE,
     AccessError,
@@ -123,7 +124,6 @@ class SizePredictor:
         self.add(size_of_check_point(self.cascade))
 
     def add_end_sequence(self):
-        self.add(size_of_entry(BaseJots.NEXT_CASK))
         self.add_check_point()
 
 
@@ -132,13 +132,13 @@ def test_recover_no_checkpoints():
         caskades / "recover_no_cp", jot_types=BaseJots, config=common_config
     )
     sp = SizePredictor(caskade)
-    first_cask = caskade.active.guid
+    first_cask = caskade.active.cask_id
     assert caskade.active.tracker.current_offset == sp.pos
     a0 = caskade.write_bytes(rand_bytes(0, TWO_K))
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
 
     sp.add_data(TWO_K)
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
     assert caskade.active.tracker.current_offset == sp.pos
     h0 = caskade.write_bytes(rand_bytes(0, TINY))
     sp.add_data(TINY)
@@ -162,7 +162,7 @@ def test_recover_no_checkpoints():
     assert write_caskade.active.tracker.current_offset == sp.pos
     a1_again = caskade.write_bytes(rand_bytes(1, TWO_K))
     assert a1 == a1_again
-    last_cask = write_caskade.active.guid
+    last_cask = write_caskade.active.cask_id
     write_caskade.close()
     sp.add_end_sequence()
     assert len(write_caskade.casks[last_cask]) == sp.pos
@@ -184,13 +184,13 @@ def test_3steps(name, caskade_cls, config):
     caskade = caskade_cls(dir, config=config)
     t = time()
     sp = SizePredictor(caskade)
-    first_cask = caskade.active.guid
+    first_cask = caskade.active.cask_id
     assert caskade.active.tracker.current_offset == sp.pos
     a0 = caskade.write_bytes(rand_bytes(0, ONE_AND_QUARTER))
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
     sp.add_data(ONE_AND_QUARTER)
     print(time() - t)
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
     assert caskade.active.tracker.current_offset == sp.pos
     h0 = caskade.write_bytes(rand_bytes(0, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
@@ -201,7 +201,7 @@ def test_3steps(name, caskade_cls, config):
     assert caskade.active.tracker.current_offset == sp.pos
     a2 = caskade.write_bytes(rand_bytes(2, ONE_AND_QUARTER))
     sp.add_data(ONE_AND_QUARTER)
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
     assert caskade.active.tracker.current_offset == sp.pos
     a3 = caskade.write_bytes(rand_bytes(3, ONE_AND_QUARTER))
     print(time() - t)
@@ -213,7 +213,9 @@ def test_3steps(name, caskade_cls, config):
     assert caskade.active.tracker.current_offset == sp.pos
     print(time() - t)
 
-    a4_permalink = Cake.new_guid()
+    code = len(RootSchema)
+    assert code == 5
+    a4_permalink = Rake.build_new(code)
     caskade.set_link(a4_permalink, 0, a4)
     sp.add(size_of_entry(BaseJots.LINK))
 
@@ -236,7 +238,7 @@ def test_3steps(name, caskade_cls, config):
     sp.add_check_point()
     t = time()
     assert caskade.active.tracker.current_offset == sp.pos
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
     print(time() - t)
 
     h1 = caskade.write_bytes(rand_bytes(1, ABOUT_HALF))
@@ -250,7 +252,7 @@ def test_3steps(name, caskade_cls, config):
     # cp2 by time
     sp.add_check_point()
     assert caskade.active.tracker.current_offset == sp.pos
-    assert first_cask == caskade.active.guid
+    assert first_cask == caskade.active.cask_id
 
     h3 = caskade.write_bytes(rand_bytes(3, ABOUT_HALF))
     sp.add_data(ABOUT_HALF)
@@ -260,7 +262,7 @@ def test_3steps(name, caskade_cls, config):
     assert caskade.active.tracker.current_offset == sp.pos
     a6 = caskade.write_bytes(rand_bytes(6, ONE_AND_QUARTER))
     # new_cask
-    assert first_cask != caskade.active.guid
+    assert first_cask != caskade.active.cask_id
     sp = SizePredictor(caskade)
     sp.add_data(ONE_AND_QUARTER)
     assert caskade.active.tracker.current_offset == sp.pos

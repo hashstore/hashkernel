@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import ClassVar, Dict, List, NamedTuple, Optional, Union
 
 from hashkernel import LogicRegistry
-from hashkernel.bakery import Cake
+from hashkernel.bakery import Rake
 from hashkernel.caskade import BaseJots, CaskadeConfig, JotType, Stamp
 from hashkernel.caskade.cask import Caskade, EntryHelper
 from hashkernel.hashing import HashKey
@@ -13,7 +13,7 @@ from hashkernel.smattr import SmAttr
 
 class DerivedHeader(NamedTuple):
     src: HashKey
-    filter: Cake
+    filter: Rake
     derived: HashKey
 
 
@@ -26,7 +26,7 @@ class Tag(SmAttr):
     __mold_config__ = MoldConfig(omit_optional_null=True)
     name: str
     value: Optional[float]
-    link: Optional[Cake]
+    link: Optional[Rake]
 
 
 @BaseJots.extends()
@@ -36,7 +36,7 @@ class OptionalJots(JotType):
         DerivedHeader,
         None,
         """
-        `src` - points to data Cake
+        `src` - points to original data
         `filter` - filter points to logic that used to derive `src`
         `derived` - points to derived data  
         """,
@@ -44,10 +44,10 @@ class OptionalJots(JotType):
 
     TAG = (
         7,
-        Cake,
+        Rake,
         Tag,
         """
-        `header` - points to Cake
+        `header` - points to Rake
         `payload` - tag body
         """,
     )
@@ -58,7 +58,7 @@ class OptionalEntryHelper(EntryHelper):
 
     @registry.add(OptionalJots.TAG)
     def load_TAG(self):
-        k: Cake = self.header
+        k: Rake = self.header
         tag: Tag = self.payload()
         self.cask.caskade.tags[k].append(tag)
 
@@ -69,20 +69,20 @@ class OptionalEntryHelper(EntryHelper):
 
 
 class OptionalCaskade(Caskade):
-    tags: Dict[Cake, List[Tag]]
-    derived: Dict[HashKey, Dict[Cake, HashKey]]  # src -> filter -> derived_data
+    tags: Dict[Rake, List[Tag]]
+    derived: Dict[HashKey, Dict[Rake, HashKey]]  # src -> filter -> derived_data
 
     def __init__(self, path: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.derived = defaultdict(dict)
         self.tags = defaultdict(list)
         Caskade.__init__(self, path, OptionalJots, config)
 
-    def tag(self, src: Cake, tag: Tag):
+    def tag(self, src: Rake, tag: Tag):
         self.assert_write()
         self.active.write_entry(OptionalJots.TAG, src, tag)
         self.tags[src].append(tag)
 
-    def save_derived(self, src: HashKey, filter: Cake, derived: HashKey):
+    def save_derived(self, src: HashKey, filter: Rake, derived: HashKey):
         self.assert_write()
         self.active.write_entry(
             OptionalJots.DERIVED, DerivedHeader(src, filter, derived), None

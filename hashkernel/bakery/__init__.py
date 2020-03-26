@@ -8,7 +8,7 @@ import os
 import threading
 from contextlib import contextmanager
 from datetime import timedelta
-from functools import total_ordering
+from functools import total_ordering, wraps
 from io import BytesIO
 from pathlib import Path, PurePath
 from typing import (
@@ -24,7 +24,7 @@ from typing import (
     Set,
     Tuple,
     Union,
-)
+    Type)
 
 from nanotime import nanotime
 
@@ -37,7 +37,7 @@ from hashkernel import (
     ScaleHelper,
     Scaling,
     Stringable,
-)
+    MetaCodeEnumExtended)
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
 from hashkernel.hashing import (
@@ -180,7 +180,7 @@ class LinkIdx:
 class LinkType(NamedTuple):
     name: str
     idx: LinkIdx
-    cref: Optional[GlobalRef] = None
+    ref: Optional[GlobalRef] = None
 
 
 class RakeLinks:
@@ -213,16 +213,18 @@ class RakeLinks:
     AssertionError: Expected idx: 0xd0
     >>> cl.add_links(('x',0xd0 , KEEP_THOUSAND, DECADE_LT, None))
     >>> cl.links_by_name['x']
-    LinkType(name='x', idx=LinkIdx(0, LinkHistorySize(2), LinkTimeout(6)), cref=None)
+    LinkType(name='x', idx=LinkIdx(0, LinkHistorySize(2), LinkTimeout(6)), ref=None)
 
     """
 
     links_by_idx: Dict[int, LinkType]
     links_by_name: Dict[str, LinkType]
 
-    def __init__(self):
+    def __init__(self, *links: Tuple[str, int, LinkHistorySize, LinkTimeout, Optional[GlobalRef]]):
         self.links_by_idx = {}
         self.links_by_name = {}
+        if len(links):
+            self.add_links(*links)
 
     def add_links(
         self, *links: Tuple[str, int, LinkHistorySize, LinkTimeout, Optional[GlobalRef]]
@@ -245,7 +247,7 @@ class RakeLinks:
 
 
 OBJ_TYPE_MASK = BitMask(0, 6)
-
+RAKE_SIZEOF = 16
 
 @total_ordering
 class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
@@ -288,9 +290,13 @@ class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
     False
     >>> Rake('32GweQDJvoH9dtuHzBGk6s')
     Rake('32GweQDJvoH9dtuHzBGk6s')
+    >>> Rake.null(0)
+    Rake('0000000000000000')
     """
 
     buffer: bytes
+
+    __packer__: ClassVar[Packer]
 
     def __init__(self, s: Union[str, bytes]):
         if isinstance(s, str):
@@ -298,9 +304,19 @@ class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
         self.buffer = s
 
     @classmethod
-    def build_new(cls, obj_type: int):
+    def build_new(cls, obj_type):
+        return cls._build(obj_type, os.urandom(RAKE_SIZEOF))
+
+    @classmethod
+    def null(cls, obj_type):
+        return cls._build(obj_type, b'\x00' * RAKE_SIZEOF)
+
+    @classmethod
+    def _build(cls, obj_type, s: bytes):
+        if not isinstance(obj_type , int):
+            obj_type = int(obj_type)
         assert 0 <= obj_type < 64, f"out of range 0-63: {obj_type}"
-        s = os.urandom(16)
+        assert len(s) == RAKE_SIZEOF
         return cls(s[:-1] + bytes([OBJ_TYPE_MASK.update(s[-1], obj_type)]))
 
     def obj_type(self) -> int:
@@ -312,15 +328,44 @@ class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
     def __str__(self):
         return B62.encode(self.buffer)
 
-    def __repr__(self) -> str:
-        return f"Rake({str(self)!r})"
-
     def __hash__(self) -> int:
         return hash(self.buffer)
 
+Rake.__packer__ = ProxyPacker(Rake, FixedSizePacker(RAKE_SIZEOF))
 
-class RakeSchema:
-    pass
+class RakeSchema(CodeEnum):
+    def __init__(
+        self,
+        code:int,
+        links:Optional[RakeLinks] = None,
+        doc:str = "",
+    ):
+        assert 0 <= code < 64
+        CodeEnum.__init__(self, code, doc)
+        self.links = links
+
+    @classmethod
+    def extends(cls, *enums: Type["RakeSchema"]):
+        def decorate(decorated_enum: Type["RakeSchema"]):
+            @wraps(decorated_enum)
+            class CombinedRakeSchema(RakeSchema,
+                                     metaclass=MetaCodeEnumExtended,
+                                     enums=[cls, decorated_enum, *enums]):
+                pass
+            return CombinedRakeSchema
+        return decorate
+
+
+
+class RootSchema(RakeSchema):
+    SCHEMA = 0
+    CASKADE = 1
+    HOST = 2
+    ACTOR = 3
+    LOGIC = 4
+
+
+
 
 
 class CakeType:

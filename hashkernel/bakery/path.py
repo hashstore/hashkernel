@@ -167,7 +167,7 @@ def ensure_cakepath(s):
 
 
 # @abc.abstractmethod
-# def store_directories(self, directories:Dict[Cake,CakeRack]):
+# def store_directories(self, directories:Dict[Cake,HashRack]):
 #     raise NotImplementedError('subclasses must override')
 # @abc.abstractmethod
 # def get_info(self, cake_path: CakePath) -> "PathInfo":
@@ -179,7 +179,7 @@ def ensure_cakepath(s):
 
 #
 # @abc.abstractmethod
-# def query(self, cake_path, include_path_info:bool=False) -> CakeRack:
+# def query(self, cake_path, include_path_info:bool=False) -> HashRack:
 #     raise NotImplementedError('subclasses must override')
 #
 # @abc.abstractmethod

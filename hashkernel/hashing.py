@@ -20,6 +20,7 @@ from hashkernel.files import ensure_path
 from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
 
 B36 = base_x(36)
+B62 = base_x(62)
 
 
 class B36_Mixin:
@@ -86,15 +87,20 @@ class Hasher:
 
 
 @total_ordering
-class HashKey(Stringable, EnsureIt, Primitive, BytesOrderingMixin):
+class HashKey(Stringable, EnsureIt, Primitive, B36_Mixin, BytesOrderingMixin):
     """
-    >>> HashKey(Hasher().update(b'hello'))
-    HashKey('14bu24ea7cq4jhmrgj4a3jrn1v6vem8ualnohxyeq239y1gobo')
+    >>> hk = HashKey(Hasher().update(b'hello'))
+    >>> hk
+    HashKey('aEO7hBt3J4tVAa0sLUEqymnlp6s43JnJRiBylEk5Ysk')
+    >>> hk.to_b36()
+    '14bu24ea7cq4jhmrgj4a3jrn1v6vem8ualnohxyeq239y1gobo'
     """
+    digest: bytes
+
     __packer__: ClassVar[Packer]
 
     def __init__(self, s: Union[str, bytes, Hasher]):
-        digest = B36.decode(s) if isinstance(s, str) else s
+        digest = B62.decode(s) if isinstance(s, str) else s
         if isinstance(digest, Hasher):
             self.digest = digest.digest()
         elif isinstance(digest, bytes):
@@ -105,7 +111,7 @@ class HashKey(Stringable, EnsureIt, Primitive, BytesOrderingMixin):
             raise AttributeError(f"cannot construct from: {s!r}")
 
     def __str__(self):
-        return B36.encode(self.digest)
+        return B62.encode(self.digest)
 
     def __bytes__(self):
         return self.digest

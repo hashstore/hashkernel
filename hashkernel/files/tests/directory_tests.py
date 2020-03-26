@@ -81,22 +81,23 @@ async def test_ignore_policy(
         json = re.sub(r'"mod": "[^"]+",', "", json)
         print(json)
         assert (
-            json == '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": '
+            json ==
+            '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": '
             '[{ "name": "a", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "b", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
-            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}, '
+            '"xtra": "xzbg412Ar6X0AOPfFUg3nc3wSoSQ96jak07pdh7jrOH"}]}]}, '
             '{ "name": "c", "size": 12, "type": "TREE", "xtra": '
             '[{ "name": "b", "size": 12, "type": "TREE", "xtra": '
             '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
-            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}, '
+            '"xtra": "xzbg412Ar6X0AOPfFUg3nc3wSoSQ96jak07pdh7jrOH"}, '
             '{ "name": "2_7.dat", "size": 7, "type": "FILE", '
-            '"xtra": "pkmdkuteqp50nvdl3o23v6egmbjnyb5mx65qicbtiulhipuzw"}]}]}, '
+            '"xtra": "6L1wce6TqSrO61DDPCNGnMabCQxko3hyEvEd9ZCXFg0"}]}]}, '
             '{ "name": "x", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "f", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "b", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
-            '"xtra": "3j0h8nu9fxfn085rggvr4il4yq3x6ipoi1rv0oo2r8ixrlzqjv"}]}]}]}]}'
+            '"xtra": "xzbg412Ar6X0AOPfFUg3nc3wSoSQ96jak07pdh7jrOH"}]}]}]}]}'
         )
 
 

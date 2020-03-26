@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
 from nanotime import nanotime
 
 from hashkernel import LogicRegistry, dump_jsonable, load_jsonable
-from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes
+from hashkernel.bakery import Rake, RootSchema
 from hashkernel.caskade import (
     PAYLOAD_SIZE_PACKER,
     AccessError,
@@ -25,7 +25,7 @@ from hashkernel.caskade import (
     SegmentTracker,
     Stamp,
     Stamp_PACKER,
-)
+    CaskId)
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
 from hashkernel.hashing import NULL_HASH_KEY, HashKey
@@ -33,7 +33,7 @@ from hashkernel.time import nanotime_now
 
 
 class CheckPoint(NamedTuple):
-    cask_id: Cake
+    cask_id: CaskId
     checkpoint_id: HashKey
     start: int
     end: int
@@ -53,7 +53,6 @@ VALIDATE_ALL = ReadOptions(
     validate_data=True, validate_checkpoints=True, validate_signatures=True
 )
 
-
 class CaskFile:
     """
     cask type: in append mode, shadow
@@ -64,32 +63,31 @@ class CaskFile:
     """
 
     caskade: "Caskade"
+    cask_id: CaskId
     path: Path
-    guid: Cake
+    idx: int
     type: CaskType
     tracker: SegmentTracker
     catalog: Optional[JotTypeCatalog] = None
 
-    def __init__(self, caskade: "Caskade", guid: Cake, cask_type: CaskType):
+    def __init__(self, caskade: "Caskade", cask_id: CaskId, cask_type: CaskType):
         self.caskade = caskade
-        self.guid = guid
+        self.cask_id = cask_id
         self.type = cask_type
-        self.path = cask_type.cask_path(caskade.dir, guid)
+        self.path = cask_id.path(caskade.dir, cask_type)
         self.tracker = None
 
     @classmethod
     def by_file(cls, caskade: "Caskade", fpath: Path) -> Optional["CaskFile"]:
         try:
             cask_type = CaskType[fpath.suffix[1:].upper()]
-            guid = Cake.from_hash_key(HashKey(fpath.stem), CakeTypes.CASK)
-            return cls(caskade, guid, cask_type)
+            return cls(caskade, CaskId.from_str(fpath.stem), cask_type)
         except (KeyError, AttributeError) as e:
             return None
 
     def create_file(
         self,
         tstamp=None,
-        prev_cask_id: Cake = NULL_CAKE,
         checkpoint_id: HashKey = NULL_HASH_KEY,
     ):
         self.tracker = SegmentTracker(0)
@@ -102,7 +100,6 @@ class CaskFile:
                 CaskHeaderEntry(
                     self.caskade.caskade_id,
                     checkpoint_id,
-                    prev_cask_id,
                     self.catalog.key,
                 ),
                 self.catalog.types.catalog(),
@@ -111,7 +108,7 @@ class CaskFile:
         )
         # add virtual checkpoint from cask header
         self.caskade.check_points.append(
-            CheckPoint(self.guid, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER)
+            CheckPoint(self.cask_id, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER)
         )
 
     def append_buffer(
@@ -126,7 +123,7 @@ class CaskFile:
         self.tracker.update(buffer)
         if content_size is not None:
             offset = self.tracker.current_offset - content_size
-            return DataLocation(self.guid, offset, content_size)
+            return DataLocation(self.cask_id, offset, content_size)
         return None
 
     def read_file(
@@ -158,14 +155,14 @@ class CaskFile:
         self.tracker = self.tracker.next_tracker()
         cp_buff = self.pack_entry(rec, header, self.caskade.config.sign)
         self.append_buffer(cp_buff)
-        self.caskade.check_points.append(CheckPoint(self.guid, *header))
+        self.caskade.check_points.append(CheckPoint(self.cask_id, *header))
         return header.checkpoint_id
 
     def _deactivate(self):
         assert self.type == CaskType.ACTIVE
-        prev_name = self.type.cask_path(self.caskade.dir, self.guid)
+        prev_name = self.cask_id.path(self.caskade.dir, self.type)
         self.type = CaskType.CASK
-        now_name = self.type.cask_path(self.caskade.dir, self.guid)
+        now_name = self.cask_id.path(self.caskade.dir, self.type)
         prev_name.rename(now_name)
         self.path = now_name
         self.tracker = None
@@ -192,15 +189,11 @@ class CaskFile:
         if cp_type is None:
             return self.append_buffer(buffer, content_size=content_size)
         elif cp_type == CheckPointType.ON_NEXT_CASK:
-            new_cask_id = Cake.new_guid(
-                CakeTypes.CASK, uniform_digest=self.guid.uniform_digest()
-            )
+            new_cask_id = self.cask_id.next_id()
             new_file = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
-            checkpoint_id = self._do_end_cask_sequence(
-                cp_type, tstamp, new_cask_id, new_file
-            )
+            checkpoint_id = self._do_end_cask_sequence( cp_type, new_file )
             self.caskade.active.create_file(
-                tstamp=tstamp, prev_cask_id=self.guid, checkpoint_id=checkpoint_id
+                tstamp=tstamp, checkpoint_id=checkpoint_id
             )
             return self.caskade.active.append_buffer(buffer, content_size=content_size)
         else:
@@ -210,8 +203,6 @@ class CaskFile:
     def _do_end_cask_sequence(
         self,
         cp_type: CheckPointType,
-        tstamp: nanotime = None,
-        next_cask_id=NULL_CAKE,
         new_file=None,
     ) -> HashKey:
         """
@@ -222,14 +213,7 @@ class CaskFile:
         :param new_file:
         :return:
         """
-        if tstamp is None:
-            tstamp = nanotime_now()
         assert cp_type in (CheckPointType.ON_NEXT_CASK, CheckPointType.ON_CASKADE_CLOSE)
-        assert next_cask_id != NULL_CAKE or cp_type == CheckPointType.ON_CASKADE_CLOSE
-        buff = self.pack_entry(
-            Stamp(BaseJots.NEXT_CASK.code, tstamp), next_cask_id, None
-        )
-        self.append_buffer(buff)
         checkpoint_id = self.write_checkpoint(cp_type)
         self._deactivate()
         self.caskade._set_active(new_file)
@@ -272,7 +256,7 @@ class EntryHelper(object):
             self.payload_dl = None
         else:
             payload_size, new_pos = PAYLOAD_SIZE_PACKER.unpack(fbytes, new_pos)
-            self.payload_dl = DataLocation(cask.guid, new_pos, payload_size)
+            self.payload_dl = DataLocation(cask.cask_id, new_pos, payload_size)
             self.end_of_entry = new_pos + payload_size
 
     def has_logic(self) -> bool:
@@ -305,7 +289,7 @@ class EntryHelper(object):
         assert cask_head.catalog_id == self.cask.catalog.key
         # add virtual checkpoint from cask header
         return CheckPoint(
-            self.cask.guid, cask_head.checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER
+            self.cask.cask_id, cask_head.checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER
         )
 
     @registry.add(BaseJots.LINK)
@@ -333,7 +317,7 @@ class EntryHelper(object):
             if calculated != cp_entry.checkpoint_id:
                 raise DataValidationError(f"{calculated} != {cp_entry.checkpoint_id}")
             self.cask.tracker = self.cask.tracker.next_tracker()
-        return CheckPoint(self.cask.guid, *cp_entry)
+        return CheckPoint(self.cask.cask_id, *cp_entry)
 
 
 class Caskade:
@@ -342,14 +326,14 @@ class Caskade:
     """
 
     dir: Path
-    caskade_id: Cake
+    caskade_id: Rake
     config: CaskadeConfig
     active: Optional[CaskFile]
-    casks: Dict[Cake, CaskFile]
-    cask_ids: List[Cake]
+    casks: Dict[CaskId, CaskFile]
+    cask_ids: List[CaskId]
     data_locations: Dict[HashKey, DataLocation]
     check_points: List[CheckPoint]
-    datalinks: Dict[Cake, Dict[int, HashKey]]
+    datalinks: Dict[Rake, Dict[int, HashKey]]
     jot_types: Type[JotType]
 
     def __init__(
@@ -367,7 +351,7 @@ class Caskade:
         self.config = config
         if not self.dir.exists():
             self.dir.mkdir(mode=0o0700, parents=True)
-            self.caskade_id = Cake.new_guid(CakeTypes.CASK)
+            self.caskade_id = Rake.build_new(RootSchema.CASKADE)
             if config is None:
                 self.config = CaskadeConfig(origin=self.caskade_id)
             else:
@@ -378,7 +362,7 @@ class Caskade:
                 self.config.signer.init_dir(self._etc_dir())
             dump_jsonable(self._config_file(), self.config)
             self.cask_ids = []
-            self._set_active(CaskFile(self, self.caskade_id, CaskType.ACTIVE))
+            self._set_active(CaskFile(self, CaskId(self.caskade_id, 0), CaskType.ACTIVE))
             self.active.create_file()
         else:
             assert self.dir.is_dir()
@@ -390,10 +374,8 @@ class Caskade:
             for fpath in self.dir.iterdir():
                 file = CaskFile.by_file(self, fpath)
                 if file is not None and self.is_file_belong(file):
-                    self.casks[file.guid] = file
-            self.cask_ids = sorted(
-                self.casks.keys(), key=lambda k: -k.guid_header().time.nanoseconds()
-            )
+                    self.casks[file.cask_id] = file
+            self.cask_ids = sorted(self.casks.keys(), reverse=True)
             assert len(self.cask_ids)
             self.casks[self.cask_ids[0]].read_file(
                 check_point_collector=self.check_points
@@ -411,8 +393,8 @@ class Caskade:
     def _set_active(self, file: CaskFile):
         self.active = file
         if file is not None:
-            self.cask_ids.insert(0, self.active.guid)
-            self.casks[self.active.guid] = self.active
+            self.cask_ids.insert(0, self.active.cask_id)
+            self.casks[self.active.cask_id] = self.active
 
     def latest_file(self) -> CaskFile:
         return self.casks[self.cask_ids[0]]
@@ -421,7 +403,7 @@ class Caskade:
         return EntryHelper(*args)
 
     def is_file_belong(self, file: CaskFile):
-        return file.guid.uniform_digest() == self.caskade_id.uniform_digest()
+        return file.cask_id.caskade_id == self.caskade_id
 
     def checkpoint(self):
         self.assert_write()
@@ -450,7 +432,7 @@ class Caskade:
             self._add_data_location(hkey, dp, content)
         return hkey
 
-    def set_link(self, link: Cake, link_type: int, data: HashKey) -> bool:
+    def set_link(self, link: Rake, link_type: int, data: HashKey) -> bool:
         """
         Ensures link.
 
@@ -458,7 +440,6 @@ class Caskade:
               `True` if writen, `False` if exists and already pointing
               to right data.
         """
-        assert link.is_guid
         if (
             link not in self.datalinks
             or link_type not in self.datalinks[link]
