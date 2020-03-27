@@ -5,41 +5,41 @@ from pathlib import PurePosixPath
 from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
-from hashkernel.bakery import Cake
-from hashkernel.files.mime_info import mime_infos
+from hashkernel.bakery import Rake
+from hashkernel.files.mime_info import mime_infos, guess_name
 from hashkernel.smattr import SmAttr
 
 
 class CakePath(Stringable, EnsureIt, Primitive):
     """
-    >>> Cake.from_bytes(b'[["b.text"], [null]]')
-    Cake('vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
-    >>> root = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
+    >>> Rake.null(0)
+    Rake('0000000000000000')
+    >>> root = CakePath('/0000000000000000')
     >>> root
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/')
+    CakePath('/0000000000000000/')
     >>> root.root
-    Cake('vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0')
-    >>> absolute = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')
+    Rake('0000000000000000')
+    >>> absolute = CakePath('/0000000000000000/b.txt')
     >>> absolute
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt')
+    CakePath('/0000000000000000/b.txt')
     >>> relative = CakePath('y/z')
     >>> relative
     CakePath('y/z')
     >>> relative.make_absolute(absolute)
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/b.txt/y/z')
+    CakePath('/0000000000000000/b.txt/y/z')
 
     `make_absolute()` have no effect to path that already
     absolute
 
-    >>> p0 = CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r/f')
+    >>> p0 = CakePath('/0000000000000000/r/f')
     >>> p0.make_absolute(absolute)
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r/f')
+    CakePath('/0000000000000000/r/f')
     >>> p1 = p0.parent()
     >>> p2 = p1.parent()
     >>> p1
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/r')
+    CakePath('/0000000000000000/r')
     >>> p2
-    CakePath('/vuftdaoxIKQUbgoReI06d24DhhzO6IaFGVgwqtIFVEH0/')
+    CakePath('/0000000000000000/')
     >>> p2.parent()
     >>> p0.path_join()
     'r/f'
@@ -58,7 +58,7 @@ class CakePath(Stringable, EnsureIt, Primitive):
         else:
             split = PurePosixPath(s).parts
             if len(split) > 0 and split[0] == "/":
-                self.root = Cake(split[1])
+                self.root = Rake(split[1])
                 self.path = split[2:]
             else:
                 self.root = None
@@ -117,20 +117,20 @@ class CakePath(Stringable, EnsureIt, Primitive):
 
 
 def cake_or_path(s, relative_to_root=False):
-    if isinstance(s, Cake) or isinstance(s, CakePath):
+    if isinstance(s, Rake) or isinstance(s, CakePath):
         return s
     elif s[:1] == "/":
         return CakePath(s)
     elif relative_to_root and "/" in s:
         return CakePath("/" + s)
     else:
-        return Cake(s)
+        return Rake(s)
 
 
 def ensure_cakepath(s):
-    if not (isinstance(s, (Cake, CakePath))):
+    if not (isinstance(s, (Rake, CakePath))):
         s = cake_or_path(s)
-    if isinstance(s, Cake):
+    if isinstance(s, Rake):
         return CakePath(None, _root=s)
     else:
         return s
@@ -167,7 +167,7 @@ def ensure_cakepath(s):
 
 
 # @abc.abstractmethod
-# def store_directories(self, directories:Dict[Cake,HashRack]):
+# def store_directories(self, directories:Dict[Rake,HashRack]):
 #     raise NotImplementedError('subclasses must override')
 # @abc.abstractmethod
 # def get_info(self, cake_path: CakePath) -> "PathInfo":
@@ -184,14 +184,14 @@ def ensure_cakepath(s):
 #
 # @abc.abstractmethod
 # def edit_portal_tree(self,
-#         files:List[PatchAction,Cake,Optional[Cake]],
+#         files:List[PatchAction,Rake,Optional[Rake]],
 #         asof_dt:datetime=None):
 #     raise NotImplementedError('subclasses must override')
 
 
 class PathResolved(SmAttr):
     path: CakePath
-    resolved: Optional[Cake]
+    resolved: Optional[Rake]
 
 
 class PathInfo(SmAttr):

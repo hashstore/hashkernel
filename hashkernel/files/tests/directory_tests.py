@@ -7,7 +7,6 @@ import pytest
 from hs_build_tools import LogTestOut
 
 from hashkernel import json_decode, json_encode, to_json
-from hashkernel.bakery import Cake
 from hashkernel.files.directory import (
     DirContent,
     FileExtra,
@@ -34,7 +33,7 @@ def print_dc(dc: DirContent):
         (None, None, True),
         (None, None, False),
         (print_dc, HashKey.from_file, True),
-        (print_dc, Cake.from_file, False),
+        (print_dc, HashKey.from_file, False),
     ],
 )
 async def test_ignore_policy(
@@ -111,7 +110,7 @@ async def main():
                     path,
                     DEFAULT_IGNORE_POLICY.apply(path),
                     content_cb=print_dc,
-                    file_extra_factory=Cake.from_file,
+                    file_extra_factory=HashKey.from_file,
                 )
             )
         ),

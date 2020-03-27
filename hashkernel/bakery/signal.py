@@ -3,7 +3,7 @@
 from typing import Any, Callable, Dict, Optional, Union
 
 from hashkernel import Jsonable, json_decode, utf8_decode
-from hashkernel.bakery import Cake
+from hashkernel.bakery import Rake
 from hashkernel.mold import Conversion, Mold
 from hashkernel.packer import (
     GREEDY_BYTES,
@@ -25,10 +25,10 @@ for pdefs in query_plugins(PackerDefinitions, "hashkernel.bakery.cakables"):
 
 class Cakeable:
     packer: Packer
-    cake: Optional[Cake]
+    cake: Optional[Rake]
     data: Any
 
-    def __init__(self, packer: Packer, cake: Optional[Cake], data: Any):
+    def __init__(self, packer: Packer, cake: Optional[Rake], data: Any):
         self.packer = packer
         assert cake is not None or data is not None
         self.cake = cake
@@ -39,14 +39,14 @@ class Cakeable:
         return cls(packer, None, data)
 
     @classmethod
-    def from_cake(cls, packer: Packer, cake: Cake):
+    def from_cake(cls, packer: Packer, cake: Rake):
         return cls(packer, cake, None)
 
     def __to_json__(self):
         assert self.cake is not None
         return self.cake
 
-    def load(self, loader: Callable[[Cake], bytes]):
+    def load(self, loader: Callable[[Rake], bytes]):
         assert self.need_to_be_loaded()
         buffer = loader(self.cake)
         self.data = self.packer.unpack_whole_buffer(buffer)
@@ -54,7 +54,7 @@ class Cakeable:
     def need_to_be_loaded(self):
         return self.data is None and self.cake is not None
 
-    def store(self, store_fn: Callable[[bytes], Cake]):
+    def store(self, store_fn: Callable[[bytes], Rake]):
         assert self.need_to_be_stored()
         buffer = self.packer.pack(self.data)
         self.cake = store_fn(buffer)
@@ -110,7 +110,7 @@ class Question(SmAttr):
 
 
 class Answer(SmAttr):
-    question: Cake
+    question: Rake
     output: Signal
 
 

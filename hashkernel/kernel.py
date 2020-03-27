@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 from hashkernel import CodeEnum, ensure_module
-from hashkernel.bakery import Cake
+from hashkernel.bakery import Rake
 from hashkernel.logic import HashLogic
 from hashkernel.smattr import SmAttr
 
@@ -17,14 +17,14 @@ class MsgType(CodeEnum):
 
 class Header(SmAttr):
     type: MsgType
-    src: Cake
-    dest: Cake
+    src: Rake
+    dest: Rake
     time: datetime
 
 
 class EndPoint:
     def __init__(self, end_point=None, host="127.0.0.1"):
-        self.session_id = Cake.new_portal()
+        self.session_id = Rake.build_new(0)
         self.ctx = zmq.Context()
         self.socket = self.ctx.socket(zmq.PAIR)
         if end_point is None:

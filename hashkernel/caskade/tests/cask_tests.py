@@ -7,8 +7,7 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.bakery import NULL_CAKE, Cake, CakeTypes, Rake, \
-    RootSchema
+from hashkernel.bakery import Rake, RootSchema
 from hashkernel.caskade import (
     CHUNK_SIZE,
     AccessError,
@@ -20,7 +19,7 @@ from hashkernel.caskade import (
     CheckPointType,
     Stamp,
     Stamp_PACKER,
-)
+    NULL_CASKADE)
 from hashkernel.caskade.cask import (
     BaseCaskade,
     Caskade,
@@ -28,7 +27,7 @@ from hashkernel.caskade.cask import (
     size_of_entry,
 )
 from hashkernel.caskade.optional import OptionalCaskade, OptionalJots, Tag
-from hashkernel.hashing import HashKey
+from hashkernel.hashing import HashKey, NULL_HASH_KEY
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
 
@@ -37,14 +36,14 @@ log, out = LogTestOut.get(__name__)
 caskades = Path(out.child_dir("caskades"))
 
 common_config = CaskadeConfig(
-    origin=NULL_CAKE,
+    origin=NULL_CASKADE,
     checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
 )
 
 common_singer = CaskadeConfig(
-    origin=NULL_CAKE,
+    origin=NULL_CASKADE,
     checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
@@ -60,7 +59,7 @@ def test_packers():
     assert r.entry_code == r2.entry_code
     assert r.tstamp.nanoseconds() == r2.tstamp.nanoseconds()
     packer = BaseJots.CHECK_POINT.header_packer
-    o = CheckpointHeader(NULL_CAKE.hash_key, 0, 5, CheckPointType.ON_SIZE)
+    o = CheckpointHeader(NULL_HASH_KEY, 0, 5, CheckPointType.ON_SIZE)
     pack = packer.pack(o)
     o2, offset = packer.unpack(pack, 0)
     assert len(pack) == offset
