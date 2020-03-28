@@ -1,11 +1,10 @@
 from typing import NamedTuple
 
-from hashkernel.bakery import HashKey
-from hashkernel.hashing import NULL_HASH_KEY
+from hashkernel.ake import Cake, NULL_CAKE
 from hashkernel.logic import DagMeta, EdgeMold, Task
 
 
-def fn(n: HashKey, i: int) -> HashKey:
+def fn(n: Cake, i: int) -> Cake:
     print(f"n:{n} i:{i}")
     return n
 
@@ -13,16 +12,16 @@ def fn(n: HashKey, i: int) -> HashKey:
 class Worker(NamedTuple):
     name: str
     id: int
-    x: HashKey
+    x: Cake
 
 
 def fn2() -> Worker:
-    e = Worker("Guido", 5, NULL_HASH_KEY)
+    e = Worker("Guido", 5, NULL_CAKE)
     print(e)
     return e
 
 
-def fn3(n: HashKey, i: int = 5) -> HashKey:
+def fn3(n: Cake, i: int = 5) -> Cake:
     print(f"fn3 n:{n} i:{i}")
     return n
 

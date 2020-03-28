@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
-from hashkernel.bakery import Rake
+from hashkernel.ake import Rake
 from hashkernel.files.mime_info import mime_infos, guess_name
 from hashkernel.smattr import SmAttr
 

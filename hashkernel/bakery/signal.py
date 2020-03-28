@@ -3,7 +3,7 @@
 from typing import Any, Callable, Dict, Optional, Union
 
 from hashkernel import Jsonable, json_decode, utf8_decode
-from hashkernel.bakery import Rake
+from hashkernel.ake import Rake
 from hashkernel.mold import Conversion, Mold
 from hashkernel.packer import (
     GREEDY_BYTES,

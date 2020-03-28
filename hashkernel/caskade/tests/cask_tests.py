@@ -7,7 +7,7 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.bakery import Rake, RootSchema
+from hashkernel.ake import Rake, RootSchema
 from hashkernel.caskade import (
     CHUNK_SIZE,
     AccessError,
@@ -27,7 +27,7 @@ from hashkernel.caskade.cask import (
     size_of_entry,
 )
 from hashkernel.caskade.optional import OptionalCaskade, OptionalJots, Tag
-from hashkernel.hashing import HashKey, NULL_HASH_KEY
+from hashkernel.ake import Cake, NULL_CAKE
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
 
@@ -59,7 +59,7 @@ def test_packers():
     assert r.entry_code == r2.entry_code
     assert r.tstamp.nanoseconds() == r2.tstamp.nanoseconds()
     packer = BaseJots.CHECK_POINT.header_packer
-    o = CheckpointHeader(NULL_HASH_KEY, 0, 5, CheckPointType.ON_SIZE)
+    o = CheckpointHeader(NULL_CAKE, 0, 5, CheckPointType.ON_SIZE)
     pack = packer.pack(o)
     o2, offset = packer.unpack(pack, 0)
     assert len(pack) == offset
@@ -218,7 +218,7 @@ def test_3steps(name, caskade_cls, config):
     caskade.set_link(a4_permalink, 0, a4)
     sp.add(size_of_entry(BaseJots.LINK))
 
-    a4_derived = HashKey.from_bytes(a4_bytes[:100])
+    a4_derived = Cake.from_bytes(a4_bytes[:100])
     a4_tag = Tag(name="Hello")
     if caskade_cls == OptionalCaskade:
         caskade.save_derived(a4, a4_permalink, a4_derived)
@@ -286,8 +286,8 @@ def test_3steps(name, caskade_cls, config):
         dp = caskade.data_locations[k]
         assert rdp.offset == dp.offset
         assert rdp.size == dp.size
-        assert k == HashKey.from_bytes(read_caskade[k])
-        assert k == HashKey.from_bytes(caskade[k])
+        assert k == Cake.from_bytes(read_caskade[k])
+        assert k == Cake.from_bytes(caskade[k])
         # logit(str(k)[:8])
     if caskade_cls == OptionalCaskade:
         assert read_caskade.derived[a4][a4_permalink] == a4_derived

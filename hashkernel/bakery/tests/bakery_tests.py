@@ -4,8 +4,8 @@
 from logging import getLogger
 
 import pytest
-from hashkernel.bakery import Rake, RootSchema
-from hashkernel.hashing import HashKey
+from hashkernel.ake import Rake, RootSchema
+from hashkernel.ake import Cake
 from pytest import raises
 
 log = getLogger(__name__)
@@ -24,10 +24,10 @@ log = getLogger(__name__)
     ],
 )
 def test_cake_roundtrip(content, cake_s):
-    u1 = HashKey.from_bytes(content)
+    u1 = Cake.from_bytes(content)
     assert cake_s == str(u1)
-    u1n = HashKey(str(u1))
-    u1b = HashKey(bytes(u1))
+    u1n = Cake(str(u1))
+    u1b = Cake(bytes(u1))
     assert u1 == u1n
     assert u1 == u1b
 

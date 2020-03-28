@@ -2,15 +2,16 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from hashkernel import Jsonable, utf8_decode, utf8_encode
-from hashkernel.hashing import Hasher, HashKey
+from hashkernel.hashing import Hasher
+from hashkernel.ake import Cake
 
 
 class HashRack(Jsonable):
     """
     sorted dictionary of names and corresponding HashKeys
 
-    >>> short_k = HashKey.from_bytes(b'The quick brown fox jumps over')
-    >>> longer_k = HashKey.from_bytes(b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.')
+    >>> short_k = Cake.from_bytes(b'The quick brown fox jumps over')
+    >>> longer_k = Cake.from_bytes(b'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.')
 
     >>> cakes = HashRack()
     >>> cakes['short'] = short_k
@@ -31,7 +32,7 @@ class HashRack(Jsonable):
     """
 
     def __init__(self, o: Any = None) -> None:
-        self.store: Dict[str, Optional[HashKey]] = {}
+        self.store: Dict[str, Optional[Cake]] = {}
         self._clear_cached()
         if o is not None:
             self.parse(o)
@@ -44,14 +45,14 @@ class HashRack(Jsonable):
         self._in_bytes: Any = None
         self._defined: Any = None
 
-    def inverse(self) -> Dict[HashKey, str]:
+    def inverse(self) -> Dict[Cake, str]:
         if self._inverse is None:
             self._inverse = {v: k for k, v in self.store.items() if v is not None}
         return self._inverse
 
-    def cake(self) -> HashKey:
+    def cake(self) -> Cake:
         if self._cake is None:
-            self._cake = HashKey(Hasher().update(bytes(self)))
+            self._cake = Cake(Hasher().update(bytes(self)))
         return self._cake
 
     def content(self) -> str:
@@ -84,21 +85,21 @@ class HashRack(Jsonable):
             names, cakes = o
         else:
             names, cakes = json.load(o)
-        self.store.update(zip(names, map(HashKey.ensure_it_or_none, cakes)))
+        self.store.update(zip(names, map(Cake.ensure_it_or_none, cakes)))
         return self
 
     def __iter__(self) -> Iterable[str]:
         return iter(self.keys())
 
-    def __setitem__(self, k: str, v: Union[HashKey, str, None]) -> None:
+    def __setitem__(self, k: str, v: Union[Cake, str, None]) -> None:
         self._clear_cached()
-        self.store[k] = HashKey.ensure_it_or_none(v)
+        self.store[k] = Cake.ensure_it_or_none(v)
 
     def __delitem__(self, k: str):
         self._clear_cached()
         del self.store[k]
 
-    def __getitem__(self, k: str) -> Optional[HashKey]:
+    def __getitem__(self, k: str) -> Optional[Cake]:
         return self.store[k]
 
     def __len__(self) -> int:
@@ -107,20 +108,20 @@ class HashRack(Jsonable):
     def __contains__(self, k: str) -> bool:
         return k in self.store
 
-    def get_name_by_cake(self, k: Union[HashKey, str]):
-        return self.inverse()[HashKey.ensure_it(k)]
+    def get_name_by_cake(self, k: Union[Cake, str]):
+        return self.inverse()[Cake.ensure_it(k)]
 
     def keys(self) -> List[str]:
         names = list(self.store.keys())
         names.sort()
         return names
 
-    def get_cakes(self, names=None) -> List[Optional[HashKey]]:
+    def get_cakes(self, names=None) -> List[Optional[Cake]]:
         if names is None:
             names = self.keys()
         return [self.store[k] for k in names]
 
-    def __to_json__(self) -> Tuple[List[str], List[Optional[HashKey]]]:
+    def __to_json__(self) -> Tuple[List[str], List[Optional[Cake]]]:
         keys = self.keys()
         return (keys, self.get_cakes(keys))
 

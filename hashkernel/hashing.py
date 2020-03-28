@@ -86,61 +86,6 @@ class Hasher:
         return self.sha.digest()
 
 
-@total_ordering
-class HashKey(Stringable, EnsureIt, Primitive, B36_Mixin, BytesOrderingMixin):
-    """
-    >>> hk = HashKey(Hasher().update(b'hello'))
-    >>> hk
-    HashKey('aEO7hBt3J4tVAa0sLUEqymnlp6s43JnJRiBylEk5Ysk')
-    >>> hk.to_b36()
-    '14bu24ea7cq4jhmrgj4a3jrn1v6vem8ualnohxyeq239y1gobo'
-    """
-    digest: bytes
-
-    __packer__: ClassVar[Packer]
-
-    def __init__(self, s: Union[str, bytes, Hasher]):
-        digest = B62.decode(s) if isinstance(s, str) else s
-        if isinstance(digest, Hasher):
-            self.digest = digest.digest()
-        elif isinstance(digest, bytes):
-            if len(digest) != Hasher.SIZEOF:
-                raise AttributeError(f"digest is wrong size: {len(digest)} {s!r}")
-            self.digest = digest
-        else:
-            raise AttributeError(f"cannot construct from: {s!r}")
-
-    def __str__(self):
-        return B62.encode(self.digest)
-
-    def __bytes__(self):
-        return self.digest
-
-    def __hash__(self) -> int:
-        if not (hasattr(self, "_hash")):
-            self._hash = hash(self.digest)
-        return self._hash
-
-    @staticmethod
-    def from_stream(fd: IO[bytes]) -> "HashKey":
-        return HashKey(Hasher().update_from_stream(fd).digest())
-
-    @staticmethod
-    def from_bytes(s: bytes) -> "HashKey":
-        return HashKey.from_stream(BytesIO(s))
-
-    @staticmethod
-    def from_file(file: Union[str, Path]) -> "HashKey":
-        return HashKey.from_stream(ensure_path(file).open("rb"))
-
-
-HashKey.__packer__ = ProxyPacker(HashKey, FixedSizePacker(Hasher.SIZEOF))
-
-
-NULL_HASH_KEY = HashKey(Hasher())
-SIZE_OF_HASH_KEY = Hasher.SIZEOF
-
-
 def shard_name_int(num: int):
     """
     >>> shard_name_int(0)

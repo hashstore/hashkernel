@@ -4,7 +4,7 @@ from io import BytesIO
 
 from hashkernel import to_json, utf8_reader
 from hashkernel.bakery.rack import HashRack
-from hashkernel.hashing import HashKey
+from hashkernel.ake import Cake
 
 
 def test_Bundle():
@@ -14,7 +14,7 @@ def test_Bundle():
     with tempfile.NamedTemporaryFile("w", delete=False) as w:
         w.write(b1.content())
     b2 = HashRack().parse(b1.content())
-    u_f = HashKey.from_file(w.name)
+    u_f = Cake.from_file(w.name)
     os.unlink(w.name)
     u2 = b2.cake()
     assert u_f == u2

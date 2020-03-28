@@ -5,9 +5,9 @@ from typing import Any, Iterable, List, NamedTuple, Optional, Tuple, Type, Union
 from nanotime import nanotime
 
 from hashkernel import CodeEnum, MetaCodeEnumExtended
-from hashkernel.bakery import Rake, RootSchema
+from hashkernel.ake import Cake, Rake, RootSchema
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import Hasher, HasherSigner, HashKey, Signer, B36
+from hashkernel.hashing import Hasher, HasherSigner, Signer, B36
 from hashkernel.packer import (
     ADJSIZE_PACKER_4,
     BOOL_AS_BYTE,
@@ -140,7 +140,7 @@ def named_tuple_resolver(cls: type) -> Packer:
 
 PACKERS = PackerLibrary().register_all(
     (Rake, lambda _: Rake.__packer__),
-    (HashKey, lambda _: HashKey.__packer__),
+    (Cake, lambda _: Cake.__packer__),
     (nanotime, lambda _: NANOTIME),
     (CodeEnum, build_code_enum_packer),
     (bytes, lambda _: GREEDY_BYTES),
@@ -173,27 +173,27 @@ class CatalogItem(NamedTuple):
         )
 
 
-@PACKERS.register(named_tuple_packer(Rake.__packer__, INT_8, HashKey.__packer__))
+@PACKERS.register(named_tuple_packer(Rake.__packer__, INT_8, Cake.__packer__))
 class DataLink(NamedTuple):
     from_id: Rake
     link_type: int  # 0-255
-    to_id: HashKey
+    to_id: Cake
 
 
-@PACKERS.register(named_tuple_packer(NANOTIME, INT_8, HashKey.__packer__))
+@PACKERS.register(named_tuple_packer(NANOTIME, INT_8, Cake.__packer__))
 class DataLinkHistory(NamedTuple):
     tstamp: nanotime
     link_type: int  # 0-255
-    to_id: HashKey
+    to_id: Cake
 
 
 @PACKERS.register(
     named_tuple_packer(
-        HashKey.__packer__, INT_32, INT_32, build_code_enum_packer(CheckPointType)
+        Cake.__packer__, INT_32, INT_32, build_code_enum_packer(CheckPointType)
     )
 )
 class CheckpointHeader(NamedTuple):
-    checkpoint_id: HashKey
+    checkpoint_id: Cake
     start: int
     end: int
     type: CheckPointType
@@ -202,8 +202,8 @@ class CheckpointHeader(NamedTuple):
 @PACKERS.resolve
 class CaskHeaderEntry(NamedTuple):
     caskade_id: Rake
-    checkpoint_id: HashKey
-    catalog_id: HashKey
+    checkpoint_id: Cake
+    catalog_id: Cake
     # TODO stop_cask: CaskId
 
 
@@ -311,7 +311,7 @@ class JotType(CodeEnum):
 class JotTypeCatalog:
     types: Type[JotType]
     binary: bytes
-    key: HashKey
+    key: Cake
     has_surrogates: bool
 
     def __init__(
@@ -330,7 +330,7 @@ class JotTypeCatalog:
                 )
             self.types, self.has_surrogates = jot_types.force_in(other_catalog, expand)
         self.binary = Catalog_PACKER.pack(self.types.catalog())
-        self.key = HashKey.from_bytes(self.binary)
+        self.key = Cake.from_bytes(self.binary)
 
     def __len__(self):
         return len(self.binary)
@@ -391,10 +391,10 @@ class BaseJots(JotType):
 
     DATA = (
         1,
-        HashKey.__packer__,
+        Cake.__packer__,
         GREEDY_BYTES,
         """
-        Data identified by header HashKey
+        Data identified by header Cake
         """,
     )
 
@@ -485,7 +485,7 @@ class SegmentTracker:
         return (
             Stamp(BaseJots.CHECK_POINT.code, nanotime_now()),
             CheckpointHeader(
-                HashKey(self.hasher), self.start_offset, self.current_offset, cpt
+                Cake(self.hasher), self.start_offset, self.current_offset, cpt
             ),
         )
 

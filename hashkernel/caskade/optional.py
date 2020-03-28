@@ -3,18 +3,18 @@ from pathlib import Path
 from typing import ClassVar, Dict, List, NamedTuple, Optional, Union
 
 from hashkernel import LogicRegistry
-from hashkernel.bakery import Rake
+from hashkernel.ake import Rake
 from hashkernel.caskade import BaseJots, CaskadeConfig, JotType, Stamp
 from hashkernel.caskade.cask import Caskade, EntryHelper
-from hashkernel.hashing import HashKey
+from hashkernel.ake import Cake
 from hashkernel.mold import MoldConfig
 from hashkernel.smattr import SmAttr
 
 
 class DerivedHeader(NamedTuple):
-    src: HashKey
+    src: Cake
     filter: Rake
-    derived: HashKey
+    derived: Cake
 
 
 class Tag(SmAttr):
@@ -70,7 +70,7 @@ class OptionalEntryHelper(EntryHelper):
 
 class OptionalCaskade(Caskade):
     tags: Dict[Rake, List[Tag]]
-    derived: Dict[HashKey, Dict[Rake, HashKey]]  # src -> filter -> derived_data
+    derived: Dict[Cake, Dict[Rake, Cake]]  # src -> filter -> derived_data
 
     def __init__(self, path: Union[Path, str], config: Optional[CaskadeConfig] = None):
         self.derived = defaultdict(dict)
@@ -82,7 +82,7 @@ class OptionalCaskade(Caskade):
         self.active.write_entry(OptionalJots.TAG, src, tag)
         self.tags[src].append(tag)
 
-    def save_derived(self, src: HashKey, filter: Rake, derived: HashKey):
+    def save_derived(self, src: Cake, filter: Rake, derived: Cake):
         self.assert_write()
         self.active.write_entry(
             OptionalJots.DERIVED, DerivedHeader(src, filter, derived), None

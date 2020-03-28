@@ -15,7 +15,7 @@ from hashkernel.files.directory import (
 )
 from hashkernel.files.ignore_file import DEFAULT_IGNORE_POLICY
 from hashkernel.files.tests import seed_file
-from hashkernel.hashing import HashKey
+from hashkernel.ake import Cake
 
 log, out = LogTestOut.get(__name__)
 
@@ -32,8 +32,8 @@ def print_dc(dc: DirContent):
     [
         (None, None, True),
         (None, None, False),
-        (print_dc, HashKey.from_file, True),
-        (print_dc, HashKey.from_file, False),
+        (print_dc, Cake.from_file, True),
+        (print_dc, Cake.from_file, False),
     ],
 )
 async def test_ignore_policy(
@@ -76,7 +76,7 @@ async def test_ignore_policy(
     for i in range(len(entry.xtra)):
         assert fe.xtra[i].name() == entry.xtra[i].name()
 
-    if file_extra_factory == HashKey.from_file and ignore_symlinks:
+    if file_extra_factory == Cake.from_file and ignore_symlinks:
         json = re.sub(r'"mod": "[^"]+",', "", json)
         print(json)
         assert (
@@ -110,7 +110,7 @@ async def main():
                     path,
                     DEFAULT_IGNORE_POLICY.apply(path),
                     content_cb=print_dc,
-                    file_extra_factory=HashKey.from_file,
+                    file_extra_factory=Cake.from_file,
                 )
             )
         ),

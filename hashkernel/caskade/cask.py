@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
 from nanotime import nanotime
 
 from hashkernel import LogicRegistry, dump_jsonable, load_jsonable
-from hashkernel.bakery import Rake, RootSchema
+from hashkernel.ake import Rake, RootSchema
 from hashkernel.caskade import (
     PAYLOAD_SIZE_PACKER,
     AccessError,
@@ -28,13 +28,13 @@ from hashkernel.caskade import (
     CaskId)
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import NULL_HASH_KEY, HashKey
+from hashkernel.ake import NULL_CAKE, Cake
 from hashkernel.time import nanotime_now
 
 
 class CheckPoint(NamedTuple):
     cask_id: CaskId
-    checkpoint_id: HashKey
+    checkpoint_id: Cake
     start: int
     end: int
     type: CheckPointType
@@ -88,7 +88,7 @@ class CaskFile:
     def create_file(
         self,
         tstamp=None,
-        checkpoint_id: HashKey = NULL_HASH_KEY,
+        checkpoint_id: Cake = NULL_CAKE,
     ):
         self.tracker = SegmentTracker(0)
         self.catalog = JotTypeCatalog(self.caskade.jot_types)
@@ -150,7 +150,7 @@ class CaskFile:
                     self.tracker.update(fbytes[eh.start_of_entry : eh.end_of_entry])
             curr_pos = eh.end_of_entry
 
-    def write_checkpoint(self, cpt: CheckPointType) -> HashKey:
+    def write_checkpoint(self, cpt: CheckPointType) -> Cake:
         rec, header = self.tracker.checkpoint(cpt)
         self.tracker = self.tracker.next_tracker()
         cp_buff = self.pack_entry(rec, header, self.caskade.config.sign)
@@ -167,7 +167,7 @@ class CaskFile:
         self.path = now_name
         self.tracker = None
 
-    def write_bytes(self, content: bytes, hkey: HashKey) -> DataLocation:
+    def write_bytes(self, content: bytes, hkey: Cake) -> DataLocation:
         return self.write_entry(
             BaseJots.DATA, hkey, content, content_size=(len(content))
         )
@@ -204,7 +204,7 @@ class CaskFile:
         self,
         cp_type: CheckPointType,
         new_file=None,
-    ) -> HashKey:
+    ) -> Cake:
         """
 
         :param cp_type:
@@ -272,11 +272,11 @@ class EntryHelper(object):
 
     @registry.add(BaseJots.DATA)
     def load_DATA(self):
-        hkey: HashKey = self.header
+        hkey: Cake = self.header
         self.cask.caskade._add_data_location(hkey, self.payload_dl)
 
         if self.read_opts.validate_data:
-            if HashKey.from_bytes(self.payload_dl.load(self.fbytes)) != hkey:
+            if Cake.from_bytes(self.payload_dl.load(self.fbytes)) != hkey:
                 raise DataValidationError(hkey)
 
     @registry.add(BaseJots.CASK_HEADER)
@@ -313,7 +313,7 @@ class EntryHelper(object):
             self.read_opts.validate_checkpoints
             and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0
         ):
-            calculated = HashKey(self.cask.tracker.hasher)
+            calculated = Cake(self.cask.tracker.hasher)
             if calculated != cp_entry.checkpoint_id:
                 raise DataValidationError(f"{calculated} != {cp_entry.checkpoint_id}")
             self.cask.tracker = self.cask.tracker.next_tracker()
@@ -331,9 +331,9 @@ class Caskade:
     active: Optional[CaskFile]
     casks: Dict[CaskId, CaskFile]
     cask_ids: List[CaskId]
-    data_locations: Dict[HashKey, DataLocation]
+    data_locations: Dict[Cake, DataLocation]
     check_points: List[CheckPoint]
-    datalinks: Dict[Rake, Dict[int, HashKey]]
+    datalinks: Dict[Rake, Dict[int, Cake]]
     jot_types: Type[JotType]
 
     def __init__(
@@ -409,30 +409,30 @@ class Caskade:
         self.assert_write()
         self.active.write_checkpoint(CheckPointType.MANUAL)
 
-    def __getitem__(self, id: HashKey) -> bytes:
+    def __getitem__(self, id: Cake) -> bytes:
         return self.read_bytes(id)
 
-    def read_bytes(self, id: HashKey) -> bytes:
+    def read_bytes(self, id: Cake) -> bytes:
         dp = self.data_locations[id]
         file: CaskFile = self.casks[dp.cask_id]
         return file.fragment(dp.offset, dp.size)
 
-    def __contains__(self, id: HashKey) -> bool:
+    def __contains__(self, id: Cake) -> bool:
         return id in self.data_locations
 
     def assert_write(self):
         if self.active is None or self.active.tracker is None:
             raise AccessError("not writable")
 
-    def write_bytes(self, content: bytes, force: bool = False) -> HashKey:
+    def write_bytes(self, content: bytes, force: bool = False) -> Cake:
         self.assert_write()
-        hkey = HashKey.from_bytes(content)
+        hkey = Cake.from_bytes(content)
         if force or hkey not in self:
             dp = self.active.write_bytes(content, hkey)
             self._add_data_location(hkey, dp, content)
         return hkey
 
-    def set_link(self, link: Rake, link_type: int, data: HashKey) -> bool:
+    def set_link(self, link: Rake, link_type: int, data: Cake) -> bool:
         """
         Ensures link.
 
@@ -501,7 +501,7 @@ class Caskade:
         self.active._do_end_cask_sequence(CheckPointType.ON_CASKADE_CLOSE)
 
     def _add_data_location(
-        self, cake: HashKey, dp: DataLocation, written_data: Optional[bytes] = None
+        self, cake: Cake, dp: DataLocation, written_data: Optional[bytes] = None
     ):
         """
         Add data location, and when new data being written update cache.
