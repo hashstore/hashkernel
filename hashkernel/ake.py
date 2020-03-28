@@ -383,15 +383,15 @@ Ake = Union[Rake,Cake]
 
 def ake(s: Union[str,bytes,Hasher])->Ake:
     """
-    >>> ake_factory(str(Rake.null(0)))
+    >>> ake(str(Rake.null(0)))
     Rake('0000000000000000')
-    >>> ake_factory(str(NULL_CAKE))
+    >>> ake(str(NULL_CAKE))
     Cake('RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi5')
-    >>> ake_factory(bytes(Rake.null(0)))
+    >>> ake(bytes(Rake.null(0)))
     Rake('0000000000000000')
-    >>> ake_factory(bytes(NULL_CAKE))
+    >>> ake(bytes(NULL_CAKE))
     Cake('RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi5')
-    >>> ake_factory(Hasher())
+    >>> ake(Hasher())
     Cake('RZwTDmWjELXeEmMEb0eIIegKayGGUPNsuJweEPhlXi5')
 
     """
