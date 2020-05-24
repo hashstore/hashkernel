@@ -11,7 +11,7 @@ install_requires = [
     "croniter",
     "python-dateutil",
     "pytz",
-    "aiofiles",
+    "cryptography",
     "aiohttp",
 ]
 
