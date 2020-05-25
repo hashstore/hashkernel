@@ -7,9 +7,10 @@ import pytest
 from hs_build_tools import LogTestOut
 from nanotime import nanotime
 
-from hashkernel.ake import Rake, RootSchema
+from hashkernel.ake import NULL_CAKE, Cake, Rake, RootSchema
 from hashkernel.caskade import (
     CHUNK_SIZE,
+    NULL_CASKADE,
     AccessError,
     BaseJots,
     CaskadeConfig,
@@ -19,7 +20,7 @@ from hashkernel.caskade import (
     CheckPointType,
     Stamp,
     Stamp_PACKER,
-    NULL_CASKADE)
+)
 from hashkernel.caskade.cask import (
     BaseCaskade,
     Caskade,
@@ -27,7 +28,6 @@ from hashkernel.caskade.cask import (
     size_of_entry,
 )
 from hashkernel.caskade.optional import OptionalCaskade, OptionalJots, Tag
-from hashkernel.ake import Cake, NULL_CAKE
 from hashkernel.tests import rand_bytes
 from hashkernel.time import TTL
 

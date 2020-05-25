@@ -3,10 +3,9 @@ from pathlib import Path
 from typing import ClassVar, Dict, List, NamedTuple, Optional, Union
 
 from hashkernel import LogicRegistry
-from hashkernel.ake import Rake
+from hashkernel.ake import Cake, Rake
 from hashkernel.caskade import BaseJots, CaskadeConfig, JotType, Stamp
 from hashkernel.caskade.cask import Caskade, EntryHelper
-from hashkernel.ake import Cake
 from hashkernel.mold import MoldConfig
 from hashkernel.smattr import SmAttr
 

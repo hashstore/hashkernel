@@ -2,8 +2,8 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from hashkernel import Jsonable, utf8_decode, utf8_encode
-from hashkernel.hashing import Hasher
 from hashkernel.ake import Cake
+from hashkernel.hashing import Hasher
 
 
 class HashRack(Jsonable):
@@ -124,5 +124,3 @@ class HashRack(Jsonable):
     def __to_json__(self) -> Tuple[List[str], List[Optional[Cake]]]:
         keys = self.keys()
         return (keys, self.get_cakes(keys))
-
-

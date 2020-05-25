@@ -4,9 +4,9 @@
 from logging import getLogger
 
 import pytest
-from hashkernel.ake import Rake, RootSchema
-from hashkernel.ake import Cake
 from pytest import raises
+
+from hashkernel.ake import Cake, Rake, RootSchema
 
 log = getLogger(__name__)
 

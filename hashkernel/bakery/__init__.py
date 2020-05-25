@@ -6,26 +6,14 @@ import logging
 import threading
 from contextlib import contextmanager
 from functools import total_ordering
-from typing import (
-    IO,
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-    Union,
-)
+from typing import IO, Any, Callable, Dict, Iterable, List, Optional, Union
+
 from hashkernel import GlobalRef
-from hashkernel.ake import HasCakeFromBytes, Cake, NULL_CAKE, \
-    SIZEOF_CAKE
+from hashkernel.ake import NULL_CAKE, SIZEOF_CAKE, Cake, HasCakeFromBytes
 from hashkernel.hashing import BytesOrderingMixin
 from hashkernel.smattr import SmAttr
 
 log = logging.getLogger(__name__)
-
-
-
 
 
 class QuestionMsg(SmAttr, HasCakeFromBytes):
@@ -64,9 +52,7 @@ class BlockStream(BytesOrderingMixin):
     blocks: List[Cake]
 
     def __init__(
-        self,
-        buffer: Optional[bytes] = None,
-        blocks: Optional[Iterable[Cake]] = None,
+        self, buffer: Optional[bytes] = None, blocks: Optional[Iterable[Cake]] = None
     ):
         if buffer is not None:
             assert blocks is None
@@ -92,9 +78,7 @@ class HashSession(metaclass=abc.ABCMeta):
         raise NotImplementedError("subclasses must override")
 
     @abc.abstractmethod
-    async def store_content(
-        self, content: Union[bytes, IO[bytes]]
-    ) -> Cake:
+    async def store_content(self, content: Union[bytes, IO[bytes]]) -> Cake:
         raise NotImplementedError("subclasses must override")
 
     def close(self):
@@ -126,5 +110,3 @@ class HashContext:
         finally:
             HashContext.set(None)
             session.close()
-
-

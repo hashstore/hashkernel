@@ -6,13 +6,14 @@ from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
 from nanotime import nanotime
 
 from hashkernel import LogicRegistry, dump_jsonable, load_jsonable
-from hashkernel.ake import Rake, RootSchema
+from hashkernel.ake import NULL_CAKE, Cake, Rake, RootSchema
 from hashkernel.caskade import (
     PAYLOAD_SIZE_PACKER,
     AccessError,
     BaseJots,
     CaskadeConfig,
     CaskHeaderEntry,
+    CaskId,
     CaskType,
     CheckpointHeader,
     CheckPointType,
@@ -25,10 +26,9 @@ from hashkernel.caskade import (
     SegmentTracker,
     Stamp,
     Stamp_PACKER,
-    CaskId)
+)
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
-from hashkernel.ake import NULL_CAKE, Cake
 from hashkernel.time import nanotime_now
 
 
@@ -52,6 +52,7 @@ VALIDATE_NONE = ReadOptions(
 VALIDATE_ALL = ReadOptions(
     validate_data=True, validate_checkpoints=True, validate_signatures=True
 )
+
 
 class CaskFile:
     """
@@ -85,11 +86,7 @@ class CaskFile:
         except (KeyError, AttributeError) as e:
             return None
 
-    def create_file(
-        self,
-        tstamp=None,
-        checkpoint_id: Cake = NULL_CAKE,
-    ):
+    def create_file(self, tstamp=None, checkpoint_id: Cake = NULL_CAKE):
         self.tracker = SegmentTracker(0)
         self.catalog = JotTypeCatalog(self.caskade.jot_types)
         if tstamp is None:
@@ -98,9 +95,7 @@ class CaskFile:
             self.pack_entry(
                 Stamp(BaseJots.CASK_HEADER.code, tstamp),
                 CaskHeaderEntry(
-                    self.caskade.caskade_id,
-                    checkpoint_id,
-                    self.catalog.key,
+                    self.caskade.caskade_id, checkpoint_id, self.catalog.key
                 ),
                 self.catalog.types.catalog(),
             ),
@@ -191,20 +186,14 @@ class CaskFile:
         elif cp_type == CheckPointType.ON_NEXT_CASK:
             new_cask_id = self.cask_id.next_id()
             new_file = CaskFile(self.caskade, new_cask_id, CaskType.ACTIVE)
-            checkpoint_id = self._do_end_cask_sequence( cp_type, new_file )
-            self.caskade.active.create_file(
-                tstamp=tstamp, checkpoint_id=checkpoint_id
-            )
+            checkpoint_id = self._do_end_cask_sequence(cp_type, new_file)
+            self.caskade.active.create_file(tstamp=tstamp, checkpoint_id=checkpoint_id)
             return self.caskade.active.append_buffer(buffer, content_size=content_size)
         else:
             self.write_checkpoint(cp_type)
             return self.append_buffer(buffer, content_size=content_size)
 
-    def _do_end_cask_sequence(
-        self,
-        cp_type: CheckPointType,
-        new_file=None,
-    ) -> Cake:
+    def _do_end_cask_sequence(self, cp_type: CheckPointType, new_file=None) -> Cake:
         """
 
         :param cp_type:
@@ -289,7 +278,11 @@ class EntryHelper(object):
         assert cask_head.catalog_id == self.cask.catalog.key
         # add virtual checkpoint from cask header
         return CheckPoint(
-            self.cask.cask_id, cask_head.checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER
+            self.cask.cask_id,
+            cask_head.checkpoint_id,
+            0,
+            0,
+            CheckPointType.ON_CASK_HEADER,
         )
 
     @registry.add(BaseJots.LINK)
@@ -362,7 +355,9 @@ class Caskade:
                 self.config.signer.init_dir(self._etc_dir())
             dump_jsonable(self._config_file(), self.config)
             self.cask_ids = []
-            self._set_active(CaskFile(self, CaskId(self.caskade_id, 0), CaskType.ACTIVE))
+            self._set_active(
+                CaskFile(self, CaskId(self.caskade_id, 0), CaskType.ACTIVE)
+            )
             self.active.create_file()
         else:
             assert self.dir.is_dir()

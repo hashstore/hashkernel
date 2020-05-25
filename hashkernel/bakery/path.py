@@ -6,7 +6,7 @@ from typing import IO, Callable, Optional
 
 from hashkernel import EnsureIt, Primitive, Stringable
 from hashkernel.ake import Rake
-from hashkernel.files.mime_info import mime_infos, guess_name
+from hashkernel.files.mime_info import guess_name, mime_infos
 from hashkernel.smattr import SmAttr
 
 

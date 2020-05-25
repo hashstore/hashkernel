@@ -1,19 +1,19 @@
+from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
+
+from hashkernel.crypto import decrypt, encrypt, generate_private_key, sign, verify
+
 
 def test_symetric():
     key = Fernet.generate_key()
     f = Fernet(key)
     plaintext = b"A really secret message. Not for prying eyes."
     ciphertext = f.encrypt(plaintext)
-    #at reciever
+    # at reciever
     f2 = Fernet(key)
     decrypted = f2.decrypt(ciphertext)
     assert decrypted == plaintext
 
-
-from cryptography.exceptions import InvalidSignature
-from hashkernel.crypto import (generate_private_key, sign,
-                               verify, encrypt, decrypt)
 
 def test_sign():
     right_key = generate_private_key()
@@ -31,7 +31,7 @@ def test_sign():
     verify(message, right_signature, right_pkey)
 
     try:
-        verify(message+b'x', right_signature, right_pkey)
+        verify(message + b"x", right_signature, right_pkey)
         assert False
     except InvalidSignature:
         pass
@@ -40,6 +40,7 @@ def test_sign():
         assert False
     except InvalidSignature:
         pass
+
 
 def test_crypt():
     right_key = generate_private_key()
@@ -63,4 +64,3 @@ def test_crypt():
         assert False
     except ValueError as e:
         assert str(e) == "Decryption failed."
-

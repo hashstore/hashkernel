@@ -3,8 +3,8 @@ import tempfile
 from io import BytesIO
 
 from hashkernel import to_json, utf8_reader
-from hashkernel.bakery.rack import HashRack
 from hashkernel.ake import Cake
+from hashkernel.bakery.rack import HashRack
 
 
 def test_Bundle():

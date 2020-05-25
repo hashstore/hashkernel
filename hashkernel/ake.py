@@ -4,46 +4,26 @@ import abc
 import os
 from datetime import timedelta
 from functools import total_ordering, wraps
+from io import BytesIO
 from pathlib import Path
-from typing import (
-    ClassVar,
-    Dict,
-    NamedTuple,
-    Optional,
-    Tuple,
-    Union,
-    Type, IO)
+from typing import IO, ClassVar, Dict, NamedTuple, Optional, Tuple, Type, Union
 
 from hashkernel import (
     BitMask,
     CodeEnum,
+    EnsureIt,
     GlobalRef,
+    MetaCodeEnumExtended,
+    Primitive,
     ScaleHelper,
     Scaling,
     Stringable,
-    MetaCodeEnumExtended, EnsureIt, Primitive)
+)
 from hashkernel.base_x import base_x
 from hashkernel.files import ensure_path
-from hashkernel.hashing import (
-    B36_Mixin,
-    BytesOrderingMixin,
-    Hasher)
-from hashkernel.packer import (
-    FixedSizePacker,
-    Packer,
-    ProxyPacker,
-)
-from hashkernel.time import (
-    FOREVER_DELTA,
-    M_1,
-    W_1,
-    Y_1,
-    Timeout,
-    d_1,
-    d_4,
-    h_1,
-)
-from io import BytesIO
+from hashkernel.hashing import B36_Mixin, BytesOrderingMixin, Hasher
+from hashkernel.packer import FixedSizePacker, Packer, ProxyPacker
+from hashkernel.time import FOREVER_DELTA, M_1, W_1, Y_1, Timeout, d_1, d_4, h_1
 
 B62 = base_x(62)
 
@@ -165,7 +145,9 @@ class RakeLinks:
     links_by_idx: Dict[int, LinkType]
     links_by_name: Dict[str, LinkType]
 
-    def __init__(self, *links: Tuple[str, int, LinkHistorySize, LinkTimeout, Optional[GlobalRef]]):
+    def __init__(
+        self, *links: Tuple[str, int, LinkHistorySize, LinkTimeout, Optional[GlobalRef]]
+    ):
         self.links_by_idx = {}
         self.links_by_name = {}
         if len(links):
@@ -193,6 +175,7 @@ class RakeLinks:
 
 OBJ_TYPE_MASK = BitMask(0, 6)
 SIZEOF_RAKE = 16
+
 
 @total_ordering
 class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
@@ -255,11 +238,11 @@ class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
 
     @classmethod
     def null(cls, obj_type):
-        return cls._build(obj_type, b'\x00' * SIZEOF_RAKE)
+        return cls._build(obj_type, b"\x00" * SIZEOF_RAKE)
 
     @classmethod
     def _build(cls, obj_type, s: bytes):
-        if not isinstance(obj_type , int):
+        if not isinstance(obj_type, int):
             obj_type = int(obj_type)
         assert 0 <= obj_type < 64, f"out of range 0-63: {obj_type}"
         assert len(s) == SIZEOF_RAKE
@@ -277,15 +260,12 @@ class Rake(Stringable, B36_Mixin, BytesOrderingMixin):
     def __hash__(self) -> int:
         return hash(self.buffer)
 
+
 Rake.__packer__ = ProxyPacker(Rake, FixedSizePacker(SIZEOF_RAKE))
 
+
 class RakeSchema(CodeEnum):
-    def __init__(
-        self,
-        code:int,
-        links:Optional[RakeLinks] = None,
-        doc:str = "",
-    ):
+    def __init__(self, code: int, links: Optional[RakeLinks] = None, doc: str = ""):
         assert 0 <= code < 64
         CodeEnum.__init__(self, code, doc)
         self.links = links
@@ -294,13 +274,16 @@ class RakeSchema(CodeEnum):
     def extends(cls, *enums: Type["RakeSchema"]):
         def decorate(decorated_enum: Type["RakeSchema"]):
             @wraps(decorated_enum)
-            class CombinedRakeSchema(RakeSchema,
-                                     metaclass=MetaCodeEnumExtended,
-                                     enums=[cls, decorated_enum, *enums]):
+            class CombinedRakeSchema(
+                RakeSchema,
+                metaclass=MetaCodeEnumExtended,
+                enums=[cls, decorated_enum, *enums],
+            ):
                 pass
-            return CombinedRakeSchema
-        return decorate
 
+            return CombinedRakeSchema
+
+        return decorate
 
 
 class RootSchema(RakeSchema):
@@ -309,6 +292,7 @@ class RootSchema(RakeSchema):
     HOST = 2
     ACTOR = 3
     LOGIC = 4
+
 
 @total_ordering
 class Cake(Stringable, EnsureIt, Primitive, B36_Mixin, BytesOrderingMixin):
@@ -319,6 +303,7 @@ class Cake(Stringable, EnsureIt, Primitive, B36_Mixin, BytesOrderingMixin):
     >>> hk.to_b36()
     '14bu24ea7cq4jhmrgj4a3jrn1v6vem8ualnohxyeq239y1gobo'
     """
+
     digest: bytes
 
     __packer__: ClassVar[Packer]
@@ -366,7 +351,7 @@ class HasCake(metaclass=abc.ABCMeta):
 
 class HasCakeFromBytes:
     def cake(self) -> Cake:
-        return Cake.from_bytes(bytes(self)) # type:ignore
+        return Cake.from_bytes(bytes(self))  # type:ignore
 
 
 HasCake.register(HasCakeFromBytes)
@@ -378,10 +363,10 @@ Cake.__packer__ = ProxyPacker(Cake, FixedSizePacker(Hasher.SIZEOF))
 NULL_CAKE = Cake(Hasher())
 SIZEOF_CAKE = Hasher.SIZEOF
 
-Ake = Union[Rake,Cake]
+Ake = Union[Rake, Cake]
 
 
-def ake(s: Union[str,bytes,Hasher])->Ake:
+def ake(s: Union[str, bytes, Hasher]) -> Ake:
     """
     >>> ake(str(Rake.null(0)))
     Rake('0000000000000000')
@@ -405,4 +390,3 @@ def ake(s: Union[str,bytes,Hasher])->Ake:
     else:
         assert len(s) == SIZEOF_RAKE
         return Rake(s)
-

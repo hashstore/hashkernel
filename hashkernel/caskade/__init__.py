@@ -7,7 +7,7 @@ from nanotime import nanotime
 from hashkernel import CodeEnum, MetaCodeEnumExtended
 from hashkernel.ake import Cake, Rake, RootSchema
 from hashkernel.files.buffer import FileBytes
-from hashkernel.hashing import Hasher, HasherSigner, Signer, B36
+from hashkernel.hashing import B36, Hasher, HasherSigner, Signer
 from hashkernel.packer import (
     ADJSIZE_PACKER_4,
     BOOL_AS_BYTE,
@@ -287,6 +287,7 @@ class JotType(CodeEnum):
     def extends(cls, *enums: Type["JotType"]):
         def decorate(decorated_enum: Type["JotType"]):
             return cls.combine(cls, decorated_enum, *enums)
+
         return decorate
 
     def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
@@ -361,15 +362,15 @@ class CaskId(NamedTuple):
         return CASK_ID_PACKER.pack(self)
 
     @classmethod
-    def from_str(cls, name:str) -> "CaskId":
+    def from_str(cls, name: str) -> "CaskId":
         buffer = B36.decode(name.lower())
         return cast(CaskId, CASK_ID_PACKER.unpack_whole_buffer(buffer))
 
     def path(self, dir: Path, ct: CaskType):
-        return dir / f'{B36.encode(bytes(self))}.{ct.name.lower()}'
+        return dir / f"{B36.encode(bytes(self))}.{ct.name.lower()}"
 
     def next_id(self, add=1):
-        return CaskId(self.caskade_id, self.idx+add)
+        return CaskId(self.caskade_id, self.idx + add)
 
 
 CASK_ID_PACKER = PACKERS.get_packer_by_type(CaskId)
@@ -412,6 +413,7 @@ class BaseJots(JotType):
          contains signature fo header.
         """,
     )
+
 
 CHUNK_SIZE: int = 2 ** 21  # 2Mb
 CHUNK_SIZE_2x = CHUNK_SIZE * 2

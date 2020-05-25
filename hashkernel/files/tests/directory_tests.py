@@ -7,6 +7,7 @@ import pytest
 from hs_build_tools import LogTestOut
 
 from hashkernel import json_decode, json_encode, to_json
+from hashkernel.ake import Cake
 from hashkernel.files.directory import (
     DirContent,
     FileExtra,
@@ -15,7 +16,6 @@ from hashkernel.files.directory import (
 )
 from hashkernel.files.ignore_file import DEFAULT_IGNORE_POLICY
 from hashkernel.files.tests import seed_file
-from hashkernel.ake import Cake
 
 log, out = LogTestOut.get(__name__)
 
@@ -80,8 +80,7 @@ async def test_ignore_policy(
         json = re.sub(r'"mod": "[^"]+",', "", json)
         print(json)
         assert (
-            json ==
-            '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": '
+            json == '{ "name": "scanning", "size": 22, "type": "TREE", "xtra": '
             '[{ "name": "a", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "b", "size": 5, "type": "TREE", "xtra": '
             '[{ "name": "1_5.dat", "size": 5, "type": "FILE", '
