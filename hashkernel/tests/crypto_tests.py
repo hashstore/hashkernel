@@ -11,44 +11,56 @@ def test_symetric():
     assert decrypted == plaintext
 
 
-from hashlib import sha256
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import (padding, rsa)
+from hashkernel.crypto import (generate_private_key, sign,
+                               verify, encrypt, decrypt)
 
+def test_sign():
+    right_key = generate_private_key()
 
-def test_asymetric():
-    right_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend())
-
-    wrong_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend())
+    wrong_key = generate_private_key()
 
     message = b"A message I want to sign"
 
-    right_signature = right_key.sign(message, sha256_padding(), hashes.SHA256())
+    right_signature = sign(message, right_key)
 
-    wrong_signature = wrong_key.sign(message, sha256_padding(), hashes.SHA256())
+    wrong_signature = sign(message, wrong_key)
 
     right_pkey = right_key.public_key()
 
-    right_pkey.verify( right_signature, message, sha256_padding(), hashes.SHA256())
+    verify(message, right_signature, right_pkey)
 
     try:
-        right_pkey.verify( wrong_signature, message, sha256_padding(), hashes.SHA256())
+        verify(message+b'x', right_signature, right_pkey)
+        assert False
+    except InvalidSignature:
+        pass
+    try:
+        verify(message, wrong_signature, right_pkey)
         assert False
     except InvalidSignature:
         pass
 
+def test_crypt():
+    right_key = generate_private_key()
 
+    wrong_key = generate_private_key()
 
-def sha256_padding():
-    return padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                       salt_length=padding.PSS.MAX_LENGTH)
+    right_pkey = right_key.public_key()
 
+    wrong_pkey = wrong_key.public_key()
+
+    message = b"A message I want to send"
+
+    right_ciphertext = encrypt(message, right_pkey)
+
+    wrong_ciphertext = encrypt(message, wrong_pkey)
+
+    assert decrypt(right_ciphertext, right_key) == message
+
+    try:
+        decrypt(wrong_ciphertext, right_key)
+        assert False
+    except ValueError as e:
+        assert str(e) == "Decryption failed."
 
