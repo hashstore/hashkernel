@@ -1,7 +1,7 @@
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
 
-from hashkernel.crypto import decrypt, encrypt, generate_private_key, sign, verify
+from hashkernel.crypto import RsaEncryptionScheme
 
 
 def test_symetric():
@@ -16,51 +16,55 @@ def test_symetric():
 
 
 def test_sign():
-    right_key = generate_private_key()
+    scheme = RsaEncryptionScheme()
 
-    wrong_key = generate_private_key()
+    right_key = scheme.generate_private_key()
+
+    wrong_key = scheme.generate_private_key()
 
     message = b"A message I want to sign"
 
-    right_signature = sign(message, right_key)
+    right_signature = scheme.sign(message, right_key)
 
-    wrong_signature = sign(message, wrong_key)
+    wrong_signature = scheme.sign(message, wrong_key)
 
-    right_pkey = right_key.public_key()
+    right_pkey = right_key.pub()
 
-    verify(message, right_signature, right_pkey)
+    scheme.verify(message, right_signature, right_pkey)
 
     try:
-        verify(message + b"x", right_signature, right_pkey)
+        scheme.verify(message + b"x", right_signature, right_pkey)
         assert False
     except InvalidSignature:
         pass
     try:
-        verify(message, wrong_signature, right_pkey)
+        scheme.verify(message, wrong_signature, right_pkey)
         assert False
     except InvalidSignature:
         pass
 
 
 def test_crypt():
-    right_key = generate_private_key()
+    scheme = RsaEncryptionScheme()
 
-    wrong_key = generate_private_key()
+    right_key = scheme.generate_private_key()
 
-    right_pkey = right_key.public_key()
+    wrong_key = scheme.generate_private_key()
 
-    wrong_pkey = wrong_key.public_key()
+    right_pkey = right_key.pub()
+
+    wrong_pkey = wrong_key.pub()
 
     message = b"A message I want to send"
 
-    right_ciphertext = encrypt(message, right_pkey)
+    right_ciphertext = scheme.encrypt(message, right_pkey)
 
-    wrong_ciphertext = encrypt(message, wrong_pkey)
+    wrong_ciphertext = scheme.encrypt(message, wrong_pkey)
 
-    assert decrypt(right_ciphertext, right_key) == message
+    assert scheme.decrypt(right_ciphertext, right_key) == message
 
     try:
-        decrypt(wrong_ciphertext, right_key)
+        scheme.decrypt(wrong_ciphertext, right_key)
         assert False
     except ValueError as e:
         assert str(e) == "Decryption failed."
