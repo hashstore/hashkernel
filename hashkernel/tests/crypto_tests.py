@@ -1,3 +1,5 @@
+import os
+
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
 
@@ -30,15 +32,26 @@ def test_sign():
 
     right_pkey = right_key.pub()
 
-    scheme.verify(message, right_signature, right_pkey)
+    do_verify(message, right_pkey, scheme, right_signature, wrong_signature)
 
+    do_verify(
+        message,
+        scheme.load_public_key(bytes(right_pkey)),
+        scheme,
+        right_signature,
+        wrong_signature,
+    )
+
+
+def do_verify(message, pubkey, scheme, right_signature, wrong_signature):
+    scheme.verify(message, right_signature, pubkey)
     try:
-        scheme.verify(message + b"x", right_signature, right_pkey)
+        scheme.verify(message + b"x", right_signature, pubkey)
         assert False
     except InvalidSignature:
         pass
     try:
-        scheme.verify(message, wrong_signature, right_pkey)
+        scheme.verify(message, wrong_signature, pubkey)
         assert False
     except InvalidSignature:
         pass
@@ -68,3 +81,20 @@ def test_crypt():
         assert False
     except ValueError as e:
         assert str(e) == "Decryption failed."
+
+
+def test_private_key_serialization():
+    scheme = RsaEncryptionScheme()
+
+    key = scheme.generate_private_key()
+    pubkey = key.pub()
+
+    key_no_pwd = scheme.load_private_key(key.private_bytes())
+    pwd = os.urandom(5)
+
+    key_pwd = scheme.load_private_key(key.private_bytes(pwd), pwd)
+
+    message = b"A message I want to send"
+
+    assert message == scheme.decrypt(scheme.encrypt(message, pubkey), key_no_pwd)
+    assert message == scheme.decrypt(scheme.encrypt(message, pubkey), key_pwd)
