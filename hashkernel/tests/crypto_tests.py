@@ -3,7 +3,7 @@ import os
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
 
-from hashkernel.crypto import RsaEncryptionScheme
+from hashkernel.crypto import RSA2048, Algorithm, DSA2048
 
 
 def test_symetric():
@@ -18,83 +18,82 @@ def test_symetric():
 
 
 def test_sign():
-    scheme = RsaEncryptionScheme()
+    do_sign(RSA2048())
+    do_sign(DSA2048())
+    do_sign(Algorithm.ensure_it("DSA2048"))
 
-    right_key = scheme.generate_private_key()
 
-    wrong_key = scheme.generate_private_key()
-
+def do_sign(algo):
+    right_key = algo.generate_private_key()
+    wrong_key = algo.generate_private_key()
     message = b"A message I want to sign"
-
-    right_signature = scheme.sign(message, right_key)
-
-    wrong_signature = scheme.sign(message, wrong_key)
-
+    right_signature = right_key.sign(message)
+    wrong_signature = wrong_key.sign(message)
     right_pkey = right_key.pub()
-
-    do_verify(message, right_pkey, scheme, right_signature, wrong_signature)
-
+    do_verify(message, right_pkey, right_signature, wrong_signature)
     do_verify(
         message,
-        scheme.load_public_key(bytes(right_pkey)),
-        scheme,
+        algo.load_public_key(bytes(right_pkey)),
         right_signature,
         wrong_signature,
     )
 
 
-def do_verify(message, pubkey, scheme, right_signature, wrong_signature):
-    scheme.verify(message, right_signature, pubkey)
+def do_verify(message, pubkey, right_signature, wrong_signature):
+    pubkey.verify(message, right_signature)
     try:
-        scheme.verify(message + b"x", right_signature, pubkey)
+        pubkey.verify(message + b"x", right_signature)
         assert False
     except InvalidSignature:
         pass
     try:
-        scheme.verify(message, wrong_signature, pubkey)
+        pubkey.verify(message, wrong_signature)
         assert False
     except InvalidSignature:
         pass
 
 
 def test_crypt():
-    scheme = RsaEncryptionScheme()
+    do_crypt(RSA2048())
+    do_crypt(Algorithm.ensure_it("RSA2048"))
 
-    right_key = scheme.generate_private_key()
 
-    wrong_key = scheme.generate_private_key()
-
+def do_crypt(algo):
+    right_key = algo.generate_private_key()
+    wrong_key = algo.generate_private_key()
     right_pkey = right_key.pub()
-
     wrong_pkey = wrong_key.pub()
-
     message = b"A message I want to send"
-
-    right_ciphertext = scheme.encrypt(message, right_pkey)
-
-    wrong_ciphertext = scheme.encrypt(message, wrong_pkey)
-
-    assert scheme.decrypt(right_ciphertext, right_key) == message
-
+    right_ciphertext = right_pkey.encrypt(message)
+    wrong_ciphertext = wrong_pkey.encrypt(message)
+    assert right_key.decrypt(right_ciphertext) == message
     try:
-        scheme.decrypt(wrong_ciphertext, right_key)
+        right_key.decrypt(wrong_ciphertext)
         assert False
     except ValueError as e:
         assert str(e) == "Decryption failed."
 
 
 def test_private_key_serialization():
-    scheme = RsaEncryptionScheme()
+    do_private_key_serialization(RSA2048())
+    do_private_key_serialization(DSA2048())
+    do_private_key_serialization(Algorithm.ensure_it("DSA2048"))
 
-    key = scheme.generate_private_key()
+
+
+def do_private_key_serialization(algo):
+    key = algo.generate_private_key()
     pubkey = key.pub()
-
-    key_no_pwd = scheme.load_private_key(key.private_bytes())
+    key_no_pwd = algo.load_private_key(key.private_bytes())
     pwd = os.urandom(5)
-
-    key_pwd = scheme.load_private_key(key.private_bytes(pwd), pwd)
-
+    key_pwd = algo.load_private_key(key.private_bytes(pwd), pwd)
     message = b"A message I want to send"
+    pubkey.verify(message, key_no_pwd.sign(message))
+    pubkey.verify(message, key_pwd.sign(message))
 
-    assert message == scheme.decrypt(scheme.encrypt(message, pubkey), key_no_pwd)
-    assert message == scheme.decrypt(scheme.encrypt(message, pubkey), key_pwd)
+    #omit password
+    try:
+        algo.load_private_key(key.private_bytes(pwd))
+        assert False
+    except TypeError as e:
+        assert str(e) == "Password was not given but private key is encrypted"

@@ -312,7 +312,13 @@ class StrigableFactory(EnsureIt, Stringable):
         return cls.inverse_mapping[cls]
 
     @classmethod
-    def register(cls, name, subcls):
+    def register(cls, name_or_cls, subcls=None):
+        if subcls is None:
+            assert isinstance(name_or_cls, type)
+            subcls = name_or_cls
+            name = name_or_cls.__name__
+        else:
+            name = name_or_cls
         if subcls in cls.inverse_mapping:
             raise ValueError(f"cannot register class twice: {subcls} {name}")
         if cls not in cls.subcls_mapping:
