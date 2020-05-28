@@ -3,7 +3,7 @@ import os
 from cryptography.exceptions import InvalidSignature
 from cryptography.fernet import Fernet
 
-from hashkernel.crypto import RSA2048, Algorithm, DSA2048
+from hashkernel.crypto import DSA2048, RSA2048, Algorithm
 
 
 def test_symetric():
@@ -29,7 +29,7 @@ def do_sign(algo):
     message = b"A message I want to sign"
     right_signature = right_key.sign(message)
     wrong_signature = wrong_key.sign(message)
-    right_pkey = right_key.pub()
+    right_pkey = right_key.public_key()
     do_verify(message, right_pkey, right_signature, wrong_signature)
     do_verify(
         message,
@@ -61,8 +61,8 @@ def test_crypt():
 def do_crypt(algo):
     right_key = algo.generate_private_key()
     wrong_key = algo.generate_private_key()
-    right_pkey = right_key.pub()
-    wrong_pkey = wrong_key.pub()
+    right_pkey = right_key.public_key()
+    wrong_pkey = wrong_key.public_key()
     message = b"A message I want to send"
     right_ciphertext = right_pkey.encrypt(message)
     wrong_ciphertext = wrong_pkey.encrypt(message)
@@ -80,10 +80,9 @@ def test_private_key_serialization():
     do_private_key_serialization(Algorithm.ensure_it("DSA2048"))
 
 
-
 def do_private_key_serialization(algo):
     key = algo.generate_private_key()
-    pubkey = key.pub()
+    pubkey = key.public_key()
     key_no_pwd = algo.load_private_key(key.private_bytes())
     pwd = os.urandom(5)
     key_pwd = algo.load_private_key(key.private_bytes(pwd), pwd)
@@ -91,7 +90,7 @@ def do_private_key_serialization(algo):
     pubkey.verify(message, key_no_pwd.sign(message))
     pubkey.verify(message, key_pwd.sign(message))
 
-    #omit password
+    # omit password
     try:
         algo.load_private_key(key.private_bytes(pwd))
         assert False
