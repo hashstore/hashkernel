@@ -291,22 +291,24 @@ class JotType(CodeEnum):
         return decorate
 
     def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
+        return self.pack_entry_sized(rec,header,payload)[0]
+
+    def pack_entry_sized(self, rec: Stamp, header: Any, payload: Any) -> Tuple[bytes,Optional[int]]:
         header_buff = Stamp_PACKER.pack(rec)
         if self.header_packer is not None:
             header_buff += self.header_packer.pack(header)
-        return self.pack_payload(header_buff, payload)
-
-    def pack_payload(self, header_buff: bytes, payload: Any):
         if self.payload_packer is None:
             assert payload is None
             payload_buff = b""
+            payload_size = None
         else:
             assert payload is not None
             if is_callable(payload):
                 payload = payload(header_buff)
             data_buff = self.payload_packer.pack(payload)
-            payload_buff = PAYLOAD_SIZE_PACKER.pack(len(data_buff)) + data_buff
-        return header_buff + payload_buff
+            payload_size = len(data_buff)
+            payload_buff = PAYLOAD_SIZE_PACKER.pack(payload_size) + data_buff
+        return header_buff + payload_buff, payload_size
 
 
 class JotTypeCatalog:
@@ -495,38 +497,12 @@ class SegmentTracker:
         return SegmentTracker(self.current_offset)
 
 
-class CaskSigner(Signer):
-    def init_dir(self, etc_dir: Path):
-        raise AssertionError("need to be implemented")
-
-    def load_from_dir(self, etc_dir: Path):
-        raise AssertionError("need to be implemented")
-
-
-class CaskHashSigner(CaskSigner, HasherSigner):
-    def _key_file(self, etc_dir: Path) -> Path:
-        return etc_dir / "key.bin"
-
-    def init_dir(self, etc_dir: Path):
-        key = os.urandom(16)
-        self._key_file(etc_dir).write_bytes(key)
-        self._key_file(etc_dir).chmod(0o0600)
-        HasherSigner.init(self, key)
-
-    def load_from_dir(self, etc_dir: Path):
-        key = self._key_file(etc_dir).read_bytes()
-        HasherSigner.init(self, key)
-
-
-CaskSigner.register("HashSigner", CaskHashSigner)
-
-
 class CaskadeConfig(SmAttr):
     """
     >>> cc = CaskadeConfig(origin=NULL_CASKADE)
     >>> str(cc) #doctest: +NORMALIZE_WHITESPACE
     '{"auto_chunk_cutoff": 4194304, "checkpoint_size": 268435456, "checkpoint_ttl": null, "max_cask_size": 2147483648,
-    "origin": "0000000000000001", "signer": null}'
+    "origin": "0000000000000001"}'
     >>> cc2 = CaskadeConfig(str(cc))
     >>> cc == cc2
     True
@@ -537,21 +513,7 @@ class CaskadeConfig(SmAttr):
     checkpoint_ttl: Optional[TTL] = None
     checkpoint_size: int = 128 * CHUNK_SIZE
     auto_chunk_cutoff: int = CHUNK_SIZE_2x
-    signer: Optional[CaskSigner] = None
 
-    def signature_size(self):
-        return 0 if self.signer is None else self.signer.signature_size()
-
-    def sign(self, header_buffer):
-        signature = b""
-        if self.signer is not None:
-            signature = self.signer.sign(header_buffer)
-        return signature
-
-    def validate_signature(self, header_buffer: bytes, signature: bytes):
-        if self.signer is not None:
-            return self.signer.validate(header_buffer, signature)
-        return False
 
     def validate_config(self):
         assert CHUNK_SIZE <= self.auto_chunk_cutoff <= CHUNK_SIZE_2x

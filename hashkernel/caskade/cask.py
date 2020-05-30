@@ -1,7 +1,8 @@
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, Type, Union
+from typing import Any, ClassVar, Dict, List, NamedTuple, Optional, \
+    Type, Union, Tuple
 
 from nanotime import nanotime
 
@@ -27,6 +28,7 @@ from hashkernel.caskade import (
     Stamp,
     Stamp_PACKER,
 )
+from hashkernel.crypto import PublicKey, PrivateKey, RSA2048
 from hashkernel.files import ensure_path
 from hashkernel.files.buffer import FileBytes
 from hashkernel.time import nanotime_now
@@ -38,6 +40,7 @@ class CheckPoint(NamedTuple):
     start: int
     end: int
     type: CheckPointType
+    signature_size: int
 
 
 class ReadOptions(NamedTuple):
@@ -103,7 +106,7 @@ class CaskFile:
         )
         # add virtual checkpoint from cask header
         self.caskade.check_points.append(
-            CheckPoint(self.cask_id, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER)
+            CheckPoint(self.cask_id, checkpoint_id, 0, 0, CheckPointType.ON_CASK_HEADER, 0)
         )
 
     def append_buffer(
@@ -148,9 +151,9 @@ class CaskFile:
     def write_checkpoint(self, cpt: CheckPointType) -> Cake:
         rec, header = self.tracker.checkpoint(cpt)
         self.tracker = self.tracker.next_tracker()
-        cp_buff = self.pack_entry(rec, header, self.caskade.config.sign)
+        cp_buff, signature_size = self.pack_entry_sized(rec, header, self.caskade.private_key.sign)
         self.append_buffer(cp_buff)
-        self.caskade.check_points.append(CheckPoint(self.cask_id, *header))
+        self.caskade.check_points.append(CheckPoint(self.cask_id, *header, signature_size))
         return header.checkpoint_id
 
     def _deactivate(self):
@@ -211,6 +214,10 @@ class CaskFile:
     def pack_entry(self, rec: Stamp, header: Any, payload: Any) -> bytes:
         et: JotType = self.catalog.types.find_by_code(rec.entry_code)
         return et.pack_entry(rec, header, payload)
+
+    def pack_entry_sized(self, rec: Stamp, header: Any, payload: Any) -> Tuple[bytes,Optional[int]]:
+        et: JotType = self.catalog.types.find_by_code(rec.entry_code)
+        return et.pack_entry_sized(rec, header, payload)
 
     def __len__(self):
         return self.path.stat().st_size
@@ -283,6 +290,7 @@ class EntryHelper(object):
             0,
             0,
             CheckPointType.ON_CASK_HEADER,
+            0
         )
 
     @registry.add(BaseJots.LINK)
@@ -297,20 +305,15 @@ class EntryHelper(object):
     def load_CHECK_POINT(self) -> CheckPoint:
         cp_entry: CheckpointHeader = self.header
         if self.payload_dl.size and self.read_opts.validate_signatures:
-            if not self.cask.caskade.config.validate_signature(
+            self.cask.caskade.public_key.verify(
                 self.fbytes[self.start_of_entry : self.end_of_header],
-                self.payload_dl.load(self.fbytes),
-            ):
-                raise ValueError("Cannot validate")
-        if (
-            self.read_opts.validate_checkpoints
-            and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0
-        ):
+                self.payload_dl.load(self.fbytes))
+        if ( self.read_opts.validate_checkpoints and self.cask.tracker.writen_bytes_since_previous_checkpoint > 0 ):
             calculated = Cake(self.cask.tracker.hasher)
             if calculated != cp_entry.checkpoint_id:
                 raise DataValidationError(f"{calculated} != {cp_entry.checkpoint_id}")
             self.cask.tracker = self.cask.tracker.next_tracker()
-        return CheckPoint(self.cask.cask_id, *cp_entry)
+        return CheckPoint(self.cask.cask_id, *cp_entry, self.payload_dl.size)
 
 
 class Caskade:
@@ -321,6 +324,8 @@ class Caskade:
     dir: Path
     caskade_id: Rake
     config: CaskadeConfig
+    public_key: PublicKey
+    private_key: PrivateKey
     active: Optional[CaskFile]
     casks: Dict[CaskId, CaskFile]
     cask_ids: List[CaskId]
@@ -351,8 +356,12 @@ class Caskade:
                 config.origin = self.caskade_id
                 self.config = config
             self._etc_dir().mkdir(mode=0o0700, parents=True)
-            if self.config.signer is not None:
-                self.config.signer.init_dir(self._etc_dir())
+            self.private_key = RSA2048().generate_private_key()
+            self.public_key = self.private_key.public_key()
+            pem = self._rsa_pem()
+            pem.touch(0o600)
+            pem.write_bytes(self.private_key.private_bytes())
+            pem.chmod(0o600)
             dump_jsonable(self._config_file(), self.config)
             self.cask_ids = []
             self._set_active(
@@ -361,9 +370,9 @@ class Caskade:
             self.active.create_file()
         else:
             assert self.dir.is_dir()
+            self.private_key = RSA2048().load_private_key(self._rsa_pem().read_bytes())
+            self.public_key = self.private_key.public_key()
             self.config = load_jsonable(self._config_file(), CaskadeConfig)
-            if self.config.signer is not None:
-                self.config.signer.load_from_dir(self._etc_dir())
             self.caskade_id = self.config.origin
 
             for fpath in self.dir.iterdir():
@@ -381,6 +390,9 @@ class Caskade:
 
     def _config_file(self) -> Path:
         return self._etc_dir() / "config.json"
+
+    def _rsa_pem(self) -> Path:
+        return self._etc_dir() / "rsa.pem"
 
     def _etc_dir(self) -> Path:
         return self.dir / ".hs_etc"
@@ -458,10 +470,10 @@ class Caskade:
         last_cp: CheckPoint = self.check_points[-1]
         if last_cp.type == CheckPointType.ON_CASKADE_PAUSE:
             active_candidate: CaskFile = self.casks[last_cp.cask_id]
-            if last_cp.end + size_of_check_point(self) == len(active_candidate):
+            if last_cp.end + size_of_check_point(self,last_cp.signature_size) == len(active_candidate):
                 active_candidate.tracker = SegmentTracker(last_cp.end)
                 active_candidate.tracker.update(
-                    active_candidate.fragment(last_cp.end, size_of_check_point(self))
+                    active_candidate.fragment(last_cp.end, size_of_check_point(self,last_cp.signature_size))
                 )
                 self.active = active_candidate
                 self.active.write_checkpoint(CheckPointType.ON_CASKADE_RESUME)
@@ -516,8 +528,8 @@ def size_of_entry(et: JotType, payload_size: int = 0) -> int:
     return size
 
 
-def size_of_check_point(cascade: Caskade):
-    return size_of_entry(BaseJots.CHECK_POINT, cascade.config.signature_size())
+def size_of_check_point(cascade: Caskade, sig_size:int):
+    return size_of_entry(BaseJots.CHECK_POINT, sig_size)
 
 
 class BaseCaskade(Caskade):

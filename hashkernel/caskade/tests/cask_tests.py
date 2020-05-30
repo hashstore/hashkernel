@@ -14,7 +14,6 @@ from hashkernel.caskade import (
     AccessError,
     BaseJots,
     CaskadeConfig,
-    CaskHashSigner,
     Catalog_PACKER,
     CheckpointHeader,
     CheckPointType,
@@ -35,20 +34,13 @@ log, out = LogTestOut.get(__name__)
 
 caskades = Path(out.child_dir("caskades"))
 
-common_config = CaskadeConfig(
+config = CaskadeConfig(
     origin=NULL_CASKADE,
     checkpoint_ttl=TTL(1),
     checkpoint_size=8 * CHUNK_SIZE,
     max_cask_size=11 * CHUNK_SIZE,
 )
 
-common_singer = CaskadeConfig(
-    origin=NULL_CASKADE,
-    checkpoint_ttl=TTL(1),
-    checkpoint_size=8 * CHUNK_SIZE,
-    max_cask_size=11 * CHUNK_SIZE,
-    signer=CaskHashSigner(),
-)
 
 
 def test_packers():
@@ -86,8 +78,7 @@ def test_catalog(entries, conform_to):
     "name, jot_types, config",
     [
         ("config_none", BaseJots, None),
-        ("common", BaseJots, common_config),
-        ("singer", BaseJots, common_singer),
+        ("common", BaseJots, config),
     ],
 )
 def test_config(name, jot_types, config):
@@ -95,7 +86,6 @@ def test_config(name, jot_types, config):
     loaded_ck = Caskade(new_ck.dir, jot_types)
 
     assert new_ck.config == loaded_ck.config
-    assert new_ck.config.signature_size() == loaded_ck.config.signature_size()
     assert type(new_ck.config.checkpoint_ttl) == type(loaded_ck.config.checkpoint_ttl)
 
 
@@ -120,7 +110,7 @@ class SizePredictor:
         self.add(size_of_entry(BaseJots.DATA, data_size))
 
     def add_check_point(self):
-        self.add(size_of_check_point(self.cascade))
+        self.add(size_of_check_point(self.cascade,256))
 
     def add_end_sequence(self):
         self.add_check_point()
@@ -128,7 +118,7 @@ class SizePredictor:
 
 def test_recover_no_checkpoints():
     caskade = Caskade(
-        caskades / "recover_no_cp", jot_types=BaseJots, config=common_config
+        caskades / "recover_no_cp", jot_types=BaseJots, config=config
     )
     sp = SizePredictor(caskade)
     first_cask = caskade.active.cask_id
@@ -171,10 +161,8 @@ def test_recover_no_checkpoints():
 @pytest.mark.parametrize(
     "name, caskade_cls, config",
     [
-        ("common", BaseCaskade, common_config),
-        ("singer", BaseCaskade, common_singer),
-        ("common_opt", OptionalCaskade, common_config),
-        ("singer_opt", OptionalCaskade, common_singer),
+        ("common", BaseCaskade, config),
+        ("common_opt", OptionalCaskade, config),
     ],
 )
 def test_3steps(name, caskade_cls, config):

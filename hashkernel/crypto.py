@@ -16,9 +16,17 @@ from cryptography.hazmat.primitives.serialization import (
 from hashkernel import EnsureIt, StrigableFactory
 
 
-class PublicKey:
+class PublicKey(EnsureIt):
+    def __init__(self, inst):
+        if isinstance(inst, bytes):
+            self.inst = load_ssh_public_key(inst, default_backend())
+        else:
+            self.inst = inst
+
     def __bytes__(self) -> bytes:
-        raise NotImplementedError("subclasses must override")
+        return self.inst.public_bytes(
+            encoding=Encoding.OpenSSH, format=PublicFormat.OpenSSH
+        )
 
     def verify(self, message: bytes, signature: bytes):
         raise NotImplementedError("subclasses must override")
@@ -30,10 +38,27 @@ class EncryptionKey(PublicKey):
 
 
 class PrivateKey:
-    def public_key(self) -> PublicKey:
-        raise NotImplementedError("subclasses must override")
+    def __init__(self, inst, password: Optional[bytes] = None):
+        if isinstance(inst, bytes):
+            self.inst = load_pem_private_key(inst, password, default_backend())
+        else:
+            self.inst = inst
 
     def private_bytes(self, password: Optional[bytes] = None) -> bytes:
+        if password is None:
+            return self.inst.private_bytes(
+                encoding=Encoding.PEM,
+                format=PrivateFormat.PKCS8,
+                encryption_algorithm=NoEncryption(),
+            )
+        else:
+            return self.inst.private_bytes(
+                encoding=Encoding.PEM,
+                format=PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=BestAvailableEncryption(password),
+            )
+
+    def public_key(self) -> PublicKey:
         raise NotImplementedError("subclasses must override")
 
     def sign(self, message: bytes) -> bytes:
@@ -75,42 +100,7 @@ def _oaep_padding():
     )
 
 
-class PublicKeyDelegateMixin(EnsureIt):
-    def __init__(self, inst):
-        if isinstance(inst, bytes):
-            self.inst = load_ssh_public_key(inst, default_backend())
-        else:
-            self.inst = inst
-
-    def __bytes__(self) -> bytes:
-        return self.inst.public_bytes(
-            encoding=Encoding.OpenSSH, format=PublicFormat.OpenSSH
-        )
-
-
-class PrivateKeyDelegateMixin:
-    def __init__(self, inst, password: Optional[bytes] = None):
-        if isinstance(inst, bytes):
-            self.inst = load_pem_private_key(inst, password, default_backend())
-        else:
-            self.inst = inst
-
-    def private_bytes(self, password: Optional[bytes] = None) -> bytes:
-        if password is None:
-            return self.inst.private_bytes(
-                encoding=Encoding.PEM,
-                format=PrivateFormat.PKCS8,
-                encryption_algorithm=NoEncryption(),
-            )
-        else:
-            return self.inst.private_bytes(
-                encoding=Encoding.PEM,
-                format=PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=BestAvailableEncryption(password),
-            )
-
-
-class RsaPublicKey(PublicKeyDelegateMixin, EncryptionKey):
+class RsaPublicKey(EncryptionKey):
     def verify(self, message: bytes, signature: bytes):
         self.inst.verify(signature, message, *_pss_padding())
 
@@ -118,7 +108,7 @@ class RsaPublicKey(PublicKeyDelegateMixin, EncryptionKey):
         return self.inst.encrypt(message, _oaep_padding())
 
 
-class RsaPrivateKey(PrivateKeyDelegateMixin, DecryptionKey):
+class RsaPrivateKey(DecryptionKey):
     def public_key(self):
         return RsaPublicKey(self.inst.public_key())
 
@@ -156,12 +146,12 @@ class RSA2048(Algorithm):
 Algorithm.register(RSA2048)
 
 
-class DsaPublicKey(PublicKeyDelegateMixin, PublicKey):
+class DsaPublicKey(PublicKey):
     def verify(self, message: bytes, signature: bytes):
         self.inst.verify(signature, message, hashes.SHA256())
 
 
-class DsaPrivateKey(PrivateKeyDelegateMixin, PrivateKey):
+class DsaPrivateKey(PrivateKey):
     def public_key(self):
         return DsaPublicKey(self.inst.public_key())
 
